@@ -2,6 +2,7 @@
 
 My exploration in connecting OpenAI Assistant function calling to my sites routing and other functions.
 
+I'm documenting this project on Notion. Invite only, request acces vie: https://www.notion.so/hunterbryant/HuntGPT-7deb24a1ff044f4eafe30146493cd7df?pvs=4
 
 ## Developing
 
