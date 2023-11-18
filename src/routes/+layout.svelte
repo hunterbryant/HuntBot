@@ -4,7 +4,7 @@
 </script>
 
 <div
-	class="bg-[url('lib/assets/studiobg.webp')] h-full sm:rounded-[2rem] rounded-none overflow-hidden bg-no-repeat bg-cover bg-center bg-slate-300"
+	class="h-full overflow-hidden rounded-none bg-slate-300 bg-[url('lib/assets/studiobg.webp')] bg-cover bg-center bg-no-repeat sm:rounded-[2rem]"
 >
 	<slot />
 </div>
