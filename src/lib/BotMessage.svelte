@@ -2,7 +2,9 @@
 	import huntbotlogo from './assets/huntbotlogo.webp';
 </script>
 
-<div class="flex h-16 w-[calc(full-4rem)] flex-row flex-nowrap items-center gap-3 rounded-3xl p-2">
+<div
+	class="flex w-[calc(full-4rem)] shrink-0 basis-16 flex-row flex-nowrap items-center gap-3 rounded-3xl p-2"
+>
 	<img
 		src={huntbotlogo}
 		alt="HuntBot&apos;s Avatar"
