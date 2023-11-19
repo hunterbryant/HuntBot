@@ -5,7 +5,7 @@
 </script>
 
 <div
-	class="relative h-full overflow-hidden rounded-none bg-slate-300 bg-[url('lib/assets/studiobg.webp')] bg-cover bg-center bg-no-repeat sm:rounded-[2rem]"
+	class="relative h-full overflow-hidden rounded-none bg-slate-300 bg-[url('lib/assets/studiobg.webp')] bg-cover bg-center bg-no-repeat shadow-inner sm:rounded-[2rem]"
 >
 	<slot />
 	<ChatBox />
