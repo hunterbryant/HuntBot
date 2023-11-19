@@ -1,11 +1,11 @@
-<script>
-	import huntbotlogo from './assets/huntbotlogo.webp';
+<script type="ts">
 	import arrowup from './assets/arrow-up.svg';
+	import { messages } from './assets/MessageStore';
 
 	let message = '';
 
 	function handleSubmit() {
-		console.log('User sent:', message);
+		messages.update((m) => [...m, message]);
 
 		// Clear the message after sending
 		message = '';

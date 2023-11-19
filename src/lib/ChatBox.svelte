@@ -1,8 +1,9 @@
-<script>
+<script type="ts">
 	import TextInput from './TextInput.svelte';
 	import UserMessage from './UserMessage.svelte';
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
+	import { messages } from './assets/MessageStore';
 </script>
 
 <div
@@ -13,9 +14,8 @@
 
 	<!-- This is the scrollable zone -->
 	<div class="overflow-scroll pb-4">
-		{#each Array(17) as _, i}
-			<UserMessage />
-			<BotMessage />
+		{#each $messages as message, i}
+			<UserMessage value={message} />
 		{/each}
 	</div>
 
