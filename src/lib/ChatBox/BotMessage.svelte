@@ -1,5 +1,7 @@
-<script>
-	import huntbotlogo from './assets/huntbotlogo.webp';
+<script lang="ts">
+	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
+
+	export let value: string;
 </script>
 
 <div
@@ -10,5 +12,5 @@
 		alt="HuntBot&apos;s Avatar"
 		class="h-11 w-11 flex-none rounded-2xl outline outline-1 outline-slate-200"
 	/>
-	<p class="grow">Hello 👋, I’m HuntBot</p>
+	<p class="grow">{value}</p>
 </div>

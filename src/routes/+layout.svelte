@@ -1,7 +1,7 @@
 <script>
 	import '../app.css';
 	import studiobg from '$lib/assets/studiobg.webp';
-	import ChatBox from '$lib/ChatBox.svelte';
+	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 </script>
 
 <div

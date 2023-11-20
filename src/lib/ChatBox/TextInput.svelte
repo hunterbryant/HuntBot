@@ -1,11 +1,12 @@
 <script type="ts">
-	import arrowup from './assets/arrow-up.svg';
-	import { messages } from './assets/MessageStore';
+	import arrowup from '$lib/assets/arrow-up.svg';
+	import { messages } from './MessageStore';
 
 	let message = '';
 
 	function handleSubmit() {
-		messages.update((m) => [...m, message]);
+		messages.update((m) => [...m, { type: 'user', message: message }]);
+		messages.update((m) => [...m, { type: 'bot', message: 'Example HuntBot message' }]);
 
 		// Clear the message after sending
 		message = '';

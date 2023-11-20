@@ -1,5 +1,5 @@
 <script>
-	import huntbotlogo from './assets/huntbotlogo.webp';
+	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
 </script>
 
 <div
