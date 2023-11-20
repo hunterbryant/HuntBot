@@ -1,4 +1,4 @@
-<script type="ts">
+<script lang="ts">
 	import TextInput from './TextInput.svelte';
 	import UserMessage from './UserMessage.svelte';
 	import BotMessage from './BotMessage.svelte';
@@ -8,7 +8,7 @@
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
-	let scrollElement;
+	let scrollElement: HTMLDivElement;
 	let minimized = true;
 
 	// Triggers upon messages updating
@@ -21,7 +21,7 @@
 		if ($messages && scrollElement) scrollToBottom(scrollElement);
 	});
 
-	const scrollToBottom = async (node) => {
+	const scrollToBottom = async (node: HTMLDivElement) => {
 		node.scroll({ top: node.scrollHeight, behavior: 'smooth' });
 	};
 </script>
@@ -42,15 +42,16 @@
 			transition:slide={{ duration: 300, easing: cubicOut }}
 		>
 			{#each $messages as message, i}
-				{#if message.type == 'user'}
-					<UserMessage value={message.message} />
-				{:else}
-					<BotMessage value={message.message} />
-				{/if}
+				<div in:slide>
+					{#if message.type == 'user'}
+						<UserMessage value={message.message} />
+					{:else}
+						<BotMessage value={message.message} />
+					{/if}
+				</div>
 			{/each}
 		</div>
 	{/if}
-
 	{#if $messages.length != 0}
 		<TextInput bind:minimized />
 	{/if}

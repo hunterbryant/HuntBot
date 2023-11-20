@@ -10,7 +10,9 @@
 
 	function handleGreet() {
 		messages.update((m) => [...m, { type: 'user', message: 'Not another GPT' }]);
-		messages.update((m) => [...m, { type: 'bot', message: greetingResponse }]);
+		setTimeout(() => {
+			messages.update((m) => [...m, { type: 'bot', message: greetingResponse }]);
+		});
 		minimized = false;
 	}
 

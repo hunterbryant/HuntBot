@@ -1,10 +1,12 @@
 <script lang="ts">
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
+	import { slide } from 'svelte/transition';
 
 	export let value: string;
 </script>
 
 <div
+	in:slide
 	class="flex w-[calc(full-4rem)] shrink-0 basis-16 flex-row flex-nowrap items-start gap-3 rounded-3xl p-2"
 >
 	<img

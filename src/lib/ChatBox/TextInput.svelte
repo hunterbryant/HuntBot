@@ -11,7 +11,9 @@
 
 	function handleSubmit() {
 		messages.update((m) => [...m, { type: 'user', message: message }]);
-		messages.update((m) => [...m, { type: 'bot', message: 'Example HuntBot message' }]);
+		setTimeout(() => {
+			messages.update((m) => [...m, { type: 'bot', message: 'Example HuntBot message' }]);
+		}, 600);
 
 		// Clear the message after sending
 		message = '';
@@ -50,6 +52,8 @@
 		bind:value={message}
 		bind:this={inputElement}
 	/>
+
+	<!-- Show HuntBot icon when chatbox is minimized -->
 	{#if minimized}
 		<img
 			src={huntbotlogo}
