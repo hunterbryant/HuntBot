@@ -4,16 +4,23 @@
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
 	import { messages } from './MessageStore';
-	import { afterUpdate } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
 	let scrollElement: HTMLDivElement;
 	let minimized = true;
-	let inAnimating = false;
+	let isScrolling = false;
+
+	// Check if scrolling
+	$: if (scrollElement && $messages) {
+		isScrolling = scrollElement.scrollHeight > scrollElement.clientHeight;
+	}
 
 	const scrollToBottom = async (node: HTMLDivElement) => {
-		node.scroll({ top: node.scrollHeight, behavior: 'smooth' });
+		// Check to see if the scroll is active
+		if (node.scrollHeight > node.clientHeight) {
+			node.scroll({ top: node.scrollHeight, behavior: 'smooth' });
+		}
 	};
 </script>
 
@@ -34,9 +41,8 @@
 		>
 			{#each $messages as message, i}
 				<div
-					in:slide
+					in:slide={{ duration: isScrolling ? 0 : 400 }}
 					on:introend={() => {
-						inAnimating = false;
 						scrollToBottom(scrollElement);
 					}}
 				>
