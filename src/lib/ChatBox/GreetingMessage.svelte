@@ -12,7 +12,7 @@
 		messages.update((m) => [...m, { type: 'user', message: 'Not another GPT' }]);
 		setTimeout(() => {
 			messages.update((m) => [...m, { type: 'bot', message: greetingResponse }]);
-		});
+		}, 600);
 		minimized = false;
 	}
 
