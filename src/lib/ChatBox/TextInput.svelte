@@ -5,12 +5,15 @@
 	let message = '';
 	let inputElement: HTMLInputElement;
 
+	export let minimized: boolean;
+
 	function handleSubmit() {
 		messages.update((m) => [...m, { type: 'user', message: message }]);
 		messages.update((m) => [...m, { type: 'bot', message: 'Example HuntBot message' }]);
 
 		// Clear the message after sending
 		message = '';
+		minimized = false;
 	}
 
 	function focusInput() {

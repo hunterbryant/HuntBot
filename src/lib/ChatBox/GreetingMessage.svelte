@@ -1,13 +1,21 @@
-<script>
+<script lang="ts">
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
 	import { messages } from './MessageStore';
+	import caretdown from '$lib/assets/caret-down.svg';
+
+	export let minimized: boolean;
 
 	let greetingResponse =
 		'I know, I know. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
 
-	function handleClick() {
+	function handleGreet() {
 		messages.update((m) => [...m, { type: 'user', message: 'Not another GPT' }]);
 		messages.update((m) => [...m, { type: 'bot', message: greetingResponse }]);
+		minimized = false;
+	}
+
+	function handleMinimize() {
+		minimized = true;
 	}
 </script>
 
@@ -21,12 +29,19 @@
 	/>
 	<p class="grow">Hello 👋, I’m HuntBot</p>
 
-	{#if !$messages.length}
+	{#if minimized}
 		<button
-			on:click={handleClick}
+			on:click={handleGreet}
 			class="h-12 rounded-2xl bg-blue-600 px-3 text-white transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none"
 		>
 			Not another GPT
+		</button>
+	{:else}
+		<button
+			on:click={handleMinimize}
+			class="peer h-12 basis-12 rounded-2xl bg-white transition hover:bg-slate-100 hover:shadow-sm active:bg-slate-200 active:shadow-none"
+		>
+			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none" />
 		</button>
 	{/if}
 

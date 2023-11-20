@@ -7,6 +7,7 @@
 	import { afterUpdate } from 'svelte';
 
 	let scrollElement;
+	let minimized = true;
 
 	// Triggers upon messages updating
 	$: if ($messages && scrollElement) {
@@ -27,9 +28,11 @@
 	class="flex-col-rev absolute bottom-2 left-2 right-2 flex max-h-[calc(100vh-1rem)] w-[calc(full-4rem)] flex-col flex-nowrap overflow-hidden rounded-3xl bg-white shadow-md sm:left-auto sm:max-h-[calc(100vh-2rem)] sm:w-[calc(27.5rem)]"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
-	<GreetingMessage />
+	{#if $messages.length == 0 || !minimized}
+		<GreetingMessage bind:minimized />
+	{/if}
 
-	{#if $messages.length}
+	{#if !minimized}
 		<!-- This is the scrollable zone -->
 		<div class="overflow-scroll py-2" bind:this={scrollElement}>
 			{#each $messages as message, i}
@@ -40,7 +43,9 @@
 				{/if}
 			{/each}
 		</div>
+	{/if}
 
-		<TextInput />
+	{#if $messages.length != 0}
+		<TextInput bind:minimized />
 	{/if}
 </div>
