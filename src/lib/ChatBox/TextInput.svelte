@@ -1,9 +1,11 @@
 <script lang="ts">
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
+	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
+	let placeholder = 'Message HuntBot';
 
 	export let minimized: boolean;
 
@@ -19,7 +21,12 @@
 	function focusInput() {
 		if (inputElement) {
 			inputElement.focus(); // Focus the input element
+			placeholder = 'Message HuntBot';
 		}
+	}
+
+	$: if (minimized) {
+		placeholder = 'If you need me... ask away!';
 	}
 </script>
 
@@ -38,10 +45,17 @@
 		<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
 	</button>
 	<input
-		placeholder="Message HuntBot"
-		class="peer ml-2 min-w-0 grow bg-transparent focus:outline-none"
+		{placeholder}
+		class="peer min-w-0 grow bg-transparent focus:outline-none {minimized ? 'ml-0' : 'ml-2'}"
 		bind:value={message}
 		bind:this={inputElement}
 	/>
+	{#if minimized}
+		<img
+			src={huntbotlogo}
+			alt="HuntBot&apos;s Avatar"
+			class="h-12 flex-none basis-12 rounded-2xl outline outline-1 outline-slate-200"
+		/>
+	{/if}
 	<hr class="absolute bottom-16 left-4 right-4 bg-slate-200 peer-focus:hidden" />
 </form>

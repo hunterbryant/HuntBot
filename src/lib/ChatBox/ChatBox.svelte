@@ -5,6 +5,8 @@
 	import GreetingMessage from './GreetingMessage.svelte';
 	import { messages } from './MessageStore';
 	import { afterUpdate } from 'svelte';
+	import { slide } from 'svelte/transition';
+	import { cubicOut } from 'svelte/easing';
 
 	let scrollElement;
 	let minimized = true;
@@ -34,7 +36,11 @@
 
 	{#if !minimized}
 		<!-- This is the scrollable zone -->
-		<div class="overflow-scroll py-2" bind:this={scrollElement}>
+		<div
+			class="overflow-scroll py-2"
+			bind:this={scrollElement}
+			transition:slide={{ duration: 300, easing: cubicOut }}
+		>
 			{#each $messages as message, i}
 				{#if message.type == 'user'}
 					<UserMessage value={message.message} />
