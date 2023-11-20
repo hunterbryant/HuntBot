@@ -15,7 +15,7 @@
 
 	// Once DOM has changed. Tbh I don't completely understand, but without it, the scrollable area never goes all the way to the bottom
 	afterUpdate(() => {
-		if ($messages) scrollToBottom(element);
+		if ($messages && element) scrollToBottom(element);
 	});
 
 	const scrollToBottom = async (node) => {
@@ -29,16 +29,18 @@
 	<!-- This initial "message" acts as the header and original kickoff button -->
 	<GreetingMessage />
 
-	<!-- This is the scrollable zone -->
-	<div class="overflow-scroll py-2" bind:this={element}>
-		{#each $messages as message, i}
-			{#if message.type == 'user'}
-				<UserMessage value={message.message} />
-			{:else}
-				<BotMessage value={message.message} />
-			{/if}
-		{/each}
-	</div>
+	{#if $messages.length}
+		<!-- This is the scrollable zone -->
+		<div class="overflow-scroll py-2" bind:this={element}>
+			{#each $messages as message, i}
+				{#if message.type == 'user'}
+					<UserMessage value={message.message} />
+				{:else}
+					<BotMessage value={message.message} />
+				{/if}
+			{/each}
+		</div>
 
-	<TextInput />
+		<TextInput />
+	{/if}
 </div>
