@@ -6,16 +6,16 @@
 	import { messages } from './MessageStore';
 	import { afterUpdate } from 'svelte';
 
-	let element;
+	let scrollElement;
 
 	// Triggers upon messages updating
-	$: if ($messages && element) {
-		scrollToBottom(element);
+	$: if ($messages && scrollElement) {
+		scrollToBottom(scrollElement);
 	}
 
 	// Once DOM has changed. Tbh I don't completely understand, but without it, the scrollable area never goes all the way to the bottom
 	afterUpdate(() => {
-		if ($messages && element) scrollToBottom(element);
+		if ($messages && scrollElement) scrollToBottom(scrollElement);
 	});
 
 	const scrollToBottom = async (node) => {
@@ -31,7 +31,7 @@
 
 	{#if $messages.length}
 		<!-- This is the scrollable zone -->
-		<div class="overflow-scroll py-2" bind:this={element}>
+		<div class="overflow-scroll py-2" bind:this={scrollElement}>
 			{#each $messages as message, i}
 				{#if message.type == 'user'}
 					<UserMessage value={message.message} />

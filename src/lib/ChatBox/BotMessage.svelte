@@ -12,5 +12,5 @@
 		alt="HuntBot&apos;s Avatar"
 		class="h-11 w-11 flex-none rounded-2xl outline outline-1 outline-slate-200"
 	/>
-	<p class="mr-6 mt-2 grow whitespace-pre-line">{value}</p>
+	<p class="mr-6 mt-2 grow whitespace-pre-line">{@html value}</p>
 </div>
