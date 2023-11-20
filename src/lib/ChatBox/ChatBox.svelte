@@ -30,7 +30,7 @@
 	<GreetingMessage />
 
 	<!-- This is the scrollable zone -->
-	<div class="overflow-scroll pb-4" bind:this={element}>
+	<div class="overflow-scroll py-2" bind:this={element}>
 		{#each $messages as message, i}
 			{#if message.type == 'user'}
 				<UserMessage value={message.message} />

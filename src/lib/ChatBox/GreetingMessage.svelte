@@ -8,11 +8,11 @@
 	<img
 		src={huntbotlogo}
 		alt="HuntBot&apos;s Avatar"
-		class="h-11 w-11 flex-none rounded-2xl outline outline-1 outline-slate-200"
+		class="h-12 flex-none basis-12 rounded-2xl outline outline-1 outline-slate-200"
 	/>
 	<p class="grow">Hello 👋, I’m HuntBot</p>
 	<button
-		class="h-11 rounded-2xl bg-blue-600 px-3 text-white transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none"
+		class="h-12 rounded-2xl bg-blue-600 px-3 text-white transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none"
 	>
 		Not another GPT
 	</button>

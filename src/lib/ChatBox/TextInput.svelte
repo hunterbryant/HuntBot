@@ -19,7 +19,7 @@
 >
 	<button
 		type="submit"
-		class="peer h-11 w-11 rounded-2xl bg-blue-600 transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none disabled:bg-blue-200"
+		class="peer h-12 basis-12 rounded-2xl bg-blue-600 transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none disabled:bg-blue-200"
 		disabled={message.trim() === ''}
 	>
 		<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
