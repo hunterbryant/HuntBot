@@ -10,16 +10,7 @@
 
 	let scrollElement: HTMLDivElement;
 	let minimized = true;
-
-	// Triggers upon messages updating
-	$: if ($messages && scrollElement) {
-		scrollToBottom(scrollElement);
-	}
-
-	// Once DOM has changed. Tbh I don't completely understand, but without it, the scrollable area never goes all the way to the bottom
-	afterUpdate(() => {
-		if ($messages && scrollElement) scrollToBottom(scrollElement);
-	});
+	let inAnimating = false;
 
 	const scrollToBottom = async (node: HTMLDivElement) => {
 		node.scroll({ top: node.scrollHeight, behavior: 'smooth' });
@@ -42,7 +33,13 @@
 			transition:slide={{ duration: 300, easing: cubicOut }}
 		>
 			{#each $messages as message, i}
-				<div in:slide>
+				<div
+					in:slide
+					on:introend={() => {
+						inAnimating = false;
+						scrollToBottom(scrollElement);
+					}}
+				>
 					{#if message.type == 'user'}
 						<UserMessage value={message.message} />
 					{:else}
