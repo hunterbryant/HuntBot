@@ -2,6 +2,7 @@
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
+	import { json } from '@sveltejs/kit';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -9,15 +10,25 @@
 
 	export let minimized: boolean;
 
-	function handleSubmit() {
-		messages.update((m) => [...m, { type: 'user', message: message }]);
-		setTimeout(() => {
-			messages.update((m) => [...m, { type: 'bot', message: 'Example HuntBot message' }]);
-		}, 600);
+	async function handleSubmit() {
+		let inputMessage: string = message;
 
 		// Clear the message after sending
 		message = '';
 		minimized = false;
+
+		messages.update((m) => [...m, { type: 'user', message: inputMessage }]);
+
+		const response = await fetch('/api/chat', {
+			method: 'POST',
+			body: JSON.stringify({ message: inputMessage }),
+			headers: {
+				'Content-Type': 'application/json'
+			}
+		});
+
+		const botResponse = await response.json();
+		messages.update((m) => [...m, { type: 'bot', message: botResponse }]);
 	}
 
 	function focusInput() {
