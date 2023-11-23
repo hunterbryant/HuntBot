@@ -23,6 +23,11 @@
 			scrollElement.scrollTop === scrollElement.scrollHeight - scrollElement.offsetHeight;
 	}
 
+	// When unminimizing, scroll to bottom for the new message to appear
+	$: if (!minimized) {
+		scrollToBottom(scrollElement);
+	}
+
 	const scrollToBottom = async (node: HTMLDivElement) => {
 		// Check to see if the scroll is active
 		if (node.scrollHeight > node.clientHeight) {
