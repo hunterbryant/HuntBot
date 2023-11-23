@@ -4,16 +4,23 @@
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
 	import { messages } from './MessageStore';
-	import { slide } from 'svelte/transition';
+	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
+	import arrowdown from '$lib/assets/arrow-down.svg';
 
 	let scrollElement: HTMLDivElement;
 	let minimized = true;
 	let isScrolling = false;
+	let scrolledToBottom = false;
 
 	// Check if scrolling
-	$: if (scrollElement && $messages) {
+	$: if (scrollElement && $messages.length > 2) {
 		isScrolling = scrollElement.scrollHeight > scrollElement.clientHeight;
+	}
+
+	function checkScroll() {
+		scrolledToBottom =
+			scrollElement.scrollTop === scrollElement.scrollHeight - scrollElement.offsetHeight;
 	}
 
 	const scrollToBottom = async (node: HTMLDivElement) => {
@@ -35,10 +42,20 @@
 	{#if !minimized}
 		<!-- This is the scrollable zone -->
 		<div
-			class="overflow-scroll py-2"
+			class="relative overflow-scroll py-2"
 			bind:this={scrollElement}
+			on:scroll={checkScroll}
 			transition:slide={{ duration: 300, easing: cubicOut }}
 		>
+			{#if isScrolling && !scrolledToBottom}
+				<button
+					on:click={scrollToBottom(scrollElement)}
+					transition:fade
+					class="sticky top-[calc(100%-2rem)] mx-auto block h-8 w-8 rounded-full bg-slate-100/50 backdrop-blur transition hover:bg-slate-300/50"
+				>
+					<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none" />
+				</button>
+			{/if}
 			{#each $messages as message, i}
 				<div
 					in:slide={{ duration: isScrolling ? 0 : 400 }}
