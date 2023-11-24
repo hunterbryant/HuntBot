@@ -2,7 +2,6 @@
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
-	import { json } from '@sveltejs/kit';
 
 	let message = '';
 	let inputElement: HTMLInputElement;

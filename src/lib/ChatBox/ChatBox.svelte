@@ -13,14 +13,14 @@
 	let isScrolling = false;
 	let scrolledToBottom = false;
 
+	function checkScrolledDown() {
+		scrolledToBottom =
+			scrollElement.scrollTop === scrollElement.scrollHeight - scrollElement.offsetHeight;
+	}
+
 	// Check if scrolling
 	$: if (scrollElement && $messages.length > 2) {
 		isScrolling = scrollElement.scrollHeight > scrollElement.clientHeight;
-	}
-
-	function checkScroll() {
-		scrolledToBottom =
-			scrollElement.scrollTop === scrollElement.scrollHeight - scrollElement.offsetHeight;
 	}
 
 	const scrollToBottom = async (node: HTMLDivElement) => {
@@ -44,19 +44,24 @@
 		<div
 			class="relative overflow-scroll py-2"
 			bind:this={scrollElement}
-			on:scroll={checkScroll}
+			on:scroll={checkScrolledDown}
 			transition:slide={{ duration: 300, easing: cubicOut }}
+			on:introend={() => {
+				scrollToBottom(scrollElement);
+			}}
 		>
 			{#if isScrolling && !scrolledToBottom}
 				<button
-					on:click={scrollToBottom(scrollElement)}
+					on:click={() => {
+						scrollToBottom(scrollElement);
+					}}
 					transition:fade
-					class="sticky top-[calc(100%-2rem)] mx-auto block h-8 w-8 rounded-full bg-slate-100/50 backdrop-blur transition hover:bg-slate-300/50"
+					class="sticky top-[calc(100%-2rem)] mx-auto block h-8 w-8 rounded-full bg-slate-100 backdrop-blur transition hover:bg-slate-300"
 				>
 					<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none" />
 				</button>
 			{/if}
-			{#each $messages as message, i}
+			{#each $messages as message}
 				<div
 					in:slide={{ duration: isScrolling ? 0 : 400 }}
 					on:introend={() => {
