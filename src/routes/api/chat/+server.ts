@@ -1,89 +1,80 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { env } from '$env/dynamic/private';
 import { json } from '@sveltejs/kit';
 import OpenAI from 'openai';
 import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threads/runs/runs.mjs';
 
-// Create an OpenAI API client
-const openai = new OpenAI({
-	apiKey: env.OPENAI_API_KEY || ''
-});
-
-// Connect the HuntBot assistant
-const assistant = await openai.beta.assistants.retrieve('asst_GUDei2ot5g45AVU3ovS1uLT1');
+// Initialize OpenAI API client
+const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+const assistantId = env.OPENAI_ASISTANT_ID;
 
 // Create the chat thread
 const thread = await openai.beta.threads.create();
 
 export async function POST({ request }) {
-	// Extract the `prompt` from the body of the request
-	const { message } = await request.json();
+	try {
+		// Add the user message to the chat thread
+		const { message } = await request.json();
+		await openai.beta.threads.messages.create(thread.id, { role: 'user', content: message });
 
-	// Add user message to the thread
-	await openai.beta.threads.messages.create(thread.id, {
-		role: 'user',
-		content: message
-	});
+		// Run the thread and wait for completion
+		const run = await openai.beta.threads.runs.create(thread.id, { assistant_id: assistantId });
+		await waitForRunCompletion(thread.id, run.id);
 
-	// Run the HuntBot thread with the new message
-	const run = await openai.beta.threads.runs.create(thread.id, {
-		assistant_id: assistant.id
-	});
-
-	// Periodically retrieve the Run to check on its status to see if it has moved to completed
-	const retrieveRun = async () => {
-		let keepRetrievingRun;
-
-		while (run.status !== 'completed') {
-			keepRetrievingRun = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-
-			switch (keepRetrievingRun.status) {
-				case 'completed':
-					console.log('Completed \n');
-					return;
-				case 'failed':
-					console.log('Run failed');
-					return;
-				case 'requires_action':
-					console.log('Requires action');
-					await performAction(keepRetrievingRun.required_action?.submit_tool_outputs.tool_calls[0]);
-					break;
-			}
-		}
-	};
-
-	// Perform any required actions requested by HuntBot
-	const performAction = async (toolCall: RequiredActionFunctionToolCall) => {
-		switch (toolCall.function.name) {
-			case 'route_to_page':
-				console.log('Routing to: ', JSON.parse(toolCall.function.arguments).page);
-				break;
-			case 'minimize_chat':
-				console.log('Minimizing chat box');
-				break;
-			default:
-				break;
-		}
-
-		await openai.beta.threads.runs.submitToolOutputs(thread.id, run.id, {
-			tool_outputs: [
-				{
-					tool_call_id: toolCall.id,
-					output: '{success: "true"}'
-				}
-			]
-		});
-	};
-
-	// Step 6: Retrieve the Messages added by the Assistant to the Thread
-	const waitForAssistantMessage = async () => {
-		await retrieveRun();
-
+		// Retrieve and return the assistant's message
 		const allMessages = await openai.beta.threads.messages.list(thread.id);
+		if (allMessages.data[0].content[0].type == 'text') {
+			return json(allMessages.data[0].content[0].text.value);
+		} else {
+			// Needed to silence TS errors and possible mysterious API responses from the LLM
+			throw new Error('Expected text response, but received image_file');
+		}
+	} catch (error) {
+		// Handle errors
+		console.error('Error handling OpenAI API request: ', error);
+		return json({ error: 'An error occurred while processing your request' }, { status: 500 });
+	}
+}
 
+async function waitForRunCompletion(threadId: string, runId: string) {
+	let runStatus;
+	do {
+		const run = await openai.beta.threads.runs.retrieve(threadId, runId);
+		runStatus = run.status;
 
-		return allMessages.data[0].content[0].text.value;
-	};
+		if (runStatus === 'failed') {
+			throw new Error('Run failed');
+		} else if (runStatus === 'requires_action') {
+			const toolOutputArray = [];
 
-	return json(await waitForAssistantMessage());
+			// Perform required actions here
+			for (const action of run.required_action!.submit_tool_outputs.tool_calls) {
+				toolOutputArray.push(performAction(action));
+			}
+
+			// Respond to OpenAI with function status
+			await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
+				tool_outputs: toolOutputArray
+			});
+		}
+
+		// Sleep for a short duration before checking again
+		await new Promise((resolve) => setTimeout(resolve, 500));
+	} while (runStatus !== 'completed');
+	return;
+}
+
+function performAction(toolCall: RequiredActionFunctionToolCall) {
+	if (toolCall.function.name == 'route_to_page') {
+		// Handle route to page
+		console.log('Routing to: ', JSON.parse(toolCall.function.arguments).page);
+	} else if (toolCall.function.name == 'minimize_chat') {
+		// Handle minimize chat
+		console.log('Minimizing chat box');
+	} else {
+		// Handle errors
+		console.log('Received unexpected tool call');
+	}
+
+	// Respond to OpenAI with function status
+	return { tool_call_id: toolCall.id, output: '{success: "true"}' };
 }
