@@ -5,7 +5,12 @@
 
 	export let value: string;
 
-	const { scrollToBottom } = getContext('scroll');
+	interface ScrollContext {
+		scrollToBottom: () => void;
+	}
+
+	// Access the chat box's scroll function
+	const { scrollToBottom } = getContext<ScrollContext>('scroll');
 </script>
 
 <div
