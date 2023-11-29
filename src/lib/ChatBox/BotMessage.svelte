@@ -15,8 +15,8 @@
 		class="h-11 w-11 flex-none rounded-2xl outline outline-1 outline-slate-200"
 	/>
 
-	<p class="mr-6 mt-2 grow whitespace-pre-line">
-		{#if value == ''}
+	{#if value == ''}
+		<p class="mr-6 mt-2 grow whitespace-pre-line">
 			<svg
 				class="inline-block h-5 w-5 animate-spin text-slate-400"
 				xmlns="http://www.w3.org/2000/svg"
@@ -31,8 +31,10 @@
 					d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
 				></path>
 			</svg>
-		{:else}
+		</p>
+	{:else}
+		<p class="mr-6 mt-2 grow whitespace-pre-line" in:slide={{ duration: 400 }}>
 			{@html value}
-		{/if}
-	</p>
+		</p>
+	{/if}
 </div>
