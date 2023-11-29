@@ -13,16 +13,18 @@
 	let isScrolling = false;
 	let scrolledToBottom = false;
 
+	// Check if scrolled to the bottom
 	function checkScrolledDown() {
 		scrolledToBottom =
 			scrollElement.scrollTop === scrollElement.scrollHeight - scrollElement.offsetHeight;
 	}
 
-	// Check if scrolling
+	// Check if scrolling is active
 	$: if (scrollElement && $messages.length > 2) {
 		isScrolling = scrollElement.scrollHeight > scrollElement.clientHeight;
 	}
 
+	//Scroll to the bottom
 	const scrollToBottom = async (node: HTMLDivElement) => {
 		// Check to see if the scroll is active
 		if (node.scrollHeight > node.clientHeight) {

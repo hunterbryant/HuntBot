@@ -2,6 +2,7 @@
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
+	import { get } from 'svelte/store';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -18,6 +19,9 @@
 
 		messages.update((m) => [...m, { type: 'user', message: inputMessage }]);
 
+		// Insert blank value for loading state
+		messages.update((m) => [...m, { type: 'bot', message: '' }]);
+
 		const response = await fetch('/api/chat', {
 			method: 'POST',
 			body: JSON.stringify({ message: inputMessage }),
@@ -27,7 +31,12 @@
 		});
 
 		const botResponse = await response.json();
-		messages.update((m) => [...m, { type: 'bot', message: botResponse }]);
+
+		// Replace the last blank message with the API response
+		messages.update((m) => {
+			m[m.length - 1] = { type: 'bot', message: botResponse };
+			return m;
+		});
 	}
 
 	function focusInput() {

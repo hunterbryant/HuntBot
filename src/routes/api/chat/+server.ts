@@ -81,17 +81,6 @@ export async function POST({ request }) {
 
 		const allMessages = await openai.beta.threads.messages.list(thread.id);
 
-		// let returnMessageCount = 0;
-		// const returnMessages = [''];
-		// const runStep = await openai.beta.threads.runs.steps.list(thread.id, run.id);
-		// runStep.data.forEach((step) => {
-		// 	if (step.type == 'message_creation') {
-		// 		returnMessages.push(allMessages.data[0].content[returnMessageCount].text.value);
-		// 		returnMessageCount++;
-		// 	}
-		// });
-
-		// console.log(returnMessages);
 
 		return allMessages.data[0].content[0].text.value;
 	};
