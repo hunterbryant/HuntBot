@@ -7,6 +7,7 @@
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
+	import { setContext } from 'svelte';
 
 	let scrollElement: HTMLDivElement;
 	let minimized = true;
@@ -25,12 +26,17 @@
 	}
 
 	//Scroll to the bottom
-	const scrollToBottom = async (node: HTMLDivElement) => {
-		// Check to see if the scroll is active
-		if (node.scrollHeight > node.clientHeight) {
-			node.scroll({ top: node.scrollHeight, behavior: 'smooth' });
+	const scrollToBottom = async () => {
+		if (scrollElement) {
+			// Check to see if the scroll is active
+			if (scrollElement.scrollHeight > scrollElement.clientHeight) {
+				scrollElement.scroll({ top: scrollElement.scrollHeight, behavior: 'smooth' });
+			}
 		}
 	};
+
+	// Share the scroll function with child components
+	setContext('scroll', { scrollToBottom });
 </script>
 
 <div
@@ -49,13 +55,14 @@
 			on:scroll={checkScrolledDown}
 			transition:slide={{ duration: 300, easing: cubicOut }}
 			on:introend={() => {
-				scrollToBottom(scrollElement);
+				scrollToBottom();
 			}}
 		>
+			<!-- This is the scroll to bottom button -->
 			{#if isScrolling && !scrolledToBottom}
 				<button
 					on:click={() => {
-						scrollToBottom(scrollElement);
+						scrollToBottom();
 					}}
 					transition:fade
 					class="sticky top-[calc(100%-2rem)] mx-auto block h-8 w-8 rounded-full bg-slate-100 backdrop-blur transition hover:bg-slate-300"
@@ -63,11 +70,12 @@
 					<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none" />
 				</button>
 			{/if}
+			<!-- Render the chat messages -->
 			{#each $messages as message}
 				<div
-					in:slide={{ duration: isScrolling ? 0 : 400 }}
+					in:slide={{ duration: 400 }}
 					on:introend={() => {
-						scrollToBottom(scrollElement);
+						scrollToBottom();
 					}}
 				>
 					{#if message.type == 'user'}

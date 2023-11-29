@@ -1,8 +1,11 @@
 <script lang="ts">
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
 	import { slide } from 'svelte/transition';
+	import { getContext } from 'svelte';
 
 	export let value: string;
+
+	const { scrollToBottom } = getContext('scroll');
 </script>
 
 <div
@@ -33,7 +36,13 @@
 			</svg>
 		</p>
 	{:else}
-		<p class="mr-6 mt-2 grow whitespace-pre-line" in:slide={{ duration: 400 }}>
+		<p
+			class="mr-6 mt-2 grow whitespace-pre-line"
+			in:slide={{ duration: 400 }}
+			on:introend={() => {
+				scrollToBottom();
+			}}
+		>
 			{@html value}
 		</p>
 	{/if}
