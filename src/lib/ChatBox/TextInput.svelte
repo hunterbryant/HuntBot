@@ -7,6 +7,7 @@
 	let message = '';
 	let inputElement: HTMLInputElement;
 	let placeholder = 'Message HuntBot';
+	let chatSessionId: string;
 
 	export let minimized: boolean;
 
@@ -24,17 +25,21 @@
 
 		const response = await fetch('/api/chat', {
 			method: 'POST',
-			body: JSON.stringify({ message: inputMessage }),
+			body: JSON.stringify({
+				message: inputMessage,
+				sessionId: chatSessionId
+			}),
 			headers: {
 				'Content-Type': 'application/json'
 			}
 		});
 
 		const botResponse = await response.json();
+		chatSessionId = botResponse.threadId;
 
 		// Replace the last blank message with the API response
 		messages.update((m) => {
-			m[m.length - 1] = { type: 'bot', message: botResponse };
+			m[m.length - 1] = { type: 'bot', message: botResponse.message };
 			return m;
 		});
 	}

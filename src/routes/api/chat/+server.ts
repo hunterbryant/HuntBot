@@ -7,13 +7,22 @@ import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threa
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 const assistantId = env.OPENAI_ASISTANT_ID;
 
-// Create the chat thread
-const thread = await openai.beta.threads.create();
-
 export async function POST({ request }) {
 	try {
 		// Add the user message to the chat thread
-		const { message } = await request.json();
+		const { message, sessionId } = await request.json();
+
+		// Configure thread
+		let thread: OpenAI.Beta.Thread;
+		if (sessionId) {
+			// Retreive the existing thread
+			thread = await openai.beta.threads.retrieve(sessionId);
+		} else {
+			// Start a new thread
+			thread = await openai.beta.threads.create();
+		}
+
+		// Add message to thread
 		await openai.beta.threads.messages.create(thread.id, { role: 'user', content: message });
 
 		// Run the thread and wait for completion
@@ -23,7 +32,10 @@ export async function POST({ request }) {
 		// Retrieve and return the assistant's message
 		const allMessages = await openai.beta.threads.messages.list(thread.id);
 		if (allMessages.data[0].content[0].type == 'text') {
-			return json(allMessages.data[0].content[0].text.value);
+			return json({
+				message: allMessages.data[0].content[0].text.value,
+				threadId: thread.id
+			});
 		} else {
 			// Needed to silence TS errors and possible mysterious API responses from the LLM
 			throw new Error('Expected text response, but received image_file');
