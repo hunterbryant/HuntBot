@@ -8,6 +8,7 @@
 	let inputElement: HTMLInputElement;
 	let placeholder = 'Message HuntBot';
 	let chatSessionId: string;
+	let awaitingBotResponse = false;
 
 	export let minimized: boolean;
 
@@ -17,31 +18,42 @@
 		// Clear the message after sending
 		message = '';
 		minimized = false;
+		awaitingBotResponse = true;
 
+		// Add the user message
 		messages.update((m) => [...m, { type: 'user', message: inputMessage }]);
 
 		// Insert blank value for loading state
 		messages.update((m) => [...m, { type: 'bot', message: '' }]);
 
-		const response = await fetch('/api/chat', {
-			method: 'POST',
-			body: JSON.stringify({
-				message: inputMessage,
-				sessionId: chatSessionId
-			}),
-			headers: {
-				'Content-Type': 'application/json'
-			}
-		});
+		try {
+			const response = await fetch('/api/chat', {
+				method: 'POST',
+				body: JSON.stringify({
+					message: inputMessage,
+					sessionId: chatSessionId
+				}),
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
 
-		const botResponse = await response.json();
-		chatSessionId = botResponse.threadId;
+			const botResponse = await response.json();
+			chatSessionId = botResponse.threadId;
 
-		// Replace the last blank message with the API response
-		messages.update((m) => {
-			m[m.length - 1] = { type: 'bot', message: botResponse.message };
-			return m;
-		});
+			// Replace the last blank message with the API response
+			messages.update((m) => {
+				m[m.length - 1] = { type: 'bot', message: botResponse.message };
+				return m;
+			});
+		} catch (error) {
+			messages.update((m) => {
+				m[m.length - 1] = { type: 'bot', message: `Uh oh, I'm not thinking straight... ${error}` };
+				return m;
+			});
+		} finally {
+			awaitingBotResponse = false;
+		}
 	}
 
 	function focusInput() {
@@ -66,7 +78,7 @@
 	<button
 		type="submit"
 		class="peer h-12 basis-12 rounded-2xl bg-blue-600 transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none disabled:bg-blue-200 disabled:shadow-none"
-		disabled={message.trim() === ''}
+		disabled={message.trim() === '' || awaitingBotResponse}
 	>
 		<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
 	</button>

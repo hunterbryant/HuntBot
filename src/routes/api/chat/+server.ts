@@ -54,7 +54,7 @@ async function waitForRunCompletion(threadId: string, runId: string) {
 		runStatus = run.status;
 
 		if (runStatus === 'failed') {
-			throw new Error('Run failed');
+			throw new Error(run.last_error?.message);
 		} else if (runStatus === 'requires_action') {
 			const toolOutputArray = [];
 
@@ -88,5 +88,5 @@ function performAction(toolCall: RequiredActionFunctionToolCall) {
 	}
 
 	// Respond to OpenAI with function status
-	return { tool_call_id: toolCall.id, output: '{success: "true"}' };
+	return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'true' }) };
 }
