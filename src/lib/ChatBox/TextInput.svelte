@@ -2,7 +2,7 @@
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
-	import type { SupportedActions, BotAction } from '$lib/types.d.ts';
+	import { SupportedActions, type BotAction } from '$lib/types.d.js';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -72,8 +72,15 @@
 
 	function handleActions(actions: BotAction[]) {
 		actions.forEach((action) => {
-			console.log(action.name);
 			console.log(action.arguments);
+			if (action.name == SupportedActions.minimize_chat) {
+				messages.update((m) => [...m, { type: 'bot', message: 'Minimized the chat' }]);
+			} else if (action.name == SupportedActions.route_to_page) {
+				messages.update((m) => [
+					...m,
+					{ type: 'bot', message: `Routing you to page: ${action.arguments.page}` }
+				]);
+			}
 		});
 	}
 </script>

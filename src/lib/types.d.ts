@@ -7,5 +7,5 @@ export enum SupportedActions {
 
 export interface BotAction {
 	name: SupportedActions;
-	arguments: string | undefined;
+	arguments: Record<string, string>;
 }
