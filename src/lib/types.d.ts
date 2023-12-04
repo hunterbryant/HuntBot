@@ -9,3 +9,12 @@ export interface BotAction {
 	name: SupportedActions;
 	arguments: Record<string, string>;
 }
+
+export enum SupportedRoutes {
+	gathers = 'gathers-app',
+	karooTwo = 'karoo-2',
+	dashboard = 'hammerhead-dashboard',
+	inSearchOfBirth = 'in-search-of-birch',
+	home = 'home',
+	dovetail = 'dovetail'
+}

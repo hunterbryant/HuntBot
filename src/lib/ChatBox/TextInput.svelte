@@ -2,7 +2,8 @@
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
-	import { SupportedActions, type BotAction } from '$lib/types.d.js';
+	import { SupportedActions, type BotAction, SupportedRoutes } from '$lib/types.d.js';
+	import { goto } from '$app/navigation';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -75,11 +76,25 @@
 			console.log(action.arguments);
 			if (action.name == SupportedActions.minimize_chat) {
 				messages.update((m) => [...m, { type: 'bot', message: 'Minimized the chat' }]);
+				minimized = true;
 			} else if (action.name == SupportedActions.route_to_page) {
 				messages.update((m) => [
 					...m,
 					{ type: 'bot', message: `Routing you to page: ${action.arguments.page}` }
 				]);
+				switch (action.arguments.page as unknown as SupportedRoutes) {
+					case SupportedRoutes.gathers:
+						goto(`/case-studies/gathers`);
+						break;
+					case SupportedRoutes.home:
+						goto('/');
+						break;
+					case SupportedRoutes.dovetail:
+					case SupportedRoutes.karooTwo:
+					case SupportedRoutes.dashboard:
+					case SupportedRoutes.inSearchOfBirth:
+						break;
+				}
 			}
 		});
 	}
