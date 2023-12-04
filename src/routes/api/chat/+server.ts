@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { SupportedActions, type BotAction } from '$lib/types.d.js';
 import { json } from '@sveltejs/kit';
 import OpenAI from 'openai';
 import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threads/runs/runs.mjs';
@@ -27,27 +28,32 @@ export async function POST({ request }) {
 
 		// Run the thread and wait for completion
 		const run = await openai.beta.threads.runs.create(thread.id, { assistant_id: assistantId });
-		await waitForRunCompletion(thread.id, run.id);
+		const actionsPerformed: Array<BotAction> = [];
+		await waitForRunCompletion(thread.id, run.id, actionsPerformed);
 
 		// Retrieve and return the assistant's message
 		const allMessages = await openai.beta.threads.messages.list(thread.id);
 		if (allMessages.data[0].content[0].type == 'text') {
 			return json({
+				threadId: thread.id,
 				message: allMessages.data[0].content[0].text.value,
-				threadId: thread.id
+				actions: actionsPerformed
 			});
 		} else {
-			// Needed to silence TS errors and possible mysterious API responses from the LLM
+			// Needed to silence TS errors for possible mysterious API responses from Open AI
 			throw new Error('Expected text response, but received image_file');
 		}
 	} catch (error) {
-		// Handle errors
 		console.error('Error handling OpenAI API request: ', error);
 		return json({ error: 'An error occurred while processing your request' }, { status: 500 });
 	}
 }
 
-async function waitForRunCompletion(threadId: string, runId: string) {
+async function waitForRunCompletion(
+	threadId: string,
+	runId: string,
+	actionsPerformed: BotAction[]
+) {
 	let runStatus;
 	do {
 		const run = await openai.beta.threads.runs.retrieve(threadId, runId);
@@ -60,7 +66,7 @@ async function waitForRunCompletion(threadId: string, runId: string) {
 
 			// Perform required actions here
 			for (const action of run.required_action!.submit_tool_outputs.tool_calls) {
-				toolOutputArray.push(performAction(action));
+				toolOutputArray.push(performAction(action, actionsPerformed));
 			}
 
 			// Respond to OpenAI with function status
@@ -75,18 +81,21 @@ async function waitForRunCompletion(threadId: string, runId: string) {
 	return;
 }
 
-function performAction(toolCall: RequiredActionFunctionToolCall) {
-	if (toolCall.function.name == 'route_to_page') {
-		// Handle route to page
-		console.log('Routing to: ', JSON.parse(toolCall.function.arguments).page);
-	} else if (toolCall.function.name == 'minimize_chat') {
-		// Handle minimize chat
-		console.log('Minimizing chat box');
+function performAction(toolCall: RequiredActionFunctionToolCall, actionsPerformed: BotAction[]) {
+	// See if the funciton is valid
+	if (toolCall.function.name in SupportedActions) {
+		actionsPerformed.push({
+			name: toolCall.function.name as SupportedActions,
+			arguments: JSON.parse(toolCall.function.arguments)
+		});
+
+		// Respond to OpenAI with function status
+		return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'true' }) };
 	} else {
 		// Handle errors
 		console.log('Received unexpected tool call');
-	}
 
-	// Respond to OpenAI with function status
-	return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'true' }) };
+		// Respond to OpenAI with function status
+		return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'false' }) };
+	}
 }

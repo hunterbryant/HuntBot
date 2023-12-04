@@ -2,7 +2,7 @@
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
-	import { get } from 'svelte/store';
+	import type { SupportedActions, BotAction } from '$lib/types.d.ts';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -44,12 +44,11 @@
 
 			const botResponse = await response.json();
 			chatSessionId = botResponse.threadId;
-
-			// Replace the last blank message with the API response
 			messages.update((m) => {
 				m[m.length - 1] = { type: 'bot', message: botResponse.message };
 				return m;
 			});
+			handleActions(botResponse.actions);
 		} catch (error) {
 			messages.update((m) => {
 				m[m.length - 1] = { type: 'bot', message: `Uh oh, I'm not thinking straight... ${error}` };
@@ -69,6 +68,13 @@
 
 	$: if (minimized) {
 		placeholder = 'If you need me... ask away!';
+	}
+
+	function handleActions(actions: BotAction[]) {
+		actions.forEach((action) => {
+			console.log(action.name);
+			console.log(action.arguments);
+		});
 	}
 </script>
 
