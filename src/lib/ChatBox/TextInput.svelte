@@ -38,6 +38,10 @@
 				}
 			});
 
+			if (!response.ok) {
+				throw new Error(`${response.status} ${response.statusText}`);
+			}
+
 			const botResponse = await response.json();
 			chatSessionId = botResponse.threadId;
 
