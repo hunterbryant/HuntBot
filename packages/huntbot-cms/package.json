@@ -34,7 +34,7 @@
     "escape-html": "^1.0.3",
     "express": "^4.17.1",
     "next": "13.5.2",
-    "node-fetch": "^2.6.6",
+    "node-fetch": "^2.6.7",
     "payload": "^2.0.0",
     "payload-admin-bar": "^1.0.6",
     "qs": "6.11.2",
