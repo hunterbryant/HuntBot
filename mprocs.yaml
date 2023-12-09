@@ -1,0 +1,7 @@
+procs:
+    contracts:
+        cwd: packages/huntbot-cms
+        shell: pnpm run dev
+    client:
+        cwd: packages/huntbot-frontend
+        shell: pnpm run dev
