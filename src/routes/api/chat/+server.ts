@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { SupportedActions, type BotAction } from '$lib/types.d.js';
-import { json } from '@sveltejs/kit';
+import { json, type RequestHandler } from '@sveltejs/kit';
 import OpenAI from 'openai';
 import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threads/runs/runs.mjs';
 
@@ -8,7 +8,7 @@ import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threa
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 const assistantId = env.OPENAI_ASISTANT_ID;
 
-export async function POST({ request }) {
+export const POST: RequestHandler = async({ request }) => {
 	try {
 		// Add the user message to the chat thread
 		const { message, sessionId } = await request.json();
