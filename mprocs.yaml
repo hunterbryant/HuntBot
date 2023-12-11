@@ -1,7 +1,0 @@
-procs:
-    cms:
-        cwd: packages/huntbot-cms
-        shell: pnpm run dev
-    fontend:
-        cwd: packages/huntbot-frontend
-        shell: pnpm run dev
