@@ -13,8 +13,6 @@ pnpm run dev
 
 ```
 
-There are two projects in this repo: the SvelteKit frontend (huntbot-frontend), and the Payload CMS backend (huntbot-backend)
-
 ## Building
 
 To create a production version of your app:
@@ -32,12 +30,6 @@ The frontend expects two environmental variables to connect with Open AI:
 ```bash
 export OPENAI_API_KEY=...
 export OPENAI_ASISTANT_ID=...
-```
-
-The CMS expects a Posgres DB URI.
-
-```bash
-export DATABASE_URI=...
 ```
 
 At the time of writing, HuntBot supports two functions:
