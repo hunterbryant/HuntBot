@@ -43,6 +43,9 @@ devDependencies:
   eslint-plugin-svelte:
     specifier: ^2.30.0
     version: 2.35.0(eslint@8.53.0)(svelte@4.2.4)
+  mprocs:
+    specifier: ^0.6.4
+    version: 0.6.4
   postcss:
     specifier: ^8.4.31
     version: 8.4.31
@@ -3067,6 +3070,12 @@ packages:
       fp-ts: ^2.5.0
     dependencies:
       fp-ts: 2.16.1
+    dev: true
+
+  /mprocs@0.6.4:
+    resolution: {integrity: sha512-Y4eqnAjp3mjy0eT+zPoMQ+P/ISOzjgRG/4kh4I5cRA4Tv0rPxTCBRadn3+j+boMF5id7IoLhrVq9NFWFPuzD9A==}
+    engines: {node: '>=0.10.0'}
+    hasBin: true
     dev: true
 
   /mri@1.2.0:

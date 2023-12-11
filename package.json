@@ -3,7 +3,7 @@
 	"version": "0.0.1",
 	"private": true,
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "mprocs",
 		"build": "vite build",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -22,6 +22,7 @@
 		"eslint": "^8.28.0",
 		"eslint-config-prettier": "^9.0.0",
 		"eslint-plugin-svelte": "^2.30.0",
+		"mprocs": "^0.6.4",
 		"postcss": "^8.4.31",
 		"prettier": "^3.1.0",
 		"prettier-plugin-organize-imports": "^3.2.4",

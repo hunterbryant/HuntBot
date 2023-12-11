@@ -1,0 +1,5 @@
+procs:
+  sveltekit:
+    shell: vite dev
+  slicemachine:
+    shell: start-slicemachine

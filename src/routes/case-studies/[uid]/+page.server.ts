@@ -11,4 +11,4 @@ export const load: PageServerLoad = async ({ params }) => {
 	return {
 		page
 	};
-}
+};
