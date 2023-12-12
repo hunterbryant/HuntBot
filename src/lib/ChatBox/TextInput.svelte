@@ -129,5 +129,5 @@
 			class="h-12 flex-none basis-12 rounded-2xl outline outline-1 outline-slate-200"
 		/>
 	{/if}
-	<hr class="absolute bottom-16 left-4 right-4 bg-slate-200 peer-focus:hidden" />
+	<!-- <hr class="absolute bottom-16 left-4 right-4 bg-slate-200 peer-focus:hidden" /> -->
 </form>
