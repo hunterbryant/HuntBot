@@ -17,8 +17,8 @@
 		class="grid h-[calc(calc(50vh-64px)-0.5rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:grid-cols-9"
 	>
 		<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex">
-			<h1 class="my-auto text-6xl font-bold tracking-tighter">
-				I’m a designer that will build you a product your users <span class="font-serif italic"
+			<h1 class="z-30 my-auto text-6xl font-bold tracking-tighter">
+				I’m the designer that will build you a product your users <span class="font-serif italic"
 					>really</span
 				>
 				want.

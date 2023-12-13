@@ -40,7 +40,7 @@
 </script>
 
 <div
-	class="flex-col-rev flex max-h-[calc(100vh-1rem)] w-[calc(full-4rem)] flex-col flex-nowrap overflow-hidden rounded-3xl bg-white shadow-md sm:left-auto sm:max-h-[calc(100vh-2rem)] sm:w-[calc(27.5rem)]"
+	class="flex-col-rev z-50 mb-4 flex max-h-full w-full flex-col flex-nowrap overflow-hidden rounded-3xl bg-white shadow-md sm:left-auto sm:max-h-[calc(100vh-2rem)]"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
 	{#if $messages.length == 0 || !minimized}
