@@ -1,5 +1,14 @@
 <script lang="ts">
 	import StudioImage from '$lib/assets/studiobg2.webp';
+	import IntersectionObserver from 'svelte-intersection-observer';
+	import { navEngaged } from '$lib/nav/navstore';
+
+	let element: HTMLElement;
+	let onScreen = true;
+
+	$: if (!onScreen) {
+		navEngaged.set(true);
+	}
 </script>
 
 <svelte:head>
@@ -16,13 +25,16 @@
 	<div
 		class="grid h-[calc(calc(50vh-64px)-0.5rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:grid-cols-9"
 	>
+		<!-- Todo: animate title right after scroll -->
 		<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex">
-			<h1 class="z-30 my-auto text-6xl font-bold tracking-tighter">
-				I’m the designer that will build you a product your users <span class="font-serif italic"
-					>really</span
-				>
-				want.
-			</h1>
+			<IntersectionObserver {element} bind:intersecting={onScreen}>
+				<h1 class="z-30 my-auto text-6xl font-bold tracking-tighter" bind:this={element}>
+					I’m the designer that will build you a product your users <span class="font-serif italic"
+						>really</span
+					>
+					want.
+				</h1>
+			</IntersectionObserver>
 		</div>
 	</div>
 

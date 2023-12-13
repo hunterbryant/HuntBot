@@ -1,17 +1,18 @@
 <script lang="ts">
-	import Links from '$lib/nav/Links.svelte';
-
 	import '../app.css';
+
+	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import lettermark from '$lib/assets/lettermark.svg';
+	import { navEngaged } from '$lib/nav/navstore';
+
 	import { send, receive } from '$lib/utilities/transition';
 
-	let initialedChat = false;
 </script>
 
 <div
 	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-2xl grid-cols-5 gap-4 px-2 sm:grid-cols-9 sm:px-16"
-	class:z-40={initialedChat}
+	class:z-40={$navEngaged}
 >
 	<div class="relative col-span-3 flex w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
@@ -19,7 +20,7 @@
 			<div class="bg-stone-100 py-16">
 				<img src={lettermark} alt="Hunters lettermark logo" />
 			</div>
-			{#if initialedChat}
+			{#if $navEngaged}
 				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
 					<Links />
 				</div>
@@ -28,7 +29,7 @@
 		<!-- This div covers the second half content -->
 		<div class="flex flex-1 flex-col justify-between">
 			<div class="inline-flex w-full grow justify-between gap-4">
-				{#if !initialedChat}
+				{#if !$navEngaged}
 					<div
 						class="inline-flex w-full grow justify-between gap-4"
 						in:receive={{ key: 'huntbot' }}
@@ -38,20 +39,20 @@
 						<button
 							class="h-12 rounded bg-blue-600 px-3 text-stone-50"
 							on:click={() => {
-								initialedChat = true;
+								navEngaged.set(true);
 							}}>Ask HuntBot</button
 						>
 					</div>
 				{/if}
 			</div>
-			{#if !initialedChat}
+			{#if !$navEngaged}
 				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
 					<Links />
 				</div>
 			{/if}
 		</div>
 		<!-- <ChatBox /> -->
-		{#if initialedChat}
+		{#if $navEngaged}
 			<div
 				in:receive={{ key: 'huntbot' }}
 				out:send={{ key: 'huntbot' }}
