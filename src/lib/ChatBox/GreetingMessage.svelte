@@ -16,10 +16,6 @@
 		}, 600);
 		minimized = false;
 	}
-
-	function handleMinimize() {
-		minimized = true;
-	}
 </script>
 
 <div
@@ -37,7 +33,9 @@
 		</button>
 	{:else}
 		<button
-			on:click={handleMinimize}
+			on:click={() => {
+				minimized = true;
+			}}
 			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none"
 		>
 			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none" />

@@ -4,6 +4,7 @@
 	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
 	import { SupportedActions, type BotAction, SupportedRoutes } from '$lib/types.d.js';
 	import { goto } from '$app/navigation';
+	import caretdown from '$lib/assets/caret-down.svg';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -107,13 +108,25 @@
 	on:keydown={focusInput}
 	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200"
 >
-	<button
-		type="submit"
-		class="peer aspect-square h-12 basis-12 rounded bg-blue-600 transition hover:bg-blue-700 active:bg-blue-600 disabled:bg-blue-200"
-		disabled={message.trim() === '' || awaitingBotResponse}
-	>
-		<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
-	</button>
+	{#if message.trim() === '' && minimized}
+		<button
+			on:click={() => {
+				minimized = false;
+			}}
+			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none"
+		>
+			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none -scale-y-100" />
+		</button>
+	{:else}
+		<button
+			type="submit"
+			class="peer aspect-square h-12 basis-12 rounded bg-blue-600 transition hover:bg-blue-700 active:bg-blue-600 disabled:bg-blue-200"
+			disabled={message.trim() === '' || awaitingBotResponse}
+		>
+			<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
+		</button>
+	{/if}
+
 	<input
 		{placeholder}
 		class="peer min-w-0 grow bg-transparent focus:outline-none {minimized ? 'ml-0' : 'mx-2'}"

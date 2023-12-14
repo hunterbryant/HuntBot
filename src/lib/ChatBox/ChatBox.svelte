@@ -31,7 +31,7 @@
 	const scrollToBottom = async () => {
 		if (scrollElement) {
 			// Check to see if the scroll is active
-			if (scrollElement.scrollHeight > scrollElement.clientHeight) {
+			if (isScrolling) {
 				scrollElement.scroll({ top: scrollElement.scrollHeight, behavior: 'smooth' });
 			}
 		}
@@ -75,7 +75,7 @@
 			<!-- Render the chat messages -->
 			{#each $messages as message}
 				<div
-					class="first:mt-4 last:mb-8"
+					class="first:pt-4 last:pb-6"
 					in:slide={{ duration: 400 }}
 					on:introend={() => {
 						scrollToBottom();
