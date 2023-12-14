@@ -68,4 +68,14 @@
 			/>
 		</div>
 	</div>
+	<!-- Case Study -->
+	<div class="grid aspect-video h-[calc(50vh-11.25rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
+		<div class="col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
+			<img
+				src={StudioImage}
+				alt="A portrait of Hunter in a studio"
+				class="m-auto block h-full w-full object-cover"
+			/>
+		</div>
+	</div>
 </div>

@@ -22,9 +22,9 @@
 	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-2xl grid-cols-5 gap-4 px-2 sm:grid-cols-9 sm:px-16"
 	class:z-40={$navEngaged}
 >
-	<div class="relative col-span-3 flex w-full flex-col justify-stretch gap-4">
+	<div class="relative col-span-3 flex h-screen w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
-		<div class="min-h-0 flex-1">
+		<div class="h-[50%] min-h-0 flex-1 bg-stone-200">
 			<div class=" bg-stone-100 py-16">
 				<img class="inline-block" src={lettermark} alt="Hunters lettermark logo" />
 			</div>
@@ -35,20 +35,19 @@
 			{/if}
 		</div>
 		<!-- This div covers the second half content -->
-		<div class="flex flex-1 flex-col justify-between" transition:slide>
+		<div class="flex min-h-0 flex-1 flex-col justify-between" transition:slide>
 			{#if !$navEngaged}
-				<div class="grid grid-cols-1">
-					<div
-						class="col-span-1 col-start-1 row-span-1 row-start-1 flex h-12 w-full justify-between gap-4"
-						in:receive={{ key: 'huntbot' }}
-						out:send={{ key: 'huntbot' }}
+				<div
+					class="col-span-1 col-start-1 row-span-1 row-start-1 flex h-12 w-full justify-between gap-4"
+					in:receive={{ key: 'huntbot' }}
+					out:send={{ key: 'huntbot' }}
+				>
+					<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
+					<button class="h-12 rounded bg-blue-600 px-3 text-stone-50" on:click={engageHuntbot}
+						>Ask HuntBot</button
 					>
-						<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
-						<button class="h-12 rounded bg-blue-600 px-3 text-stone-50" on:click={engageHuntbot}
-							>Ask HuntBot</button
-						>
-					</div>
 				</div>
+
 				<div class="grid grid-cols-1">
 					<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
 						<Links />
