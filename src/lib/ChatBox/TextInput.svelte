@@ -105,29 +105,25 @@
 	on:submit|preventDefault={handleSubmit}
 	on:click={focusInput}
 	on:keydown={focusInput}
-	class="flex w-[calc(full-4rem)] shrink-0 basis-16 cursor-text flex-row-reverse flex-nowrap items-center gap-3 overflow-visible rounded-3xl p-2 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200"
+	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200"
 >
 	<button
 		type="submit"
-		class="peer h-12 basis-12 rounded-2xl bg-blue-600 transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none disabled:bg-blue-200 disabled:shadow-none"
+		class="peer aspect-square h-12 basis-12 rounded bg-blue-600 transition hover:bg-blue-700 active:bg-blue-600 disabled:bg-blue-200"
 		disabled={message.trim() === '' || awaitingBotResponse}
 	>
 		<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
 	</button>
 	<input
 		{placeholder}
-		class="peer min-w-0 grow bg-transparent focus:outline-none {minimized ? 'ml-0' : 'ml-2'}"
+		class="peer min-w-0 grow bg-transparent focus:outline-none {minimized ? 'ml-0' : 'mx-2'}"
 		bind:value={message}
 		bind:this={inputElement}
 	/>
+	<hr class="absolute inset-x-2 -top-px bg-slate-200 peer-focus:hidden" />
 
 	<!-- Show HuntBot icon when chatbox is minimized -->
 	{#if minimized}
-		<img
-			src={huntbotlogo}
-			alt="HuntBot&apos;s Avatar"
-			class="h-12 flex-none basis-12 rounded-2xl outline outline-1 outline-slate-200"
-		/>
+		<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
 	{/if}
-	<!-- <hr class="absolute bottom-16 left-4 right-4 bg-slate-200 peer-focus:hidden" /> -->
 </form>

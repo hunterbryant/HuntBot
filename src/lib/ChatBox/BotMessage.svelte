@@ -15,16 +15,12 @@
 
 <div
 	in:slide
-	class="flex w-[calc(full-4rem)] shrink-0 basis-16 flex-row flex-nowrap items-start gap-3 rounded-3xl p-2"
+	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded p-2"
 >
-	<img
-		src={huntbotlogo}
-		alt="HuntBot&apos;s Avatar"
-		class="h-11 w-11 flex-none rounded-2xl outline outline-1 outline-slate-200"
-	/>
+	<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
 
 	{#if value == ''}
-		<p class="mr-6 mt-2 grow whitespace-pre-line">
+		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
 				class="inline-block h-5 w-5 animate-spin text-slate-400"
 				xmlns="http://www.w3.org/2000/svg"
@@ -42,7 +38,7 @@
 		</p>
 	{:else}
 		<p
-			class="mr-6 mt-2 grow whitespace-pre-line"
+			class="mr-6 mt-3 grow whitespace-pre-line"
 			in:slide={{ duration: 400 }}
 			on:introend={() => {
 				scrollToBottom();

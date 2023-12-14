@@ -24,7 +24,7 @@
 >
 	<div class="relative col-span-3 flex h-screen w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
-		<div class="h-[50%] min-h-0 flex-1 bg-stone-200">
+		<div class=" min-h-0 flex-1">
 			<div class=" bg-stone-100 py-16">
 				<img class="inline-block" src={lettermark} alt="Hunters lettermark logo" />
 			</div>
@@ -42,9 +42,10 @@
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
 				>
-					<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
-					<button class="h-12 rounded bg-blue-600 px-3 text-stone-50" on:click={engageHuntbot}
-						>Ask HuntBot</button
+					<h3 class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl">How?</h3>
+					<button
+						class="h-12 rounded bg-blue-600 px-3 text-stone-50 hover:bg-blue-700 active:bg-blue-600"
+						on:click={engageHuntbot}>Ask HuntBot</button
 					>
 				</div>
 

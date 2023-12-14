@@ -26,7 +26,10 @@
 		<!-- Todo: animate title right after scroll -->
 		<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex">
 			<IntersectionObserver {element} bind:intersecting={onScreen}>
-				<h1 class="z-30 my-auto text-6xl font-bold tracking-tighter" bind:this={element}>
+				<h1
+					class="z-30 my-auto text-5xl font-bold tracking-tighter xl:text-6xl"
+					bind:this={element}
+				>
 					I’m the designer that will build you a product your users <span class="font-serif italic"
 						>really</span
 					>

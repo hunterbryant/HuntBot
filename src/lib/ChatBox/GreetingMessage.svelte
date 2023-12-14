@@ -1,5 +1,5 @@
 <script lang="ts">
-	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
+	import huntbotlogo from '$lib/assets/huntbotlogo.svg';
 	import { messages } from './MessageStore';
 	import caretdown from '$lib/assets/caret-down.svg';
 
@@ -22,30 +22,25 @@
 </script>
 
 <div
-	class="flex w-[calc(full-4rem)] shrink-0 basis-16 flex-row flex-nowrap items-center gap-3 rounded-3xl p-2"
+	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1"
 >
-	<img
-		src={huntbotlogo}
-		alt="HuntBot&apos;s Avatar"
-		class="h-12 flex-none basis-12 rounded-2xl outline outline-1 outline-slate-200"
-	/>
-	<p class="grow">Hello 👋, I’m HuntBot</p>
+	<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
+	<p class="grow text-stone-600">Hey 👋</p>
 
 	{#if minimized}
 		<button
 			on:click={handleGreet}
-			class="h-12 rounded-2xl bg-blue-600 px-3 text-white transition hover:bg-blue-700 hover:shadow-md active:bg-blue-600 active:shadow-none"
+			class="h-12 rounded bg-blue-600 px-3 text-stone-50 transition hover:bg-blue-700 active:bg-blue-600"
 		>
-			Not another GPT
+			Ask HuntBot
 		</button>
 	{:else}
 		<button
 			on:click={handleMinimize}
-			class="peer h-12 basis-12 rounded-2xl bg-white transition hover:bg-slate-100 hover:shadow-sm active:bg-slate-200 active:shadow-none"
+			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none"
 		>
 			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none" />
 		</button>
+		<hr class="absolute inset-x-2 top-14 bg-slate-200 peer-focus:hidden" />
 	{/if}
-
-	<hr class="absolute left-4 right-4 top-16 bg-slate-200 peer-focus:hidden" />
 </div>
