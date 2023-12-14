@@ -43,11 +43,7 @@
 				</div>
 			{/if}
 			{#if !$navEngaged}
-				<div
-					in:receive={{ key: 'links' }}
-					out:send={{ key: 'links' }}
-					class="flex flex-col justify-end"
-				>
+				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
 					<Links />
 				</div>
 			{/if}
