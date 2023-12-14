@@ -31,7 +31,7 @@
 	const scrollToBottom = async () => {
 		if (scrollElement) {
 			// Check to see if the scroll is active
-			if (isScrolling) {
+			if (scrollElement.scrollHeight > scrollElement.clientHeight) {
 				scrollElement.scroll({ top: scrollElement.scrollHeight, behavior: 'smooth' });
 			}
 		}
@@ -62,15 +62,19 @@
 		>
 			<!-- This is the scroll to bottom button -->
 			{#if isScrolling && !scrolledToBottom}
-				<button
-					on:click={() => {
-						scrollToBottom();
-					}}
+				<div
 					transition:fade
-					class="sticky top-[calc(100%-2rem)] mx-auto block h-8 w-8 rounded-full bg-slate-100 backdrop-blur transition hover:bg-slate-300"
+					class="sticky top-[calc(100%-6rem)] mx-0 block h-24 w-full bg-gradient-to-b from-transparent to-white"
 				>
-					<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none" />
-				</button>
+					<button
+						on:click={() => {
+							scrollToBottom();
+						}}
+						class="absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border border-stone-300 bg-stone-200 transition hover:bg-stone-300"
+					>
+						<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none" />
+					</button>
+				</div>
 			{/if}
 			<!-- Render the chat messages -->
 			{#each $messages as message}
