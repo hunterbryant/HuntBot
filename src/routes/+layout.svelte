@@ -7,7 +7,6 @@
 	import { navEngaged } from '$lib/nav/navstore';
 
 	import { send, receive } from '$lib/utilities/transition';
-
 </script>
 
 <div
@@ -17,8 +16,8 @@
 	<div class="relative col-span-3 flex w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class="flex-1">
-			<div class="bg-stone-100 py-16">
-				<img src={lettermark} alt="Hunters lettermark logo" />
+			<div class=" bg-stone-100 py-16">
+				<img class="inline-block" src={lettermark} alt="Hunters lettermark logo" />
 			</div>
 			{#if $navEngaged}
 				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
@@ -28,29 +27,32 @@
 		</div>
 		<!-- This div covers the second half content -->
 		<div class="flex flex-1 flex-col justify-between">
-			<div class="inline-flex w-full grow justify-between gap-4">
-				{#if !$navEngaged}
-					<div
-						class="inline-flex w-full grow justify-between gap-4"
-						in:receive={{ key: 'huntbot' }}
-						out:send={{ key: 'huntbot' }}
-					>
-						<h3 class="text-6xl font-bold tracking-tighter text-stone-800">How?</h3>
-						<button
-							class="h-12 rounded bg-blue-600 px-3 text-stone-50"
-							on:click={() => {
-								navEngaged.set(true);
-							}}>Ask HuntBot</button
-						>
-					</div>
-				{/if}
-			</div>
 			{#if !$navEngaged}
-				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
+				<div
+					class="inline-flex h-12 w-full justify-between gap-4"
+					in:receive={{ key: 'huntbot' }}
+					out:send={{ key: 'huntbot' }}
+				>
+					<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
+					<button
+						class="h-12 rounded bg-blue-600 px-3 text-stone-50"
+						on:click={() => {
+							navEngaged.set(true);
+						}}>Ask HuntBot</button
+					>
+				</div>
+			{/if}
+			{#if !$navEngaged}
+				<div
+					in:receive={{ key: 'links' }}
+					out:send={{ key: 'links' }}
+					class="flex flex-col justify-end"
+				>
 					<Links />
 				</div>
 			{/if}
 		</div>
+
 		<!-- <ChatBox /> -->
 		{#if $navEngaged}
 			<div
