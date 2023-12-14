@@ -15,7 +15,7 @@
 
 <div
 	in:slide
-	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded p-2"
+	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-2"
 >
 	<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
 
@@ -38,7 +38,7 @@
 		</p>
 	{:else}
 		<p
-			class="mr-6 mt-0 grow whitespace-pre-line font-normal text-stone-600"
+			class="mr-6 mt-3 grow whitespace-pre-line font-normal text-stone-600"
 			in:slide={{ duration: 400 }}
 			on:introend={() => {
 				scrollToBottom();
