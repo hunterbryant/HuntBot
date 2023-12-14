@@ -7,6 +7,7 @@
 	import { navEngaged } from '$lib/nav/navstore';
 
 	import { send, receive } from '$lib/utilities/transition';
+	import { slide } from 'svelte/transition';
 </script>
 
 <div
@@ -15,7 +16,7 @@
 >
 	<div class="relative col-span-3 flex w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
-		<div class="flex-1">
+		<div class="flex-1 overflow-hidden">
 			<div class=" bg-stone-100 py-16">
 				<img class="inline-block" src={lettermark} alt="Hunters lettermark logo" />
 			</div>
@@ -26,39 +27,38 @@
 			{/if}
 		</div>
 		<!-- This div covers the second half content -->
-		<div class="flex flex-1 flex-col justify-between">
+		<div class="flex flex-1 flex-col justify-between" transition:slide>
 			{#if !$navEngaged}
+				<div class="grid grid-cols-1">
+					<div
+						class="col-span-1 col-start-1 row-span-1 row-start-1 flex h-12 w-full justify-between gap-4"
+						in:receive={{ key: 'huntbot' }}
+						out:send={{ key: 'huntbot' }}
+					>
+						<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
+						<button
+							class="h-12 rounded bg-blue-600 px-3 text-stone-50"
+							on:click={() => {
+								navEngaged.set(true);
+							}}>Ask HuntBot</button
+						>
+					</div>
+				</div>
+				<div class="grid grid-cols-1">
+					<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
+						<Links />
+					</div>
+				</div>
+			{:else}
 				<div
-					class="inline-flex h-12 w-full justify-between gap-4"
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
+					class="absolute bottom-0 w-full"
 				>
-					<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
-					<button
-						class="h-12 rounded bg-blue-600 px-3 text-stone-50"
-						on:click={() => {
-							navEngaged.set(true);
-						}}>Ask HuntBot</button
-					>
-				</div>
-			{/if}
-			{#if !$navEngaged}
-				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
-					<Links />
+					<ChatBox />
 				</div>
 			{/if}
 		</div>
-
-		<!-- <ChatBox /> -->
-		{#if $navEngaged}
-			<div
-				in:receive={{ key: 'huntbot' }}
-				out:send={{ key: 'huntbot' }}
-				class="absolute bottom-0 w-full"
-			>
-				<ChatBox />
-			</div>
-		{/if}
 	</div>
 </div>
 <slot />

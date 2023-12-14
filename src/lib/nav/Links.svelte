@@ -1,9 +1,7 @@
 <script lang="ts">
 </script>
 
-<nav
-	class="my-auto flex flex-col gap-4 bg-stone-100 mb-8 text-sm uppercase tracking-wider text-stone-900"
->
+<nav class="mb-8 flex flex-col gap-4 bg-stone-100 text-sm uppercase tracking-wider text-stone-900">
 	<a href="">Information</a>
 	<a href="">Experience</a>
 	<a href="">Case Studies</a>
