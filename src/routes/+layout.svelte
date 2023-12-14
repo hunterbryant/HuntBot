@@ -50,7 +50,7 @@
 						return m;
 					});
 				}, 600);
-			}, 600);
+			}, 100);
 		}
 	};
 </script>
@@ -78,6 +78,9 @@
 					class="col-span-1 col-start-1 row-span-1 row-start-1 flex h-12 w-full justify-between gap-4"
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
+					on:introstart={() => {
+						minimized = true;
+					}}
 				>
 					<h3 class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl">How?</h3>
 					<button
@@ -95,7 +98,18 @@
 				<div
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
-					on:introend={animationFinished}
+					on:introstart={() => {
+						minimized = true;
+					}}
+					on:introend={() => {
+						animationFinished();
+						if ($messages.length > 0) {
+							minimized = false;
+						}
+					}}
+					on:outrostart={() => {
+						minimized = true;
+					}}
 					class="absolute bottom-0 w-full"
 				>
 					<ChatBox bind:minimized bind:greeting />
