@@ -6,10 +6,6 @@
 	let element: HTMLElement;
 	let onScreen = true;
 
-	// $: if (!onScreen) {
-	// 	navEngaged.set(true);
-	// }
-
 	$: navEngaged.set(!onScreen);
 </script>
 

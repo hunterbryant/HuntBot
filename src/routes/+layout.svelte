@@ -8,6 +8,14 @@
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { slide } from 'svelte/transition';
+
+	const engageHuntbot = () => {
+		navEngaged.set(true);
+		window.scrollTo({
+			top: window.innerHeight / 2 - 64,
+			behavior: 'smooth'
+		});
+	};
 </script>
 
 <div
@@ -36,11 +44,8 @@
 						out:send={{ key: 'huntbot' }}
 					>
 						<h3 class="text-5xl font-bold tracking-tighter text-stone-800">How?</h3>
-						<button
-							class="h-12 rounded bg-blue-600 px-3 text-stone-50"
-							on:click={() => {
-								navEngaged.set(true);
-							}}>Ask HuntBot</button
+						<button class="h-12 rounded bg-blue-600 px-3 text-stone-50" on:click={engageHuntbot}
+							>Ask HuntBot</button
 						>
 					</div>
 				</div>
