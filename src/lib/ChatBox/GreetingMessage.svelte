@@ -1,6 +1,6 @@
 <script lang="ts">
 	import huntbotlogo from '$lib/assets/huntbotlogo.svg';
-	import { messages } from './MessageStore';
+	import { botEngaged, messages } from './MessageStore';
 	import caretdown from '$lib/assets/caret-down.svg';
 
 	export let minimized: boolean;
@@ -10,11 +10,18 @@
 		'I know, I know, another chatbot. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
 
 	function handleGreet() {
-		messages.update((m) => [...m, { type: 'user', message: 'Ask HuntBot' }]);
-		setTimeout(() => {
-			messages.update((m) => [...m, { type: 'bot', message: greetingResponse }]);
-		}, 600);
+		// Insert blank value for loading state
+		messages.update((m) => [...m, { type: 'bot', message: '' }]);
+
+		botEngaged.set(true);
 		minimized = false;
+
+		setTimeout(() => {
+			messages.update((m) => {
+				m[m.length - 1] = { type: 'bot', message: greetingResponse };
+				return m;
+			});
+		}, 600);
 	}
 </script>
 

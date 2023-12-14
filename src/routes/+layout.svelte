@@ -17,13 +17,22 @@
 		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
 
 	const engageHuntbot = () => {
-		hitButton = true;
-		greeting = "Hi 👋, I'm HuntBot";
-		navEngaged.set(true);
-		window.scrollTo({
-			top: window.innerHeight / 2 - 64,
-			behavior: 'smooth'
-		});
+		if (!$botEngaged) {
+			hitButton = true;
+			greeting = "Hi 👋, I'm HuntBot";
+			navEngaged.set(true);
+			window.scrollTo({
+				top: window.innerHeight / 2 - 64,
+				behavior: 'smooth'
+			});
+		} else {
+			minimized = false;
+			navEngaged.set(true);
+			window.scrollTo({
+				top: window.innerHeight / 2 - 64,
+				behavior: 'smooth'
+			});
+		}
 	};
 
 	const animationFinished = () => {
@@ -32,6 +41,7 @@
 				// Insert blank value for loading state
 				messages.update((m) => [...m, { type: 'bot', message: '' }]);
 
+				botEngaged.set(true);
 				minimized = false;
 
 				setTimeout(() => {
@@ -40,7 +50,6 @@
 						return m;
 					});
 				}, 600);
-				botEngaged.set(true);
 			}, 600);
 		}
 	};
