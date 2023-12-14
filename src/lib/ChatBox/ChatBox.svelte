@@ -52,7 +52,7 @@
 	{#if !minimized}
 		<!-- This is the scrollable zone -->
 		<div
-			class="relative overflow-scroll py-2"
+			class="relative overflow-scroll"
 			bind:this={scrollElement}
 			on:scroll={checkScrolledDown}
 			transition:slide={{ duration: 300, easing: cubicOut }}
@@ -75,6 +75,7 @@
 			<!-- Render the chat messages -->
 			{#each $messages as message}
 				<div
+					class="first:mt-4 last:mb-8"
 					in:slide={{ duration: 400 }}
 					on:introend={() => {
 						scrollToBottom();
