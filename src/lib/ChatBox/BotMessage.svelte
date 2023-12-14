@@ -38,7 +38,7 @@
 		</p>
 	{:else}
 		<p
-			class="mr-6 mt-3 grow whitespace-pre-line"
+			class="mt- mr-6 grow whitespace-pre-line font-normal text-stone-600"
 			in:slide={{ duration: 400 }}
 			on:introend={() => {
 				scrollToBottom();

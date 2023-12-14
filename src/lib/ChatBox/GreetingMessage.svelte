@@ -4,12 +4,13 @@
 	import caretdown from '$lib/assets/caret-down.svg';
 
 	export let minimized: boolean;
+	export let greeting: string;
 
 	let greetingResponse =
-		'I know, I know. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
+		'I know, I know, another chatbot. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
 
 	function handleGreet() {
-		messages.update((m) => [...m, { type: 'user', message: 'Not another GPT' }]);
+		messages.update((m) => [...m, { type: 'user', message: 'Ask HuntBot' }]);
 		setTimeout(() => {
 			messages.update((m) => [...m, { type: 'bot', message: greetingResponse }]);
 		}, 600);
@@ -25,7 +26,7 @@
 	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1"
 >
 	<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
-	<p class="grow text-stone-600">Hey 👋</p>
+	<p class="grow text-stone-600">{greeting}</p>
 
 	{#if minimized}
 		<button

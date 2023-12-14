@@ -10,9 +10,11 @@
 	import { setContext } from 'svelte';
 
 	let scrollElement: HTMLDivElement;
-	let minimized = true;
 	let isScrolling = false;
 	let scrolledToBottom = false;
+
+	export let minimized = true;
+	export let greeting: string = "Hi 👋, I'm HuntBot";
 
 	// Check if scrolled to the bottom
 	function checkScrolledDown() {
@@ -44,7 +46,7 @@
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
 	{#if $messages.length == 0 || !minimized}
-		<GreetingMessage bind:minimized />
+		<GreetingMessage bind:minimized bind:greeting />
 	{/if}
 
 	{#if !minimized}

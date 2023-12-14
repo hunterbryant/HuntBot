@@ -6,3 +6,4 @@ interface ChatObject {
 }
 
 export const messages = writable<Array<ChatObject>>([]);
+export const botEngaged = writable(false);
