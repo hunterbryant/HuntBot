@@ -16,7 +16,7 @@
 >
 	<div class="relative col-span-3 flex w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
-		<div class="flex-1 overflow-hidden">
+		<div class="min-h-0 flex-1">
 			<div class=" bg-stone-100 py-16">
 				<img class="inline-block" src={lettermark} alt="Hunters lettermark logo" />
 			</div>
