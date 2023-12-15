@@ -4,7 +4,7 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import lettermark from '$lib/assets/lettermark.svg';
-	import { navEngaged } from '$lib/nav/navstore';
+	import { navEngaged, delayedNavEngaged, chatOpen } from '$lib/nav/navstore';
 	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
 
 	import { send, receive } from '$lib/utilities/transition';
@@ -57,7 +57,7 @@
 
 <div
 	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-2xl grid-cols-5 gap-4 px-2 sm:grid-cols-9 sm:px-16"
-	class:z-40={$navEngaged}
+	class:z-40={$delayedNavEngaged}
 >
 	<div class="relative col-span-3 flex h-screen w-full flex-col justify-stretch gap-4">
 		<!-- This div covers the first vertical half of the nav bar -->
@@ -65,7 +65,7 @@
 			<div class=" bg-stone-100 py-16">
 				<img class="inline-block" src={lettermark} alt="Hunters lettermark logo" />
 			</div>
-			{#if $navEngaged}
+			{#if $delayedNavEngaged}
 				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
 					<Links />
 				</div>
@@ -73,13 +73,14 @@
 		</div>
 		<!-- This div covers the second half content -->
 		<div class="flex min-h-0 flex-1 flex-col justify-between" transition:slide>
-			{#if !$navEngaged}
+			{#if !$delayedNavEngaged}
 				<div
 					class="col-span-1 col-start-1 row-span-1 row-start-1 flex h-12 w-full justify-between gap-4"
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
 					on:introstart={() => {
 						minimized = true;
+						chatOpen.set(false);
 					}}
 				>
 					<h3 class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl">How?</h3>

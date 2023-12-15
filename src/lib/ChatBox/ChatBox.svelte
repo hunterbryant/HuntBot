@@ -8,6 +8,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
 	import { setContext } from 'svelte';
+	import { navEngaged, chatOpen } from '$lib/nav/navstore';
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -39,6 +40,10 @@
 
 	// Share the scroll function with child components
 	setContext('scroll', { scrollToBottom });
+
+	$: if (!$navEngaged) {
+		minimized = true;
+	}
 </script>
 
 <div
@@ -58,6 +63,7 @@
 			transition:slide={{ duration: 300, easing: cubicOut }}
 			on:introend={() => {
 				scrollToBottom();
+				chatOpen.set(true);
 			}}
 		>
 			<!-- This is the scroll to bottom button -->
