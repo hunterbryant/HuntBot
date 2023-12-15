@@ -65,6 +65,9 @@
 				scrollToBottom();
 				chatOpen.set(true);
 			}}
+			on:outroend={() => {
+				chatOpen.set(false);
+			}}
 		>
 			<!-- This is the scroll to bottom button -->
 			{#if isScrolling && !scrolledToBottom}
