@@ -18,13 +18,13 @@
 </svelte:head>
 
 <!-- Handle horizontal bounds -->
-<div class="inset-x-0 mx-auto flex w-full max-w-screen-2xl flex-col gap-4 px-2 py-16 sm:px-16">
+<div class="inset-x-0 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 py-16 sm:px-16">
 	<!-- This div covers the first vertical half of the nav bar -->
 	<div
 		class="grid h-[calc(calc(50vh-64px)-0.5rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:grid-cols-9"
 	>
 		<!-- Todo: animate title right after scroll -->
-		<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex">
+		<div class="col-span-6 col-start-1 row-span-1 row-start-1 flex">
 			<IntersectionObserver {element} bind:intersecting={onScreen}>
 				<h1
 					class="z-30 my-auto text-5xl font-bold tracking-tighter xl:text-6xl"
