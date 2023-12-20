@@ -16,6 +16,13 @@ export async function load({ fetch, cookies }) {
                                 project {
                                     title
                                     hightlight_image
+                                    date
+                                    affiliation {
+                                        title
+                                    }
+                                    responsibilities {
+                                        skill
+                                    }
                                 }
                             }
                         }

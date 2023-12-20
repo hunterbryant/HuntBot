@@ -52,7 +52,7 @@
 							"config": {
 								"label": "Skill",
 								"placeholder": "",
-								"options": ["UI", "UX", "Research", "Strategy"]
+								"options": ["UI", "UX", "Research", "Strategy", "Data Viz"]
 							}
 						}
 					}
