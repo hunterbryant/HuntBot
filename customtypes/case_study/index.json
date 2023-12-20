@@ -1,6 +1,6 @@
 {
 	"id": "case_study",
-	"label": "case study",
+	"label": "Case Study",
 	"format": "page",
 	"repeatable": true,
 	"status": true,
@@ -15,8 +15,47 @@
 			"title": {
 				"type": "Text",
 				"config": {
-					"label": "title",
+					"label": "Title",
 					"placeholder": ""
+				}
+			},
+			"hightlight_image": {
+				"type": "Image",
+				"config": {
+					"label": "Hightlight Image",
+					"constraint": {},
+					"thumbnails": []
+				}
+			},
+			"date": {
+				"type": "Date",
+				"config": {
+					"label": "Date",
+					"placeholder": ""
+				}
+			},
+			"affiliation": {
+				"type": "Link",
+				"config": {
+					"label": "Affiliation",
+					"select": "document",
+					"customtypes": ["affiliation"]
+				}
+			},
+			"responsibilities": {
+				"type": "Group",
+				"config": {
+					"label": "Responsibilities",
+					"fields": {
+						"skill": {
+							"type": "Select",
+							"config": {
+								"label": "Skill",
+								"placeholder": "",
+								"options": ["UI", "UX", "Research", "Strategy"]
+							}
+						}
+					}
 				}
 			},
 			"slices": {
@@ -24,6 +63,9 @@
 				"fieldset": "Slice Zone",
 				"config": {
 					"choices": {
+						"content_highlight": {
+							"type": "SharedSlice"
+						},
 						"text_slice": {
 							"type": "SharedSlice"
 						},

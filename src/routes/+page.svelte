@@ -1,7 +1,11 @@
 <script lang="ts">
-	import StudioImage from '$lib/assets/studiobg2.webp';
 	import IntersectionObserver from 'svelte-intersection-observer';
 	import { navEngaged } from '$lib/nav/navstore';
+
+	import { PrismicImage, SliceZone } from '@prismicio/svelte';
+	import { components } from '$lib/slices';
+
+	export let data;
 
 	let element: HTMLElement;
 	let onScreen = true;
@@ -27,7 +31,7 @@
 		<div class="col-span-6 col-start-1 row-span-1 row-start-1 flex">
 			<IntersectionObserver {element} bind:intersecting={onScreen}>
 				<h1
-					class="z-30 my-auto text-5xl font-bold tracking-tighter xl:text-6xl"
+					class="z-40 my-auto text-5xl font-bold tracking-tighter xl:text-6xl"
 					bind:this={element}
 				>
 					I’m the designer that will build you a product your users <span class="font-serif italic"
@@ -40,45 +44,15 @@
 	</div>
 
 	<!-- Personal image -->
-	<div class="grid h-[calc(50vh-9.25rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
+	<div class="grid h-[calc(50vh-9rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
 		<div class="col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
-			<img
-				src={StudioImage}
-				alt="A portrait of Hunter in a studio"
+			<PrismicImage
+				field={data.page.data.landing_image}
 				class="m-auto block h-full w-full object-cover"
 			/>
 		</div>
 	</div>
 
 	<!-- Case Study -->
-	<div class="grid aspect-video h-[calc(50vh-11.25rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
-		<div class="col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
-			<img
-				src={StudioImage}
-				alt="A portrait of Hunter in a studio"
-				class="m-auto block h-full w-full object-cover"
-			/>
-		</div>
-	</div>
-
-	<!-- Case Study -->
-	<div class="grid aspect-video h-[calc(50vh-11.25rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
-		<div class="col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
-			<img
-				src={StudioImage}
-				alt="A portrait of Hunter in a studio"
-				class="m-auto block h-full w-full object-cover"
-			/>
-		</div>
-	</div>
-	<!-- Case Study -->
-	<div class="grid aspect-video h-[calc(50vh-11.25rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
-		<div class="col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
-			<img
-				src={StudioImage}
-				alt="A portrait of Hunter in a studio"
-				class="m-auto block h-full w-full object-cover"
-			/>
-		</div>
-	</div>
+	<SliceZone slices={data.page.data.slices} {components} />
 </div>

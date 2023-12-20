@@ -1,13 +1,17 @@
 <script lang="ts">
 </script>
 
-<nav class="flex flex-col gap-4 bg-stone-100 pb-12 text-sm uppercase tracking-wider text-stone-900">
+<nav
+	class="flex flex-col gap-4 bg-stone-100 pb-12 text-xs font-medium uppercase tracking-wider text-stone-900"
+>
 	<a href="/info">Information</a>
 	<a href="/work">Experience</a>
 	<a href="/case-studies">Case Studies</a>
 	<a href="/other">Writing & Other Projects</a>
 </nav>
-<ul class="flex flex-col gap-4 bg-stone-100 pb-0 text-sm uppercase tracking-wider text-stone-900">
+<ul
+	class="flex flex-col gap-4 bg-stone-100 pb-0 text-xs font-medium uppercase tracking-wider text-stone-900"
+>
 	<a class="inline-flex justify-between" href="https://www.linkedin.com/in/hunterbryant1/"
 		>Linkedin
 		<p>↗</p></a

@@ -13,7 +13,7 @@
 		"slicemachine": "start-slicemachine"
 	},
 	"devDependencies": {
-		"@slicemachine/adapter-sveltekit": "^0.3.28",
+		"@slicemachine/adapter-sveltekit": "^0.3.31",
 		"@sveltejs/adapter-auto": "^2.0.0",
 		"@sveltejs/kit": "^1.27.4",
 		"@typescript-eslint/eslint-plugin": "^6.0.0",
@@ -28,7 +28,7 @@
 		"prettier-plugin-organize-imports": "^3.2.4",
 		"prettier-plugin-svelte": "^3.0.0",
 		"prettier-plugin-tailwindcss": "^0.5.7",
-		"slice-machine-ui": "^1.21.2",
+		"slice-machine-ui": "^1.22.1",
 		"svelte": "^4.0.5",
 		"svelte-check": "^3.6.0",
 		"svelte-intersection-observer": "^0.10.1",

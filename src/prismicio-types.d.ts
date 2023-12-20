@@ -4,14 +4,71 @@ import type * as prismic from '@prismicio/client';
 
 type Simplify<T> = { [KeyType in keyof T]: T[KeyType] };
 
-type CaseStudyDocumentDataSlicesSlice = TextSliceSlice | WideImageSlice;
+/**
+ * Content for Affiliation documents
+ */
+interface AffiliationDocumentData {
+	/**
+	 * Title field in *Affiliation*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: affiliation.title
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	title: prismic.KeyTextField;
+
+	/**
+	 * Link field in *Affiliation*
+	 *
+	 * - **Field Type**: Link
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: affiliation.link
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	link: prismic.LinkField;
+}
 
 /**
- * Content for case study documents
+ * Affiliation document from Prismic
+ *
+ * - **API ID**: `affiliation`
+ * - **Repeatable**: `true`
+ * - **Documentation**: https://prismic.io/docs/custom-types
+ *
+ * @typeParam Lang - Language API ID of the document.
+ */
+export type AffiliationDocument<Lang extends string = string> = prismic.PrismicDocumentWithUID<
+	Simplify<AffiliationDocumentData>,
+	'affiliation',
+	Lang
+>;
+
+/**
+ * Item in *Case Study → Responsibilities*
+ */
+export interface CaseStudyDocumentDataResponsibilitiesItem {
+	/**
+	 * Skill field in *Case Study → Responsibilities*
+	 *
+	 * - **Field Type**: Select
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: case_study.responsibilities[].skill
+	 * - **Documentation**: https://prismic.io/docs/field#select
+	 */
+	skill: prismic.SelectField<'UI' | 'UX' | 'Research' | 'Strategy'>;
+}
+
+type CaseStudyDocumentDataSlicesSlice = ContentHighlightSlice | TextSliceSlice | WideImageSlice;
+
+/**
+ * Content for Case Study documents
  */
 interface CaseStudyDocumentData {
 	/**
-	 * title field in *case study*
+	 * Title field in *Case Study*
 	 *
 	 * - **Field Type**: Text
 	 * - **Placeholder**: *None*
@@ -22,7 +79,51 @@ interface CaseStudyDocumentData {
 	title: prismic.KeyTextField;
 
 	/**
-	 * Slice Zone field in *case study*
+	 * Hightlight Image field in *Case Study*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: case_study.hightlight_image
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	hightlight_image: prismic.ImageField<never>;
+
+	/**
+	 * Date field in *Case Study*
+	 *
+	 * - **Field Type**: Date
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: case_study.date
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#date
+	 */
+	date: prismic.DateField;
+
+	/**
+	 * Affiliation field in *Case Study*
+	 *
+	 * - **Field Type**: Content Relationship
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: case_study.affiliation
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	affiliation: prismic.ContentRelationshipField<'affiliation'>;
+
+	/**
+	 * Responsibilities field in *Case Study*
+	 *
+	 * - **Field Type**: Group
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: case_study.responsibilities[]
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#group
+	 */
+	responsibilities: prismic.GroupField<Simplify<CaseStudyDocumentDataResponsibilitiesItem>>;
+
+	/**
+	 * Slice Zone field in *Case Study*
 	 *
 	 * - **Field Type**: Slice Zone
 	 * - **Placeholder**: *None*
@@ -31,7 +132,7 @@ interface CaseStudyDocumentData {
 	 * - **Documentation**: https://prismic.io/docs/field#slices
 	 */
 	slices: prismic.SliceZone<CaseStudyDocumentDataSlicesSlice> /**
-	 * Meta Description field in *case study*
+	 * Meta Description field in *Case Study*
 	 *
 	 * - **Field Type**: Text
 	 * - **Placeholder**: A brief summary of the page
@@ -42,7 +143,7 @@ interface CaseStudyDocumentData {
 	meta_description: prismic.KeyTextField;
 
 	/**
-	 * Meta Image field in *case study*
+	 * Meta Image field in *Case Study*
 	 *
 	 * - **Field Type**: Image
 	 * - **Placeholder**: *None*
@@ -53,7 +154,7 @@ interface CaseStudyDocumentData {
 	meta_image: prismic.ImageField<never>;
 
 	/**
-	 * Meta Title field in *case study*
+	 * Meta Title field in *Case Study*
 	 *
 	 * - **Field Type**: Text
 	 * - **Placeholder**: A title of the page used for social media and search engines
@@ -65,7 +166,7 @@ interface CaseStudyDocumentData {
 }
 
 /**
- * case study document from Prismic
+ * Case Study document from Prismic
  *
  * - **API ID**: `case_study`
  * - **Repeatable**: `true`
@@ -79,7 +180,127 @@ export type CaseStudyDocument<Lang extends string = string> = prismic.PrismicDoc
 	Lang
 >;
 
-export type AllDocumentTypes = CaseStudyDocument;
+type HomeDocumentDataSlicesSlice = ContentHighlightSlice;
+
+/**
+ * Content for Home documents
+ */
+interface HomeDocumentData {
+	/**
+	 * Landing Image field in *Home*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: home.landing_image
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	landing_image: prismic.ImageField<never>;
+
+	/**
+	 * Slice Zone field in *Home*
+	 *
+	 * - **Field Type**: Slice Zone
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: home.slices[]
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#slices
+	 */
+	slices: prismic.SliceZone<HomeDocumentDataSlicesSlice> /**
+	 * Meta Description field in *Home*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: A brief summary of the page
+	 * - **API ID Path**: home.meta_description
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */;
+	meta_description: prismic.KeyTextField;
+
+	/**
+	 * Meta Image field in *Home*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: home.meta_image
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	meta_image: prismic.ImageField<never>;
+
+	/**
+	 * Meta Title field in *Home*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: A title of the page used for social media and search engines
+	 * - **API ID Path**: home.meta_title
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	meta_title: prismic.KeyTextField;
+}
+
+/**
+ * Home document from Prismic
+ *
+ * - **API ID**: `home`
+ * - **Repeatable**: `false`
+ * - **Documentation**: https://prismic.io/docs/custom-types
+ *
+ * @typeParam Lang - Language API ID of the document.
+ */
+export type HomeDocument<Lang extends string = string> = prismic.PrismicDocumentWithoutUID<
+	Simplify<HomeDocumentData>,
+	'home',
+	Lang
+>;
+
+export type AllDocumentTypes = AffiliationDocument | CaseStudyDocument | HomeDocument;
+
+/**
+ * Primary content in *ContentHighlight → Primary*
+ */
+export interface ContentHighlightSliceDefaultPrimary {
+	/**
+	 * Project field in *ContentHighlight → Primary*
+	 *
+	 * - **Field Type**: Content Relationship
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: content_highlight.primary.project
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	project: prismic.ContentRelationshipField<'case_study'>;
+}
+
+/**
+ * Default variation for ContentHighlight Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ContentHighlightSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Simplify<ContentHighlightSliceDefaultPrimary>,
+	never
+>;
+
+/**
+ * Slice variation for *ContentHighlight*
+ */
+type ContentHighlightSliceVariation = ContentHighlightSliceDefault;
+
+/**
+ * ContentHighlight Shared Slice
+ *
+ * - **API ID**: `content_highlight`
+ * - **Description**: ContentHighlight
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ContentHighlightSlice = prismic.SharedSlice<
+	'content_highlight',
+	ContentHighlightSliceVariation
+>;
 
 /**
  * Primary content in *TextSlice → Items*
@@ -175,10 +396,20 @@ declare module '@prismicio/client' {
 
 	namespace Content {
 		export type {
+			AffiliationDocument,
+			AffiliationDocumentData,
 			CaseStudyDocument,
 			CaseStudyDocumentData,
+			CaseStudyDocumentDataResponsibilitiesItem,
 			CaseStudyDocumentDataSlicesSlice,
+			HomeDocument,
+			HomeDocumentData,
+			HomeDocumentDataSlicesSlice,
 			AllDocumentTypes,
+			ContentHighlightSlice,
+			ContentHighlightSliceDefaultPrimary,
+			ContentHighlightSliceVariation,
+			ContentHighlightSliceDefault,
 			TextSliceSlice,
 			TextSliceSliceDefaultItem,
 			TextSliceSliceVariation,

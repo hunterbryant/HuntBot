@@ -1,0 +1,32 @@
+{
+	"id": "affiliation",
+	"label": "Affiliation",
+	"format": "custom",
+	"repeatable": true,
+	"status": true,
+	"json": {
+		"Main": {
+			"uid": {
+				"config": {
+					"label": "UID"
+				},
+				"type": "UID"
+			},
+			"title": {
+				"type": "Text",
+				"config": {
+					"label": "Title",
+					"placeholder": ""
+				}
+			},
+			"link": {
+				"type": "Link",
+				"config": {
+					"label": "Link",
+					"placeholder": "",
+					"select": null
+				}
+			}
+		}
+	}
+}
