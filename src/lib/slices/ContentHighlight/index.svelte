@@ -93,11 +93,11 @@
 
 	<!-- Central image -->
 	<div class="relative col-start-4 col-end-10 overflow-hidden rounded bg-neutral-200">
-		<div class="absolute left-2 top-2">
-			<p class="mb text-xs tracking-wider text-stone-500/50">
+		<div class="absolute left-4 top-4">
+			<h3 class="mb">{project.title}</h3>
+			<p class=" text-xs tracking-wider text-stone-900/50">
 				{date.getFullYear()}
 			</p>
-			<h3>{project.title}</h3>
 		</div>
 		{#if slice.variation == 'default'}
 			<PrismicImage
