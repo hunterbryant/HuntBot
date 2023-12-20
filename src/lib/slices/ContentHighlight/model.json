@@ -24,6 +24,34 @@
         }
       },
       "items": {}
+    },
+    {
+      "id": "3DModel",
+      "name": "3D Model",
+      "docURL": "...",
+      "version": "initial",
+      "description": "Default",
+      "imageUrl": "",
+      "primary": {
+        "project": {
+          "type": "Link",
+          "config": {
+            "label": "Project",
+            "select": "document",
+            "customtypes": [
+              "case_study"
+            ]
+          }
+        },
+        "model": {
+          "type": "Text",
+          "config": {
+            "label": "model",
+            "placeholder": ""
+          }
+        }
+      },
+      "items": {}
     }
   ]
 }

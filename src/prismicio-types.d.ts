@@ -286,9 +286,47 @@ export type ContentHighlightSliceDefault = prismic.SharedSliceVariation<
 >;
 
 /**
+ * Primary content in *ContentHighlight → Primary*
+ */
+export interface ContentHighlightSlice3DModelPrimary {
+	/**
+	 * Project field in *ContentHighlight → Primary*
+	 *
+	 * - **Field Type**: Content Relationship
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: content_highlight.primary.project
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	project: prismic.ContentRelationshipField<'case_study'>;
+
+	/**
+	 * model field in *ContentHighlight → Primary*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: content_highlight.primary.model
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	model: prismic.KeyTextField;
+}
+
+/**
+ * 3D Model variation for ContentHighlight Slice
+ *
+ * - **API ID**: `3DModel`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ContentHighlightSlice3DModel = prismic.SharedSliceVariation<
+	'3DModel',
+	Simplify<ContentHighlightSlice3DModelPrimary>,
+	never
+>;
+
+/**
  * Slice variation for *ContentHighlight*
  */
-type ContentHighlightSliceVariation = ContentHighlightSliceDefault;
+type ContentHighlightSliceVariation = ContentHighlightSliceDefault | ContentHighlightSlice3DModel;
 
 /**
  * ContentHighlight Shared Slice
@@ -408,8 +446,10 @@ declare module '@prismicio/client' {
 			AllDocumentTypes,
 			ContentHighlightSlice,
 			ContentHighlightSliceDefaultPrimary,
+			ContentHighlightSlice3DModelPrimary,
 			ContentHighlightSliceVariation,
 			ContentHighlightSliceDefault,
+			ContentHighlightSlice3DModel,
 			TextSliceSlice,
 			TextSliceSliceDefaultItem,
 			TextSliceSliceVariation,

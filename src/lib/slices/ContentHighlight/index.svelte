@@ -7,12 +7,16 @@
 		CaseStudyDocument,
 		CaseStudyDocumentData
 	} from '../../../prismicio-types';
+	import { Application } from '@splinetool/runtime';
+	import { onMount } from 'svelte';
 
 	export let slice: Content.ContentHighlightSlice;
 	let project: CaseStudyDocumentData;
 	let affiliation: AffiliationDocumentData;
 	let date: Date;
 	let projectType: string;
+	let interactiveCanvas: HTMLCanvasElement;
+	let bgImage: string;
 
 	// This section is to accept the content relationship fields as the proper type (for now it can only be case_study)
 	if (
@@ -21,6 +25,8 @@
 		)
 	) {
 		project = slice.primary.project.data as CaseStudyDocumentData;
+		bgImage = project.hightlight_image.url as string;
+
 		date = new Date(project.date as string);
 		projectType = 'Case Study';
 
@@ -33,6 +39,13 @@
 			affiliation = project.affiliation.data as AffiliationDocumentData;
 		}
 	}
+
+	onMount(() => {
+		if (slice.variation == '3DModel' && slice.primary.model) {
+			const app = new Application(interactiveCanvas);
+			app.load(slice.primary.model);
+		}
+	});
 </script>
 
 <section
@@ -79,16 +92,20 @@
 	</div>
 
 	<!-- Central image -->
-	<div class="relative col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
+	<div class="relative col-start-4 col-end-10 overflow-hidden rounded bg-neutral-200">
 		<div class="absolute left-2 top-2">
 			<p class="mb text-xs tracking-wider text-stone-500/50">
 				{date.getFullYear()}
 			</p>
 			<h3>{project.title}</h3>
 		</div>
-		<PrismicImage
-			field={project.hightlight_image}
-			class="m-auto block h-full w-full object-cover"
-		/>
+		{#if slice.variation == 'default'}
+			<PrismicImage
+				field={project.hightlight_image}
+				class="m-auto block h-full w-full object-cover"
+			/>
+		{:else}
+			<canvas bind:this={interactiveCanvas} class="bg-[url('{bgImage}')]"></canvas>
+		{/if}
 	</div>
 </section>

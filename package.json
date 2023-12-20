@@ -41,6 +41,7 @@
 	"dependencies": {
 		"@prismicio/client": "^7.3.1",
 		"@prismicio/svelte": "^1.0.2",
+		"@splinetool/runtime": "^1.0.8",
 		"openai": "^4.19.1"
 	}
 }

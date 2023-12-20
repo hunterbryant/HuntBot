@@ -26,6 +26,22 @@ export async function load({ fetch, cookies }) {
                                 }
                             }
                         }
+                        ...on 3DModel {
+                            primary {
+                                project {
+                                    title
+                                    hightlight_image
+                                    date
+                                    affiliation {
+                                        title
+                                    }
+                                    responsibilities {
+                                        skill
+                                    }
+                                }
+                                model
+                            }
+                        }
                     }
                 }
             }
