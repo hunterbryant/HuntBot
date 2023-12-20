@@ -65,7 +65,7 @@
 				<a href="/"><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a>
 			</div>
 			{#if $delayedNavEngaged}
-				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }}>
+				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }} class="z-50">
 					<Links />
 				</div>
 			{/if}

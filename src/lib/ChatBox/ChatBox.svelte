@@ -62,8 +62,8 @@
 			on:scroll={checkScrolledDown}
 			transition:slide={{ duration: 300, easing: cubicOut }}
 			on:introend={() => {
-				scrollToBottom();
 				chatOpen.set(true);
+				scrollToBottom();
 			}}
 			on:outroend={() => {
 				chatOpen.set(false);
@@ -73,7 +73,7 @@
 			{#if isScrolling && !scrolledToBottom}
 				<div
 					transition:fade
-					class="sticky top-[calc(100%-6rem)] mx-0 block h-24 w-full bg-gradient-to-b from-transparent to-white"
+					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white"
 				>
 					<button
 						on:click={() => {
@@ -86,21 +86,22 @@
 				</div>
 			{/if}
 			<!-- Render the chat messages -->
-			{#each $messages as message}
-				<div
-					class="first:pt-4 last:pb-6"
-					in:slide={{ duration: 400 }}
-					on:introend={() => {
-						scrollToBottom();
-					}}
-				>
-					{#if message.type == 'user'}
-						<UserMessage value={message.message} />
-					{:else}
-						<BotMessage value={message.message} />
-					{/if}
-				</div>
-			{/each}
+			<div class="first:pt-4 last:pb-6">
+				{#each $messages as message}
+					<div
+						in:slide={{ duration: 400 }}
+						on:introend={() => {
+							scrollToBottom();
+						}}
+					>
+						{#if message.type == 'user'}
+							<UserMessage value={message.message} />
+						{:else}
+							<BotMessage value={message.message} />
+						{/if}
+					</div>
+				{/each}
+			</div>
 		</div>
 	{/if}
 	{#if $messages.length != 0}
