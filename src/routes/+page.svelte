@@ -30,7 +30,7 @@
 		class="grid h-[calc(calc(50vh-64px)-0.5rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 md:grid-cols-7 lg:grid-cols-9"
 	>
 		<!-- Todo: animate title right after scroll -->
-		<div class="col-span-6 col-start-1 row-span-1 row-start-1 flex">
+		<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
 			<IntersectionObserver {element} bind:intersecting={onScreen}>
 				<h1
 					class="z-40 my-auto text-5xl font-bold tracking-tighter xl:text-6xl"
