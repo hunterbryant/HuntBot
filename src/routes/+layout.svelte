@@ -15,6 +15,7 @@
 	let hitButton = false;
 	let greetingResponse =
 		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
+	let menuActive = false;
 
 	const engageHuntbot = () => {
 		if (!$botEngaged) {
@@ -56,13 +57,21 @@
 </script>
 
 <div
-	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-4 px-2 sm:grid-cols-6 sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
+	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
-	<div class="relative col-span-3 flex h-screen w-full flex-col justify-stretch gap-4">
+	<div
+		class="relative col-span-5 flex h-screen w-full flex-col justify-stretch gap-4 sm:col-span-3"
+	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" min-h-0 flex-1">
-			<div class="z-30 bg-stone-100 py-16">
+			<div class="z-30 flex justify-between bg-stone-100 pb-4 pt-11 sm:py-16">
 				<a href="/"><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a>
+				<button
+					class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
+					on:click={() => (menuActive = !menuActive)}
+				>
+					{menuActive ? 'Close' : 'Menu'}
+				</button>
 			</div>
 			{#if $delayedNavEngaged}
 				<div in:receive={{ key: 'links' }} out:send={{ key: 'links' }} class="z-50">

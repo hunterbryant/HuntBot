@@ -49,7 +49,7 @@
 </script>
 
 <section
-	class="grid h-[calc(50vh-9rem)] grow grid-cols-5 items-stretch gap-4 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
+	class="grid h-[calc(50vh-9rem)] grow grid-cols-5 items-stretch gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
 >
