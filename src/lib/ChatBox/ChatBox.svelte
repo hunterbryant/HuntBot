@@ -47,7 +47,7 @@
 </script>
 
 <div
-	class="flex-col-rev z-50 mb-4 flex max-h-full w-full flex-col flex-nowrap overflow-hidden rounded-lg border border-stone-200 bg-white sm:left-auto sm:max-h-[calc(100vh-2rem)]"
+	class="flex-col-rev z-50 mb-0 sm:mb-4 flex max-h-full w-full flex-col flex-nowrap overflow-hidden rounded-none sm:rounded-lg border border-stone-200 bg-white sm:left-auto sm:max-h-[calc(100vh-2rem)]"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
 	{#if $messages.length == 0 || !minimized}

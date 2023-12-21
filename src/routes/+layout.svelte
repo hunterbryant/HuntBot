@@ -143,7 +143,7 @@
 					on:outroend={() => {
 						minimized = true;
 					}}
-					class="absolute bottom-0 w-full flex-initial z-50"
+					class="absolute bottom-0 w-full flex-initial z-50 sm:mx-0 -mx-2"
 				>
 					<ChatBox bind:minimized bind:greeting />
 				</div>
