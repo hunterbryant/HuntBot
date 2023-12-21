@@ -56,6 +56,10 @@
 	};
 </script>
 
+<svelte:head>
+  <meta property="interactive-widget" content="resizes-content" />
+</svelte:head>
+
 <div
 	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16 bg-stone-100 sm:bg-transparent z-40"
 >
