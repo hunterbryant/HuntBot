@@ -49,7 +49,7 @@
 </script>
 
 <section
-	class="grid h-[calc(50vh-9rem)] grow grid-cols-5 items-stretch gap-4 sm:grid-cols-9"
+	class="grid h-[calc(50vh-9rem)] grow grid-cols-5 items-stretch gap-4 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
 >
@@ -92,7 +92,9 @@
 	</div>
 
 	<!-- Central image -->
-	<div class="relative col-start-4 col-end-10 overflow-hidden rounded bg-zinc-200">
+	<div
+		class="relative col-start-4 col-end-6 overflow-hidden rounded bg-zinc-200 sm:col-end-7 md:col-end-8 lg:col-end-10"
+	>
 		<div class="absolute left-4 top-4">
 			<h3 class="mb">{project.title}</h3>
 			<p class=" text-xs tracking-wider text-stone-900/50">
