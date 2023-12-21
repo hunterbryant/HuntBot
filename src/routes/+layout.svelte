@@ -56,9 +56,11 @@
 </script>
 
 <div
-	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-4 px-2 sm:grid-cols-9 sm:px-16"
+	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-4 px-2 sm:grid-cols-6 sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
-	<div class="relative col-span-3 flex h-screen w-full flex-col justify-stretch gap-4">
+	<div
+		class="relative col-span-3 flex h-screen w-full flex-col justify-stretch gap-4 md:col-span-3"
+	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" min-h-0 flex-1">
 			<div class="z-30 bg-stone-100 py-16">

@@ -22,10 +22,12 @@
 </svelte:head>
 
 <!-- Handle horizontal bounds -->
-<div class="inset-x-0 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 py-16 sm:px-16">
+<div
+	class="inset-x-0 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 py-16 sm:px-8 lg:px-16"
+>
 	<!-- This div covers the first vertical half of the nav bar -->
 	<div
-		class="grid h-[calc(calc(50vh-64px)-0.5rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:grid-cols-9"
+		class="grid h-[calc(calc(50vh-64px)-0.5rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 md:grid-cols-7 lg:grid-cols-9"
 	>
 		<!-- Todo: animate title right after scroll -->
 		<div class="col-span-6 col-start-1 row-span-1 row-start-1 flex">
@@ -44,8 +46,12 @@
 	</div>
 
 	<!-- Personal image -->
-	<div class="grid h-[calc(50vh-9rem)] grow grid-cols-5 gap-4 sm:grid-cols-9">
-		<div class="col-start-4 col-end-10 overflow-hidden rounded bg-stone-200">
+	<div
+		class="grid h-[calc(50vh-9rem)] grow grid-cols-5 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
+	>
+		<div
+			class="col-start-4 col-end-6 overflow-hidden rounded bg-stone-200 sm:col-end-7 md:col-end-8 lg:col-end-10"
+		>
 			<PrismicImage
 				field={data.page.data.landing_image}
 				class="m-auto block h-full w-full object-cover"
