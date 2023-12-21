@@ -28,4 +28,5 @@
 	>
 </ul>
 <!-- Gradient -->
-<div class="h-8 bg-gradient-to-b from-stone-100 to-transparent"></div>
+<div class="hidden h-8 bg-gradient-to-b from-stone-100 to-transparent sm:block"></div>
+
