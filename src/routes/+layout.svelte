@@ -8,7 +8,7 @@
 	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
 
 	import { send, receive } from '$lib/utilities/transition';
-	import { slide } from 'svelte/transition';
+	import { fly, slide } from 'svelte/transition';
 
 	let minimized = true;
 	let greeting = 'Any questions?';
@@ -16,6 +16,11 @@
 	let greetingResponse =
 		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
 	let menuActive = false;
+	let innerWidth = 0;
+
+	$: if (innerWidth > 640) {
+		menuActive = true;
+	}
 
 	const engageHuntbot = () => {
 		if (!$botEngaged) {
@@ -57,18 +62,20 @@
 </script>
 
 <svelte:head>
-  <meta property="interactive-widget" content="resizes-content" />
+	<meta property="interactive-widget" content="resizes-content" />
 </svelte:head>
 
+<svelte:window bind:innerWidth />
+
 <div
-	class="fixed inset-x-0 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16 bg-stone-100 sm:bg-transparent z-40"
+	class="fixed inset-x-0 z-40 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
 	<div
-		class="flex sm:relative col-span-5 h-screen w-full flex-col justify-stretch gap-4 sm:col-span-3"
+		class="col-span-5 flex h-screen w-full flex-col justify-stretch gap-4 sm:relative sm:col-span-3"
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
-		<div class=" min-h-0 flex-grow sm:flex-1 flex flex-col">
-			<div class="z-40 sm:z-30 flex justify-between bg-stone-100 pb-4 pt-11 sm:py-16">
+		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
+			<div class="z-40 flex justify-between bg-stone-100 pb-4 pt-11 sm:z-30 sm:py-16">
 				<a href="/"><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a>
 				<button
 					class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
@@ -77,28 +84,33 @@
 					{menuActive ? 'Close' : 'Menu'}
 				</button>
 			</div>
-			{#if $delayedNavEngaged}
-				<div class="grid grow grid-cols-1 sm:grow-0">
-					<div
-						in:receive={{ key: 'links' }}
-						out:send={{ key: 'links' }}
-						class="sm:pt-0 flex flex-col justify-between pt-16 max-w-80 w-full sm:max-w-none mx-auto"
-					>
-						<Links />
-					</div>
-				</div>
-				<div class="z-40 sm:z-30 flex justify-end bg-stone-100 pt-16  pb-4 sm:hidden sm:py-16">
-					<button
-						class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
-						on:click={() => (menuActive = !menuActive)}
-					>
-						{menuActive ? 'Close' : 'Menu'}
-					</button>
+			{#if menuActive}
+				<div class="flex grow flex-col">
+					{#if $delayedNavEngaged}
+						<!-- This is the toggleable section in mobile breakpoints -->
+						<div class="grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent">
+							<div
+								in:receive={{ key: 'links' }}
+								out:send={{ key: 'links' }}
+								class="mx-auto flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
+							>
+								<Links />
+							</div>
+						</div>
+						<div class="z-40 flex justify-end bg-stone-100 pb-4 pt-16 sm:z-30 sm:hidden sm:py-16">
+							<button
+								class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
+								on:click={() => (menuActive = !menuActive)}
+							>
+								{menuActive ? 'Close' : 'Menu'}
+							</button>
+						</div>
+					{/if}
 				</div>
 			{/if}
 		</div>
 		<!-- This div covers the second half content -->
-		<div class="flex min-h-16 flex-initial sm:flex-1 flex-col justify-between " transition:slide>
+		<div class="flex min-h-10 flex-initial flex-col justify-between sm:flex-1" transition:slide>
 			{#if !$delayedNavEngaged}
 				<div
 					class="col-span-1 col-start-1 row-span-1 row-start-1 hidden h-12 w-full justify-between gap-4 sm:flex"
@@ -116,18 +128,15 @@
 					>
 				</div>
 
-				<div class="hidden sm:grid grow grid-cols-1 sm:grow-0 ">
+				<div class="hidden grow grid-cols-1 sm:grid sm:grow-0">
 					<div
 						in:receive={{ key: 'links' }}
 						out:send={{ key: 'links' }}
-						class="sm:pt-0 flex flex-col justify-between pt-16 max-w-80 w-full sm:max-w-none mx-auto"
+						class="mx-auto flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
 					>
 						<Links />
 					</div>
 				</div>
-				
-
-				
 			{:else}
 				<div
 					in:receive={{ key: 'huntbot' }}
@@ -147,13 +156,11 @@
 					on:outroend={() => {
 						minimized = true;
 					}}
-					class="absolute bottom-0 w-full flex-initial z-50 sm:mx-0 -mx-2"
+					class="absolute bottom-0 z-50 -mx-2 w-full flex-initial sm:mx-0"
 				>
 					<ChatBox bind:minimized bind:greeting />
 				</div>
-				
 			{/if}
-			
 		</div>
 	</div>
 </div>
