@@ -16,10 +16,12 @@
 	let greetingResponse =
 		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
 	let menuActive = false;
+	let mobileBreakpoint = true;
 	let innerWidth = 0;
 
 	$: if (innerWidth > 640) {
 		menuActive = true;
+		mobileBreakpoint = false;
 	}
 
 	const engageHuntbot = () => {
@@ -71,7 +73,9 @@
 	class="fixed inset-x-0 z-40 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
 	<div
-		class="col-span-5 flex h-screen w-full flex-col justify-stretch gap-4 sm:relative sm:col-span-3"
+		class="col-span-5 flex h-screen w-full flex-col justify-stretch {$delayedNavEngaged
+			? 'gap-4'
+			: 'gap-0'} sm:relative sm:col-span-3"
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
@@ -86,7 +90,7 @@
 			</div>
 			{#if menuActive}
 				<div class="flex grow flex-col" transition:fly={{ x: -350 }}>
-					{#if $delayedNavEngaged}
+					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
 						<div class="grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent">
 							<div
@@ -110,7 +114,12 @@
 			{/if}
 		</div>
 		<!-- This div covers the second half content -->
-		<div class="flex min-h-10 flex-initial flex-col justify-between sm:flex-1" transition:slide>
+		<div
+			class="flex {$delayedNavEngaged
+				? 'min-h-10'
+				: 'min-h-0'} flex-initial flex-col justify-between sm:flex-1"
+			transition:slide
+		>
 			{#if !$delayedNavEngaged}
 				<div
 					class="col-span-1 col-start-1 row-span-1 row-start-1 hidden h-12 w-full justify-between gap-4 sm:flex"
