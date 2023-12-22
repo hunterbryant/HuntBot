@@ -75,7 +75,7 @@
 	<div
 		class="col-span-5 flex h-screen w-full flex-col justify-stretch {$delayedNavEngaged
 			? 'gap-4'
-			: 'gap-0'} sm:relative sm:col-span-3"
+			: 'gap-0'} sm:relative sm:col-span-3 sm:gap-4"
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
