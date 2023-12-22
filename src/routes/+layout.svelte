@@ -85,7 +85,7 @@
 				</button>
 			</div>
 			{#if menuActive}
-				<div class="flex grow flex-col">
+				<div class="flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if $delayedNavEngaged}
 						<!-- This is the toggleable section in mobile breakpoints -->
 						<div class="grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent">
