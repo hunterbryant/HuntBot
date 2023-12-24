@@ -125,7 +125,7 @@
 		>
 			{#if !$delayedNavEngaged}
 				<div
-					class="col-span-1 col-start-1 row-span-1 row-start-1 hidden h-12 w-full justify-between gap-4 sm:flex"
+					class="col-span-1 col-start-1 row-span-1 row-start-1 mb-2 flex h-12 w-full justify-between gap-4 sm:mb-0"
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
 					on:introstart={() => {
