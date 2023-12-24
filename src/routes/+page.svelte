@@ -23,7 +23,7 @@
 
 <!-- Handle horizontal bounds -->
 <div
-	class="inset-x-0 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 py-16 sm:px-8 lg:px-16 z-30"
+	class="inset-x-0 z-30 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 py-16 sm:px-8 lg:px-16"
 >
 	<!-- This div covers the first vertical half of the nav bar -->
 	<div
@@ -33,7 +33,7 @@
 		<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
 			<IntersectionObserver {element} bind:intersecting={onScreen}>
 				<h1
-					class="sm:z-40 my-auto text-5xl font-bold tracking-tighter xl:text-6xl"
+					class="my-auto text-5xl font-bold tracking-tighter sm:z-40 xl:text-6xl"
 					bind:this={element}
 				>
 					I’m the designer that will build you a product your users <span class="font-serif italic"
@@ -47,10 +47,10 @@
 
 	<!-- Personal image -->
 	<div
-		class="grid h-[calc(50vh-9rem)] grow grid-cols-5 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
+		class="grid aspect-square grow grid-cols-5 gap-4 sm:h-[calc(50vh-9rem)] sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 	>
 		<div
-			class="col-start-4 col-end-6 overflow-hidden rounded bg-stone-200 sm:col-end-7 md:col-end-8 lg:col-end-10"
+			class="col-start-1 col-end-6 overflow-hidden rounded bg-stone-200 sm:col-start-4 sm:col-end-7 md:col-end-8 lg:col-end-10"
 		>
 			<PrismicImage
 				field={data.page.data.landing_image}
