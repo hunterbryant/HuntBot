@@ -79,7 +79,7 @@
 	class="fixed inset-x-0 z-40 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
 	<div
-		class="col-span-5 flex h-screen w-full flex-col justify-stretch {$delayedNavEngaged
+		class="col-span-5 flex h-dvh w-full flex-col justify-stretch {$delayedNavEngaged
 			? 'gap-4'
 			: 'gap-0'} sm:relative sm:col-span-3 sm:gap-4"
 	>
