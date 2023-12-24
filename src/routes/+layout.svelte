@@ -9,6 +9,7 @@
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
+	import { onMount } from 'svelte';
 
 	let minimized = true;
 	let greeting = 'Any questions?';
@@ -18,11 +19,6 @@
 	let menuActive = false;
 	let mobileBreakpoint = true;
 	let innerWidth = 0;
-
-	$: if (innerWidth > 640) {
-		menuActive = true;
-		mobileBreakpoint = false;
-	}
 
 	const engageHuntbot = () => {
 		if (!$botEngaged) {
@@ -61,6 +57,13 @@
 			}, 100);
 		}
 	};
+
+	onMount(() => {
+		if (innerWidth > 640) {
+			menuActive = true;
+			mobileBreakpoint = false;
+		}
+	});
 </script>
 
 <svelte:head>
