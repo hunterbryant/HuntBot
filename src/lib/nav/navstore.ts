@@ -16,3 +16,4 @@ export const delayedNavEngaged = derived(
 	},
 	false
 );
+export const mobile = writable(true);

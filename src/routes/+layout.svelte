@@ -4,7 +4,7 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import lettermark from '$lib/assets/lettermark.svg';
-	import { navEngaged, delayedNavEngaged, chatOpen } from '$lib/nav/navstore';
+	import { navEngaged, delayedNavEngaged, chatOpen, mobile } from '$lib/nav/navstore';
 	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
 
 	import { send, receive } from '$lib/utilities/transition';
@@ -62,6 +62,9 @@
 		if (innerWidth > 640) {
 			menuActive = true;
 			mobileBreakpoint = false;
+			mobile.set(false);
+		} else {
+			mobile.set(true);
 		}
 	});
 </script>
