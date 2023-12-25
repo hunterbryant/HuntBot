@@ -31,7 +31,7 @@
 		<div class="absolute -top-4 h-4" bind:this={mobileElement}></div>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div
-			class="relative grid h-[calc(50dvh-3rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:h-[calc(calc(50dvh-64px)-0.5rem)] md:grid-cols-7 lg:grid-cols-9"
+			class="relative grid h-[calc(50svh-3rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:h-[calc(calc(50svh-64px)-0.5rem)] md:grid-cols-7 lg:grid-cols-9"
 		>
 			<!-- Todo: animate title right after scroll -->
 			<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
@@ -49,7 +49,7 @@
 
 		<!-- Personal image -->
 		<div
-			class="-order-1 grid h-[calc(50dvh-4rem)] grow grid-cols-5 gap-4 sm:-order-none sm:h-[calc(50dvh-9rem)] sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
+			class="-order-1 grid h-[calc(50svh-4rem)] grow grid-cols-5 gap-4 sm:-order-none sm:h-[calc(50svh-9rem)] sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 		>
 			<div
 				class="col-start-1 col-end-6 h-full overflow-hidden rounded bg-stone-200 sm:col-start-4 sm:col-end-7 md:col-end-8 lg:col-end-10"

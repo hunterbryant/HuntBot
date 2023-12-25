@@ -21,22 +21,18 @@
 	let innerWidth = 0;
 
 	const engageHuntbot = () => {
+		const scrollDistance = mobileBreakpoint ? window.innerHeight / 2 : window.innerHeight / 2 - 64;
 		if (!$botEngaged) {
 			hitButton = true;
 			greeting = "Hi 👋, I'm HuntBot";
-			navEngaged.set(true);
-			window.scrollTo({
-				top: window.innerHeight / 2 - 64,
-				behavior: 'smooth'
-			});
 		} else {
 			minimized = false;
-			navEngaged.set(true);
-			window.scrollTo({
-				top: window.innerHeight / 2 - 64,
-				behavior: 'smooth'
-			});
 		}
+		navEngaged.set(true);
+		window.scrollTo({
+			top: scrollDistance,
+			behavior: 'smooth'
+		});
 	};
 
 	const animationFinished = () => {
