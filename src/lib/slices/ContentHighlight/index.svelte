@@ -49,13 +49,21 @@
 </script>
 
 <section
-	class="grid h-[calc(50vh-9rem)] grow grid-cols-5 items-stretch gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
+	class="mb-8 grid grow grid-cols-5 items-stretch gap-2 sm:mb-0 sm:h-[calc(50vh-9rem)] sm:grid-cols-6 sm:gap-4 md:grid-cols-7 lg:grid-cols-9"
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
 >
 	<!-- Out of box metadata -->
-	<div class="col-span-3 flex flex-col justify-end gap-4">
-		<div class="flex flex-row gap-4">
+	<div
+		class="col-span-full flex flex-col justify-end gap-2 divide-y divide-stone-200 sm:col-span-3 sm:divide-y-0"
+	>
+		<div class="flex flex-row items-baseline justify-between gap-4 sm:hidden">
+			<h3 class="mb text-balance">{project.title}</h3>
+			<p class=" text-xs tracking-wider text-stone-900/50">
+				{date.getFullYear()}
+			</p>
+		</div>
+		<div class="flex flex-row gap-4 pt-2 sm:pt-0">
 			<div class="flex flex-initial flex-col gap-1">
 				<p class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50">
 					Organization
@@ -93,9 +101,9 @@
 
 	<!-- Central image -->
 	<div
-		class="relative col-start-4 col-end-6 overflow-hidden rounded bg-zinc-200 sm:col-end-7 md:col-end-8 lg:col-end-10"
+		class="relative col-start-1 col-end-6 row-start-1 h-32 overflow-hidden rounded bg-zinc-200 sm:col-start-4 sm:col-end-7 sm:h-auto md:col-end-8 lg:col-end-10"
 	>
-		<div class="absolute left-4 top-4">
+		<div class="absolute left-4 top-4 hidden sm:block">
 			<h3 class="mb">{project.title}</h3>
 			<p class=" text-xs tracking-wider text-stone-900/50">
 				{date.getFullYear()}
