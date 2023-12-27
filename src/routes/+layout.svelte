@@ -102,12 +102,12 @@
 							<div
 								in:receive={{ key: 'links' }}
 								out:send={{ key: 'links' }}
-								class="mx-auto flex w-full max-w-80 flex-col justify-between pt-8 sm:max-w-none sm:pt-0"
+								class="mx-auto flex w-full max-w-80 flex-col justify-between pt-4 sm:max-w-none sm:pt-0"
 							>
 								<Links />
 							</div>
 						</div>
-						<div class="z-40 flex justify-end bg-stone-100 pb-4 pt-16 sm:z-30 sm:hidden sm:py-16">
+						<div class="z-40 flex justify-end bg-stone-100 pb-4 pt-4 sm:z-30 sm:hidden sm:py-16">
 							<button
 								class="h-11 rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
 								on:click={() => (menuActive = !menuActive)}
@@ -152,7 +152,7 @@
 						<Links />
 					</div>
 				</div>
-			{:else}
+			{:else if !mobileBreakpoint}
 				<div
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
@@ -179,4 +179,31 @@
 		</div>
 	</div>
 </div>
+
+<!-- Fixed chatbot div in mobile breakpoints -->
+{#if mobileBreakpoint && $delayedNavEngaged}
+	<div
+		in:receive={{ key: 'huntbot' }}
+		out:send={{ key: 'huntbot' }}
+		on:introstart={() => {
+			minimized = true;
+		}}
+		on:introend={() => {
+			animationFinished();
+			if ($messages.length > 0) {
+				minimized = false;
+			}
+		}}
+		on:outrostart={() => {
+			minimized = true;
+		}}
+		on:outroend={() => {
+			minimized = true;
+		}}
+		class="fixed bottom-0 z-50 -mx-0 w-full flex-initial sm:mx-0"
+	>
+		<ChatBox bind:minimized bind:greeting />
+	</div>
+{/if}
+
 <slot />
