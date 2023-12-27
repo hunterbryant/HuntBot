@@ -2,7 +2,7 @@
 </script>
 
 <nav
-	class="flex flex-col gap-4 bg-stone-100 pb-12 text-xs font-medium uppercase tracking-wider text-stone-900"
+	class="flex flex-col gap-0 bg-stone-100 pb-8 text-xs font-medium uppercase tracking-wider text-stone-900 *:flex *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:bg-stone-200 hover:*:px-2"
 >
 	<a href="/info">Information</a>
 	<a href="/work">Experience</a>
@@ -10,7 +10,7 @@
 	<a href="/other">Writing & Other Projects</a>
 </nav>
 <ul
-	class="flex flex-col gap-4 bg-stone-100 pb-0 text-xs font-medium uppercase tracking-wider text-stone-900"
+	class="flex flex-col gap-0 bg-stone-100 text-xs font-medium uppercase tracking-wider text-stone-900 *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:bg-stone-200 hover:*:px-2 sm:-mb-4"
 >
 	<a class="inline-flex justify-between" href="https://www.linkedin.com/in/hunterbryant1/"
 		>Linkedin
@@ -28,5 +28,4 @@
 	>
 </ul>
 <!-- Gradient -->
-<div class="hidden h-8 bg-gradient-to-b from-stone-100 to-transparent sm:block"></div>
-
+<div class="mt-4 hidden h-8 bg-gradient-to-b from-stone-100 to-transparent sm:block"></div>

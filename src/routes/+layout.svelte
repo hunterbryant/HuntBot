@@ -81,7 +81,7 @@
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
-			<div class="z-40 flex justify-between bg-stone-100 pb-4 pt-11 sm:z-30 sm:py-16">
+			<div class="z-40 flex justify-between bg-stone-100 pb-4 pt-11 sm:z-30 sm:pb-8 sm:pt-16">
 				<a href="/"><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a>
 				<button
 					class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
@@ -134,7 +134,7 @@
 				>
 					<h3 class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl">How?</h3>
 					<button
-						class="h-12 rounded bg-blue-600 px-3 text-stone-50 hover:bg-blue-700 active:bg-blue-600"
+						class="h-12 rounded bg-blue-600 px-3 text-stone-50 transition hover:bg-blue-700 active:bg-blue-600"
 						on:click={engageHuntbot}>Ask HuntBot</button
 					>
 				</div>
@@ -143,7 +143,7 @@
 					<div
 						in:receive={{ key: 'links' }}
 						out:send={{ key: 'links' }}
-						class="mx-auto flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
+						class="mx-auto -mb-8 flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
 					>
 						<Links />
 					</div>
