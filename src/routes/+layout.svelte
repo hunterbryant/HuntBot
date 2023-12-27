@@ -72,7 +72,7 @@
 <svelte:window bind:innerWidth />
 
 <div
-	class="fixed inset-x-0 z-40 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
+	class="pointer-events-none fixed inset-x-0 z-40 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
 	<div
 		class="col-span-5 flex h-dvh w-full flex-col justify-stretch {$delayedNavEngaged
@@ -80,7 +80,7 @@
 			: 'gap-0'} sm:relative sm:col-span-3 sm:gap-4"
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
-		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
+		<div class=" pointer-events-auto flex min-h-0 flex-grow flex-col sm:flex-1">
 			<div
 				class="z-40 flex justify-between bg-stone-100 pb-4 pt-8 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
 			>
@@ -123,7 +123,7 @@
 		<div
 			class="flex {$delayedNavEngaged
 				? 'min-h-10'
-				: 'min-h-0'} flex-initial flex-col justify-between sm:flex-1"
+				: 'min-h-0'} pointer-events-auto flex-initial flex-col justify-between sm:flex-1"
 			transition:slide
 		>
 			{#if !$delayedNavEngaged}

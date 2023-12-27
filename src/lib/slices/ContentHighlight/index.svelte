@@ -102,9 +102,9 @@
 	<!-- Central image -->
 	<div
 		class="relative col-start-1 col-end-6 row-start-1 h-48
-		 overflow-hidden rounded bg-zinc-200 sm:col-start-4 sm:col-end-7 sm:h-auto md:col-end-8 lg:col-end-10"
+		 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-4 sm:col-end-7 sm:h-auto md:col-end-8 lg:col-end-10"
 	>
-		<div class="absolute left-4 top-4 hidden sm:block">
+		<div class="absolute left-4 top-4 z-10 hidden sm:block">
 			<h3 class="mb">{project.title}</h3>
 			<p class=" text-xs tracking-wider text-stone-900/50">
 				{date.getFullYear()}
@@ -113,10 +113,13 @@
 		{#if slice.variation == 'default'}
 			<PrismicImage
 				field={project.hightlight_image}
-				class="m-auto block h-full w-full object-cover"
+				class="z-0 m-auto block h-full w-full transform-gpu object-cover transition-transform duration-500 hover:scale-110"
 			/>
 		{:else}
-			<canvas bind:this={interactiveCanvas} class="bg-[url('{bgImage}')]"></canvas>
+			<canvas
+				bind:this={interactiveCanvas}
+				class="bg-[url('{bgImage}') transform-gpu transition-transform duration-500 hover:scale-110"
+			></canvas>
 		{/if}
 	</div>
 </article>
