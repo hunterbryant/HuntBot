@@ -22,6 +22,8 @@
 		minimized = false;
 		awaitingBotResponse = true;
 
+		inputElement.blur();
+
 		// Add the user message
 		messages.update((m) => [...m, { type: 'user', message: inputMessage }]);
 
@@ -132,6 +134,7 @@
 		class="peer min-w-0 grow bg-transparent focus:outline-none {minimized ? 'ml-0' : 'mx-2'}"
 		bind:value={message}
 		bind:this={inputElement}
+		inputmode="search"
 	/>
 	<hr class="absolute inset-x-2 -top-px bg-slate-200 peer-focus:hidden" />
 
