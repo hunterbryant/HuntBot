@@ -81,10 +81,14 @@
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
-			<div class="z-40 flex justify-between bg-stone-100 pb-4 pt-11 sm:z-30 sm:pb-8 sm:pt-16">
-				<a href="/"><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a>
+			<div
+				class="z-40 flex justify-between bg-stone-100 pb-4 pt-8 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
+			>
+				<a href="/" class="px-0 transition-all hover:rounded hover:bg-stone-200 hover:px-2"
+					><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a
+				>
 				<button
-					class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
+					class="rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition-all hover:bg-stone-300 sm:hidden"
 					on:click={() => (menuActive = !menuActive)}
 				>
 					{menuActive ? 'Close' : 'Menu'}
@@ -98,14 +102,14 @@
 							<div
 								in:receive={{ key: 'links' }}
 								out:send={{ key: 'links' }}
-								class="mx-auto flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
+								class="mx-auto flex w-full max-w-80 flex-col justify-between pt-8 sm:max-w-none sm:pt-0"
 							>
 								<Links />
 							</div>
 						</div>
 						<div class="z-40 flex justify-end bg-stone-100 pb-4 pt-16 sm:z-30 sm:hidden sm:py-16">
 							<button
-								class="rounded bg-stone-200 p-1 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
+								class="h-11 rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
 								on:click={() => (menuActive = !menuActive)}
 							>
 								{menuActive ? 'Close' : 'Menu'}
