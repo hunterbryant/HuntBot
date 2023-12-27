@@ -24,7 +24,7 @@
 
 <!-- Handle horizontal bounds -->
 <div
-	class="inset-x-0 z-30 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 pb-16 pt-24 sm:px-8 sm:py-24 lg:px-16"
+	class="inset-x-0 z-30 mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-2 pb-16 pt-24 sm:px-8 sm:pb-24 sm:pt-16 lg:px-16"
 >
 	<IntersectionObserver element={$mobile ? mobileElement : element} bind:intersecting={onScreen}>
 		<!-- Hidden absolute div for mobile scroll detection -->
