@@ -5,6 +5,7 @@
 	import { SupportedActions, type BotAction, SupportedRoutes } from '$lib/types.d.js';
 	import { goto } from '$app/navigation';
 	import caretdown from '$lib/assets/caret-down.svg';
+	import { mobile } from '$lib/nav/navstore';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -22,7 +23,10 @@
 		minimized = false;
 		awaitingBotResponse = true;
 
-		inputElement.blur();
+		// Dismiss mobile keyboard
+		if ($mobile) {
+			inputElement.blur();
+		}
 
 		// Add the user message
 		messages.update((m) => [...m, { type: 'user', message: inputMessage }]);
