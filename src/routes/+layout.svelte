@@ -11,6 +11,7 @@
 	import { fly, slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
+	import { page } from '$app/stores';
 
 	export let data;
 
@@ -69,12 +70,22 @@
 		}
 	});
 
+	// On initial load set nav state based on entry path
+	if ($page.url.pathname == '/') {
+		// Reset nav state on index
+		navEngaged.set(false);
+	} else {
+		// Return to default on all others
+		navEngaged.set(true);
+	}
+
+	// Change the nav state based on destination path
 	beforeNavigate((navData) => {
 		if (navData.to?.route.id == '/') {
 			// Reset nav state on index
 			navEngaged.set(false);
-		} else {
-			// Return to default on all others
+		} else if (navData.to?.route.id !== undefined) {
+			// Return to engaged if routing within the site
 			navEngaged.set(true);
 		}
 	});
