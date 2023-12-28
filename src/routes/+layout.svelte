@@ -67,6 +67,7 @@
 
 <svelte:head>
 	<meta property="interactive-widget" content="resizes-content" />
+	<meta property="og:site_name" content="Hunter Bryant" />
 </svelte:head>
 
 <svelte:window bind:innerWidth />

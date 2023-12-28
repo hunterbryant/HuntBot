@@ -8,6 +8,9 @@ export async function load({ fetch, cookies }) {
     {
         home {
             landing_image
+            meta_description
+            meta_image
+            meta_title
             slices {
                 ...on content_highlight {
                     variation {

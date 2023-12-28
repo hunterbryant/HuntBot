@@ -255,7 +255,75 @@ export type HomeDocument<Lang extends string = string> = prismic.PrismicDocument
 	Lang
 >;
 
-export type AllDocumentTypes = AffiliationDocument | CaseStudyDocument | HomeDocument;
+type InformationDocumentDataSlicesSlice = never;
+
+/**
+ * Content for Information documents
+ */
+interface InformationDocumentData {
+	/**
+	 * Slice Zone field in *Information*
+	 *
+	 * - **Field Type**: Slice Zone
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: information.slices[]
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#slices
+	 */
+	slices: prismic.SliceZone<InformationDocumentDataSlicesSlice> /**
+	 * Meta Description field in *Information*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: A brief summary of the page
+	 * - **API ID Path**: information.meta_description
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */;
+	meta_description: prismic.KeyTextField;
+
+	/**
+	 * Meta Image field in *Information*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: information.meta_image
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	meta_image: prismic.ImageField<never>;
+
+	/**
+	 * Meta Title field in *Information*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: A title of the page used for social media and search engines
+	 * - **API ID Path**: information.meta_title
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	meta_title: prismic.KeyTextField;
+}
+
+/**
+ * Information document from Prismic
+ *
+ * - **API ID**: `information`
+ * - **Repeatable**: `false`
+ * - **Documentation**: https://prismic.io/docs/custom-types
+ *
+ * @typeParam Lang - Language API ID of the document.
+ */
+export type InformationDocument<Lang extends string = string> = prismic.PrismicDocumentWithoutUID<
+	Simplify<InformationDocumentData>,
+	'information',
+	Lang
+>;
+
+export type AllDocumentTypes =
+	| AffiliationDocument
+	| CaseStudyDocument
+	| HomeDocument
+	| InformationDocument;
 
 /**
  * Primary content in *ContentHighlight → Primary*
@@ -443,6 +511,9 @@ declare module '@prismicio/client' {
 			HomeDocument,
 			HomeDocumentData,
 			HomeDocumentDataSlicesSlice,
+			InformationDocument,
+			InformationDocumentData,
+			InformationDocumentDataSlicesSlice,
 			AllDocumentTypes,
 			ContentHighlightSlice,
 			ContentHighlightSliceDefaultPrimary,

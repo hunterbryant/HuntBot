@@ -16,10 +16,11 @@
 
 <svelte:head>
 	<title>Hunter Bryant – Product Designer</title>
-	<meta
-		name="description"
-		content="Hunter Bryant is a product designer with a proven track record of bringing products from ideation to market. With a deep understanding of the challenges faced by teams at all scales of business, I am able to adapt to various design, research, and engineering constraints."
-	/>
+	<meta name="description" content={data.page.data.meta_description} />
+	<meta property="og:title" content={data.page.data.meta_title} />
+	<meta property="og:description" content={data.page.data.meta_description} />
+	<meta property="og:type" content="website" />
+	<meta property="og:image" content={data.page.data.meta_image.url} />
 </svelte:head>
 
 <!-- Handle horizontal bounds -->
