@@ -9,7 +9,10 @@
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
+	import { cubicIn, cubicOut } from 'svelte/easing';
 	import { onMount } from 'svelte';
+
+	export let data;
 
 	let minimized = true;
 	let greeting = 'Any questions?';
@@ -207,4 +210,12 @@
 	</div>
 {/if}
 
-<slot />
+<!-- The slot is nested in a key to detect page changes, causing a page transition -->
+{#key data.pathname}
+	<div
+		in:fly={{ easing: cubicIn, x: -100, duration: 200, delay: 200 }}
+		out:fly={{ easing: cubicOut, x: 100, duration: 200 }}
+	>
+		<slot />
+	</div>
+{/key}
