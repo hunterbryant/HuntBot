@@ -255,14 +255,25 @@ export type HomeDocument<Lang extends string = string> = prismic.PrismicDocument
 	Lang
 >;
 
-type InformationDocumentDataSlicesSlice = never;
+type InformationDocumentDataSlicesSlice = ExpertiseSlice | InfoEducationImageSlice;
 
 /**
- * Content for Information documents
+ * Content for Info documents
  */
 interface InformationDocumentData {
 	/**
-	 * Slice Zone field in *Information*
+	 * header field in *Info*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: information.header
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	header: prismic.KeyTextField;
+
+	/**
+	 * Slice Zone field in *Info*
 	 *
 	 * - **Field Type**: Slice Zone
 	 * - **Placeholder**: *None*
@@ -271,7 +282,7 @@ interface InformationDocumentData {
 	 * - **Documentation**: https://prismic.io/docs/field#slices
 	 */
 	slices: prismic.SliceZone<InformationDocumentDataSlicesSlice> /**
-	 * Meta Description field in *Information*
+	 * Meta Description field in *Info*
 	 *
 	 * - **Field Type**: Text
 	 * - **Placeholder**: A brief summary of the page
@@ -282,7 +293,7 @@ interface InformationDocumentData {
 	meta_description: prismic.KeyTextField;
 
 	/**
-	 * Meta Image field in *Information*
+	 * Meta Image field in *Info*
 	 *
 	 * - **Field Type**: Image
 	 * - **Placeholder**: *None*
@@ -293,7 +304,7 @@ interface InformationDocumentData {
 	meta_image: prismic.ImageField<never>;
 
 	/**
-	 * Meta Title field in *Information*
+	 * Meta Title field in *Info*
 	 *
 	 * - **Field Type**: Text
 	 * - **Placeholder**: A title of the page used for social media and search engines
@@ -305,7 +316,7 @@ interface InformationDocumentData {
 }
 
 /**
- * Information document from Prismic
+ * Info document from Prismic
  *
  * - **API ID**: `information`
  * - **Repeatable**: `false`
@@ -406,6 +417,133 @@ type ContentHighlightSliceVariation = ContentHighlightSliceDefault | ContentHigh
 export type ContentHighlightSlice = prismic.SharedSlice<
 	'content_highlight',
 	ContentHighlightSliceVariation
+>;
+
+/**
+ * Primary content in *Expertise → Items*
+ */
+export interface ExpertiseSliceDefaultItem {
+	/**
+	 * skill name field in *Expertise → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: expertise.items[].skill_name
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	skill_name: prismic.KeyTextField;
+
+	/**
+	 * skill decription field in *Expertise → Items*
+	 *
+	 * - **Field Type**: Rich Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: expertise.items[].skill_decription
+	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
+	 */
+	skill_decription: prismic.RichTextField;
+
+	/**
+	 * skill tags field in *Expertise → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: expertise.items[].skill_tags
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	skill_tags: prismic.KeyTextField;
+}
+
+/**
+ * Default variation for Expertise Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ExpertiseSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Record<string, never>,
+	Simplify<ExpertiseSliceDefaultItem>
+>;
+
+/**
+ * Slice variation for *Expertise*
+ */
+type ExpertiseSliceVariation = ExpertiseSliceDefault;
+
+/**
+ * Expertise Shared Slice
+ *
+ * - **API ID**: `expertise`
+ * - **Description**: Expertise
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ExpertiseSlice = prismic.SharedSlice<'expertise', ExpertiseSliceVariation>;
+
+/**
+ * Primary content in *InfoEducationImage → Primary*
+ */
+export interface InfoEducationImageSliceDefaultPrimary {
+	/**
+	 * body field in *InfoEducationImage → Primary*
+	 *
+	 * - **Field Type**: Rich Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: info_education_image.primary.body
+	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
+	 */
+	body: prismic.RichTextField;
+
+	/**
+	 * image field in *InfoEducationImage → Primary*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: info_education_image.primary.image
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	image: prismic.ImageField<never>;
+
+	/**
+	 * education field in *InfoEducationImage → Primary*
+	 *
+	 * - **Field Type**: Rich Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: info_education_image.primary.education
+	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
+	 */
+	education: prismic.RichTextField;
+}
+
+/**
+ * Default variation for InfoEducationImage Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type InfoEducationImageSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Simplify<InfoEducationImageSliceDefaultPrimary>,
+	never
+>;
+
+/**
+ * Slice variation for *InfoEducationImage*
+ */
+type InfoEducationImageSliceVariation = InfoEducationImageSliceDefault;
+
+/**
+ * InfoEducationImage Shared Slice
+ *
+ * - **API ID**: `info_education_image`
+ * - **Description**: InfoEducationImage
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type InfoEducationImageSlice = prismic.SharedSlice<
+	'info_education_image',
+	InfoEducationImageSliceVariation
 >;
 
 /**
@@ -521,6 +659,14 @@ declare module '@prismicio/client' {
 			ContentHighlightSliceVariation,
 			ContentHighlightSliceDefault,
 			ContentHighlightSlice3DModel,
+			ExpertiseSlice,
+			ExpertiseSliceDefaultItem,
+			ExpertiseSliceVariation,
+			ExpertiseSliceDefault,
+			InfoEducationImageSlice,
+			InfoEducationImageSliceDefaultPrimary,
+			InfoEducationImageSliceVariation,
+			InfoEducationImageSliceDefault,
 			TextSliceSlice,
 			TextSliceSliceDefaultItem,
 			TextSliceSliceVariation,

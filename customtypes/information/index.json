@@ -1,16 +1,30 @@
 {
 	"id": "information",
-	"label": "Information",
+	"label": "Info",
 	"format": "page",
 	"repeatable": false,
 	"status": true,
 	"json": {
 		"Main": {
+			"header": {
+				"type": "Text",
+				"config": {
+					"label": "header",
+					"placeholder": ""
+				}
+			},
 			"slices": {
 				"type": "Slices",
 				"fieldset": "Slice Zone",
 				"config": {
-					"choices": {}
+					"choices": {
+						"expertise": {
+							"type": "SharedSlice"
+						},
+						"info_education_image": {
+							"type": "SharedSlice"
+						}
+					}
 				}
 			}
 		},

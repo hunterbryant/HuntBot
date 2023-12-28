@@ -4,7 +4,7 @@
 <nav
 	class="flex flex-col gap-0 bg-stone-100 pb-7 text-xs font-medium uppercase tracking-wider text-stone-900 *:flex *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:bg-stone-200 hover:*:px-2"
 >
-	<a href="/info">Information</a>
+	<a href="/information">Information</a>
 	<a href="/work">Experience</a>
 	<a href="/case-studies">Case Studies</a>
 	<a href="/other">Writing & Other Projects</a>

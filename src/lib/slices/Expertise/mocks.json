@@ -1,0 +1,44 @@
+[
+	{
+		"__TYPE__": "SharedSliceContent",
+		"variation": "default",
+		"primary": {},
+		"items": [
+			{
+				"__TYPE__": "GroupItemContent",
+				"value": [
+					[
+						"skill_name",
+						{
+							"__TYPE__": "FieldContent",
+							"value": "task",
+							"type": "Text"
+						}
+					],
+					[
+						"skill_decription",
+						{
+							"__TYPE__": "StructuredTextContent",
+							"value": [
+								{
+									"type": "paragraph",
+									"content": {
+										"text": "Laborum magna dolore aliqua. Esse quis elit aliqua ut irure pariatur quis enim proident sit. Fugiat aliquip fugiat esse tempor."
+									}
+								}
+							]
+						}
+					],
+					[
+						"skill_tags",
+						{
+							"__TYPE__": "FieldContent",
+							"value": "relationship",
+							"type": "Text"
+						}
+					]
+				]
+			}
+		]
+	}
+]
