@@ -15,7 +15,7 @@
 </script>
 
 <svelte:head>
-	<title>Hunter Bryant – Product Designer</title>
+	<title>{data.page.data.meta_title}</title>
 	<meta name="description" content={data.page.data.meta_description} />
 	<meta property="og:title" content={data.page.data.meta_title} />
 	<meta property="og:description" content={data.page.data.meta_description} />
