@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isFilled, type Content, type ContentRelationshipField, asDate } from '@prismicio/client';
+	import { isFilled, type Content } from '@prismicio/client';
 	import { PrismicImage } from '@prismicio/svelte';
 	import type {
 		AffiliationDocumentData,
@@ -41,10 +41,10 @@
 	}
 
 	onMount(() => {
-		if (slice.variation == '3DModel' && slice.primary.model) {
-			const app = new Application(interactiveCanvas);
-			app.load(slice.primary.model);
-		}
+		// if (slice.variation == '3DModel' && slice.primary.model) {
+		// 	const app = new Application(interactiveCanvas);
+		// 	app.load(slice.primary.model);
+		// }
 	});
 </script>
 

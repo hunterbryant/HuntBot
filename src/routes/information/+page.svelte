@@ -1,14 +1,8 @@
 <script lang="ts">
 	import { SliceZone } from '@prismicio/svelte';
 	import { components } from '$lib/slices';
-	import { navEngaged } from '$lib/nav/navstore';
-	import { onMount } from 'svelte';
 
 	export let data;
-
-	onMount(() => {
-		navEngaged.set(true);
-	});
 </script>
 
 <svelte:head>

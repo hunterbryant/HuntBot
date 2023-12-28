@@ -4,14 +4,32 @@
 
 	import { PrismicImage, SliceZone } from '@prismicio/svelte';
 	import { components } from '$lib/slices';
+	import { onMount } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 
 	export let data;
 
 	let element: HTMLElement;
 	let mobileElement: HTMLElement;
 	let onScreen = true;
+	let debounced = false;
 
-	$: navEngaged.set(!onScreen);
+	// Logic to start scroll onberver
+	$: if (debounced && typeof onScreen !== 'undefined') {
+		navEngaged.set(!onScreen);
+	}
+
+	// Delay scroll observer to avoid multiple scroll events during DOM rendering events
+	onMount(() => {
+		setTimeout(() => {
+			debounced = true;
+		}, 500);
+	});
+
+	// Similar to the above problem, avoid multiple scroll events when DOM is deconstructed
+	beforeNavigate(() => {
+		debounced = false;
+	});
 </script>
 
 <svelte:head>

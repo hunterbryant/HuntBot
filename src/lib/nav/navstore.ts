@@ -7,12 +7,11 @@ export const delayedNavEngaged = derived(
 	([$navEngaged, $chatOpen], set) => {
 		if ($chatOpen) {
 			setTimeout(() => {
-				set($navEngaged);
+				return set($navEngaged);
 			}, 300);
 		} else {
-			set($navEngaged);
+			return set($navEngaged);
 		}
-		return;
 	},
 	false
 );

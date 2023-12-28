@@ -10,6 +10,7 @@
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
+	import { beforeNavigate } from '$app/navigation';
 
 	export let data;
 
@@ -30,11 +31,11 @@
 		} else {
 			minimized = false;
 		}
-		navEngaged.set(true);
 		window.scrollTo({
 			top: scrollDistance,
 			behavior: 'smooth'
 		});
+		navEngaged.set(true);
 	};
 
 	const animationFinished = () => {
@@ -62,7 +63,19 @@
 			mobileBreakpoint = false;
 			mobile.set(false);
 		} else {
+			menuActive = true;
+			mobileBreakpoint = true;
 			mobile.set(true);
+		}
+	});
+
+	beforeNavigate((navData) => {
+		if (navData.to?.route.id == '/') {
+			// Reset nav state on index
+			navEngaged.set(false);
+		} else {
+			// Return to default on all others
+			navEngaged.set(true);
 		}
 	});
 </script>
@@ -210,8 +223,9 @@
 {/if}
 
 <!-- The slot is nested in a key to detect page changes, causing a page transition -->
+<!-- Look into using the View Transition API as it gains browser support -->
 {#key data.pathname}
-	<div in:fly={{ x: -100, duration: 200, delay: 200 }} out:fly={{ x: 100, duration: 200 }}>
+	<div in:fly={{ x: 100, duration: 200, delay: 200 }} out:fly={{ x: -100, duration: 200 }}>
 		<slot />
 	</div>
 {/key}
