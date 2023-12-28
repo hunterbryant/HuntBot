@@ -10,7 +10,7 @@
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
-	import { beforeNavigate } from '$app/navigation';
+	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 
 	export let data;
@@ -89,6 +89,12 @@
 			navEngaged.set(true);
 		}
 	});
+	afterNavigate(() => {
+		window.scrollTo({
+			top: 0,
+			behavior: 'smooth'
+		});
+	});
 </script>
 
 <svelte:head>
@@ -111,7 +117,10 @@
 			<div
 				class="z-40 flex justify-between bg-stone-100 pb-4 pt-8 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
 			>
-				<a href="/" class="px-0 transition-all hover:rounded hover:bg-stone-200 hover:px-2"
+				<a
+					href="/"
+					class="px-0 transition-all hover:rounded hover:bg-stone-200 hover:px-2"
+					data-sveltekit-noscroll
 					><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a
 				>
 				<button
