@@ -220,9 +220,6 @@
 					}}
 					on:introend={() => {
 						animationFinished();
-						if ($messages.length > 0) {
-							minimized = false;
-						}
 					}}
 					on:outrostart={() => {
 						minimized = true;
@@ -249,9 +246,6 @@
 		}}
 		on:introend={() => {
 			animationFinished();
-			if ($messages.length > 0) {
-				minimized = false;
-			}
 		}}
 		on:outrostart={() => {
 			minimized = true;
