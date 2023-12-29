@@ -6,6 +6,6 @@ node_modules
 .env
 .env.*
 !.env.example
-.vscode
+/.vscode
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
