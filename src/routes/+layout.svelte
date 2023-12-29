@@ -23,6 +23,7 @@
 	let menuActive = false;
 	let mobileBreakpoint = true;
 	let innerWidth = 0;
+	let slotElement: HTMLElement;
 
 	const engageHuntbot = () => {
 		const scrollDistance = mobileBreakpoint ? window.innerHeight / 2 : window.innerHeight / 2 - 64;
@@ -81,14 +82,14 @@
 
 	// Change the nav state based on destination path
 	beforeNavigate((navData) => {
-		if (navData.to?.route.id == '/') {
+		if (navData.to?.route.id === '/') {
 			// Reset nav state on index
 			navEngaged.set(false);
 		} else if (navData.to?.route.id !== undefined) {
 			// Return to engaged if routing within the site
 			navEngaged.set(true);
 		}
-		menuActive = false;
+		closeMenu();
 	});
 
 	afterNavigate(() => {
@@ -97,6 +98,26 @@
 			behavior: 'smooth'
 		});
 	});
+
+	// Halt window scrolling when mobile menu is active
+	const openMenu = () => {
+		menuActive = true;
+		if (mobileBreakpoint) {
+			const scrollY = window.scrollY;
+			slotElement.style.position = 'fixed';
+			slotElement.style.top = `-${scrollY}px`;
+		}
+	};
+
+	const closeMenu = () => {
+		if (mobileBreakpoint) {
+			const scrollY = slotElement.style.top;
+			slotElement.style.position = '';
+			slotElement.style.top = '';
+			window.scrollTo(0, parseInt(scrollY || '0') * -1);
+		}
+		menuActive = false;
+	};
 </script>
 
 <svelte:head>
@@ -107,7 +128,7 @@
 <svelte:window bind:innerWidth />
 
 <div
-	class="pointer-events-none fixed inset-x-0 z-40 mx-auto grid h-full w-full max-w-screen-xl grid-cols-5 gap-2 px-2 sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
+	class="pointer-events-none fixed inset-x-0 z-40 mx-auto grid h-full w-full grid-cols-5 gap-2 px-2 sm:max-w-screen-xl sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
 	<div
 		class="col-span-5 flex h-dvh w-full flex-col justify-stretch {$delayedNavEngaged
@@ -120,19 +141,19 @@
 				class="z-40 flex justify-between bg-stone-100 pb-4 pt-8 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
 			>
 				<a
-					href="/"
+					href={$page.url.pathname === '/' ? null : '/'}
 					class="px-0 transition-all hover:rounded hover:bg-stone-200 hover:px-2"
 					data-sveltekit-noscroll
 					><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a
 				>
 				<button
 					class="rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition-all hover:bg-stone-300 sm:hidden"
-					on:click={() => (menuActive = !menuActive)}
+					on:click={menuActive ? closeMenu : openMenu}
 				>
 					{menuActive ? 'Close' : 'Menu'}
 				</button>
 			</div>
-			{#if menuActive}
+			{#if menuActive || !mobileBreakpoint}
 				<div class="flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
@@ -148,7 +169,7 @@
 						<div class="z-40 flex justify-end bg-stone-100 pb-4 pt-4 sm:z-30 sm:hidden sm:py-16">
 							<button
 								class="h-11 rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
-								on:click={() => (menuActive = !menuActive)}
+								on:click={menuActive ? closeMenu : openMenu}
 							>
 								{menuActive ? 'Close' : 'Menu'}
 							</button>
@@ -246,8 +267,10 @@
 
 <!-- The slot is nested in a key to detect page changes, causing a page transition -->
 <!-- Look into using the View Transition API as it gains browser support -->
-{#key data.pathname}
-	<div in:fly={{ x: 100, duration: 200, delay: 200 }} out:fly={{ x: -100, duration: 200 }}>
-		<slot />
-	</div>
-{/key}
+<div bind:this={slotElement}>
+	{#key data.pathname}
+		<div in:fly={{ x: 100, duration: 200, delay: 200 }} out:fly={{ x: -100, duration: 200 }}>
+			<slot />
+		</div>
+	{/key}
+</div>
