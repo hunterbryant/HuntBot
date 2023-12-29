@@ -64,7 +64,7 @@
 			mobileBreakpoint = false;
 			mobile.set(false);
 		} else {
-			menuActive = true;
+			menuActive = false;
 			mobileBreakpoint = true;
 			mobile.set(true);
 		}
@@ -88,7 +88,9 @@
 			// Return to engaged if routing within the site
 			navEngaged.set(true);
 		}
+		menuActive = false;
 	});
+
 	afterNavigate(() => {
 		window.scrollTo({
 			top: 0,
