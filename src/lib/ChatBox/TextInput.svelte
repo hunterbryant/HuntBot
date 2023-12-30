@@ -5,7 +5,7 @@
 	import { SupportedActions, type BotAction, SupportedRoutes } from '$lib/types.d.js';
 	import { goto } from '$app/navigation';
 	import caretdown from '$lib/assets/caret-down.svg';
-	import { mobile } from '$lib/nav/navstore';
+	import { chatOpen, mobile } from '$lib/nav/navstore';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -118,6 +118,7 @@
 		<button
 			on:click={() => {
 				minimized = false;
+				chatOpen.set(true);
 			}}
 			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none"
 		>

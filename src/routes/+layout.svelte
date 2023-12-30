@@ -4,7 +4,7 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import lettermark from '$lib/assets/lettermark.svg';
-	import { navEngaged, delayedNavEngaged, chatOpen, mobile } from '$lib/nav/navstore';
+	import { navEngaged, delayedNavEngaged, mobile, chatOpen } from '$lib/nav/navstore';
 	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
 
 	import { send, receive } from '$lib/utilities/transition';
@@ -48,6 +48,7 @@
 
 				botEngaged.set(true);
 				minimized = false;
+				chatOpen.set(true);
 
 				setTimeout(() => {
 					messages.update((m) => {
@@ -56,6 +57,9 @@
 					});
 				}, 600);
 			}, 100);
+		}
+		if ($chatOpen) {
+			minimized = false;
 		}
 	};
 
@@ -192,7 +196,6 @@
 					out:send={{ key: 'huntbot' }}
 					on:introstart={() => {
 						minimized = true;
-						chatOpen.set(false);
 					}}
 				>
 					<h3 class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl">How?</h3>

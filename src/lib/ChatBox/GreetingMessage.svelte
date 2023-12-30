@@ -2,6 +2,7 @@
 	import huntbotlogo from '$lib/assets/huntbotlogo.svg';
 	import { botEngaged, messages } from './MessageStore';
 	import caretdown from '$lib/assets/caret-down.svg';
+	import { chatOpen } from '$lib/nav/navstore';
 
 	export let minimized: boolean;
 	export let greeting: string;
@@ -15,6 +16,7 @@
 
 		botEngaged.set(true);
 		minimized = false;
+		chatOpen.set(true);
 
 		setTimeout(() => {
 			messages.update((m) => {
@@ -42,6 +44,7 @@
 		<button
 			on:click={() => {
 				minimized = true;
+				chatOpen.set(false);
 			}}
 			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none"
 		>

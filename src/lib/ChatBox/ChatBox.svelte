@@ -62,11 +62,7 @@
 			on:scroll={checkScrolledDown}
 			transition:slide={{ duration: 300, easing: cubicOut }}
 			on:introend={() => {
-				chatOpen.set(true);
 				scrollToBottom();
-			}}
-			on:outroend={() => {
-				chatOpen.set(false);
 			}}
 		>
 			<!-- This is the scroll to bottom button -->
