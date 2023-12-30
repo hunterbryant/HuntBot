@@ -48,11 +48,23 @@
 
 		{#each data.page as caseStudy}
 			<article
-				class="col-span-full mb-8 grid grow grid-cols-subgrid items-stretch gap-2 sm:mb-0 sm:h-[calc(50vh-9rem)] sm:gap-4"
+				class="col-span-full mb-8 grid grow grid-cols-subgrid items-end gap-2 sm:mb-0 sm:gap-4"
 			>
+				<!-- Title Block -->
+				<div class="group col-span-2 hidden cursor-pointer flex-col justify-end px-0 pt-1 sm:flex">
+					<p class=" text-xs tracking-wider text-stone-900/50">
+						{formatDate(caseStudy.data.date)}
+					</p>
+					<h3
+						class=" decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline"
+					>
+						{caseStudy.data.title}
+					</h3>
+				</div>
+
 				<!-- Out of box metadata -->
 				<div
-					class="col-span-full flex flex-col justify-end gap-2 divide-y divide-stone-200 sm:col-span-3 sm:divide-y-0"
+					class="col-span-full flex flex-col justify-end gap-2 divide-y divide-stone-200 sm:col-span-3 sm:col-start-3 sm:divide-y-0"
 				>
 					<div class="flex flex-row items-baseline justify-between gap-4 sm:hidden">
 						<h3 class="mb text-balance">{caseStudy.data.title}</h3>
@@ -104,15 +116,9 @@
 
 				<!-- Central image -->
 				<div
-					class="relative col-start-1 col-end-6 row-start-1 h-48
-		 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-4 sm:col-end-7 sm:h-auto md:col-end-8 lg:col-end-10"
+					class="relative col-start-1 col-end-6 row-start-1
+		 h-32 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-6 sm:col-end-7 md:col-end-8 lg:col-end-10"
 				>
-					<div class="absolute left-4 top-4 z-10 hidden sm:block">
-						<h3 class="mb">{caseStudy.data.title}</h3>
-						<p class=" text-xs tracking-wider text-stone-900/50">
-							{formatDate(caseStudy.data.date)}
-						</p>
-					</div>
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
 						class="z-0 m-auto block h-full w-full transform-gpu object-cover transition-transform duration-500 hover:scale-110"

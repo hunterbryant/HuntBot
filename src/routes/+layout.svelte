@@ -186,12 +186,12 @@
 		<div
 			class="flex {$delayedNavEngaged
 				? 'min-h-10'
-				: 'min-h-0'} pointer-events-auto flex-initial flex-col justify-between sm:flex-1"
+				: 'min-h-0'} pointer-events-none flex-initial flex-col justify-between sm:flex-1"
 			transition:slide
 		>
 			{#if !$delayedNavEngaged}
 				<div
-					class="col-span-1 col-start-1 row-span-1 row-start-1 mb-2 flex h-12 w-full justify-between gap-4 sm:mb-0"
+					class="pointer-events-auto col-span-1 col-start-1 row-span-1 row-start-1 mb-2 flex h-12 w-full justify-between gap-4 sm:mb-0"
 					in:receive={{ key: 'huntbot' }}
 					out:send={{ key: 'huntbot' }}
 					on:introstart={() => {
@@ -209,7 +209,7 @@
 					<div
 						in:receive={{ key: 'links' }}
 						out:send={{ key: 'links' }}
-						class="mx-auto -mb-8 flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
+						class="pointer-events-auto mx-auto -mb-8 flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
 					>
 						<Links />
 					</div>
@@ -230,7 +230,7 @@
 					on:outroend={() => {
 						minimized = true;
 					}}
-					class="absolute bottom-0 z-50 -mx-2 w-full flex-initial sm:mx-0"
+					class="pointer-events-auto absolute bottom-0 z-50 -mx-2 w-full flex-initial sm:mx-0"
 				>
 					<ChatBox bind:minimized bind:greeting />
 				</div>
