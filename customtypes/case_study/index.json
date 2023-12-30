@@ -65,12 +65,6 @@
 					"choices": {
 						"content_highlight": {
 							"type": "SharedSlice"
-						},
-						"text_slice": {
-							"type": "SharedSlice"
-						},
-						"wide_image": {
-							"type": "SharedSlice"
 						}
 					}
 				}

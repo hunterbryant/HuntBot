@@ -3,13 +3,9 @@
 import ContentHighlight from './ContentHighlight/index.svelte';
 import Expertise from './Expertise/index.svelte';
 import InfoEducationImage from './InfoEducationImage/index.svelte';
-import TextSlice from './TextSlice/index.svelte';
-import WideImage from './WideImage/index.svelte';
 
 export const components = {
 	content_highlight: ContentHighlight,
 	expertise: Expertise,
-	info_education_image: InfoEducationImage,
-	text_slice: TextSlice,
-	wide_image: WideImage
+	info_education_image: InfoEducationImage
 };

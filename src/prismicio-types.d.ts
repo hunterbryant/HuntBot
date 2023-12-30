@@ -61,7 +61,7 @@ export interface CaseStudyDocumentDataResponsibilitiesItem {
 	skill: prismic.SelectField<'UI' | 'UX' | 'Research' | 'Strategy' | 'Data Viz'>;
 }
 
-type CaseStudyDocumentDataSlicesSlice = ContentHighlightSlice | TextSliceSlice | WideImageSlice;
+type CaseStudyDocumentDataSlicesSlice = ContentHighlightSlice;
 
 /**
  * Content for Case Study documents
@@ -546,90 +546,6 @@ export type InfoEducationImageSlice = prismic.SharedSlice<
 	InfoEducationImageSliceVariation
 >;
 
-/**
- * Primary content in *TextSlice → Items*
- */
-export interface TextSliceSliceDefaultItem {
-	/**
-	 * textBox field in *TextSlice → Items*
-	 *
-	 * - **Field Type**: Rich Text
-	 * - **Placeholder**: *None*
-	 * - **API ID Path**: text_slice.items[].textbox
-	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
-	 */
-	textbox: prismic.RichTextField;
-}
-
-/**
- * Default variation for TextSlice Slice
- *
- * - **API ID**: `default`
- * - **Description**: Default
- * - **Documentation**: https://prismic.io/docs/slice
- */
-export type TextSliceSliceDefault = prismic.SharedSliceVariation<
-	'default',
-	Record<string, never>,
-	Simplify<TextSliceSliceDefaultItem>
->;
-
-/**
- * Slice variation for *TextSlice*
- */
-type TextSliceSliceVariation = TextSliceSliceDefault;
-
-/**
- * TextSlice Shared Slice
- *
- * - **API ID**: `text_slice`
- * - **Description**: TextSlice
- * - **Documentation**: https://prismic.io/docs/slice
- */
-export type TextSliceSlice = prismic.SharedSlice<'text_slice', TextSliceSliceVariation>;
-
-/**
- * Primary content in *WideImage → Primary*
- */
-export interface WideImageSliceDefaultPrimary {
-	/**
-	 * image field in *WideImage → Primary*
-	 *
-	 * - **Field Type**: Image
-	 * - **Placeholder**: *None*
-	 * - **API ID Path**: wide_image.primary.image
-	 * - **Documentation**: https://prismic.io/docs/field#image
-	 */
-	image: prismic.ImageField<never>;
-}
-
-/**
- * Default variation for WideImage Slice
- *
- * - **API ID**: `default`
- * - **Description**: Default
- * - **Documentation**: https://prismic.io/docs/slice
- */
-export type WideImageSliceDefault = prismic.SharedSliceVariation<
-	'default',
-	Simplify<WideImageSliceDefaultPrimary>,
-	never
->;
-
-/**
- * Slice variation for *WideImage*
- */
-type WideImageSliceVariation = WideImageSliceDefault;
-
-/**
- * WideImage Shared Slice
- *
- * - **API ID**: `wide_image`
- * - **Description**: WideImage
- * - **Documentation**: https://prismic.io/docs/slice
- */
-export type WideImageSlice = prismic.SharedSlice<'wide_image', WideImageSliceVariation>;
-
 declare module '@prismicio/client' {
 	interface CreateClient {
 		(
@@ -666,15 +582,7 @@ declare module '@prismicio/client' {
 			InfoEducationImageSlice,
 			InfoEducationImageSliceDefaultPrimary,
 			InfoEducationImageSliceVariation,
-			InfoEducationImageSliceDefault,
-			TextSliceSlice,
-			TextSliceSliceDefaultItem,
-			TextSliceSliceVariation,
-			TextSliceSliceDefault,
-			WideImageSlice,
-			WideImageSliceDefaultPrimary,
-			WideImageSliceVariation,
-			WideImageSliceDefault
+			InfoEducationImageSliceDefault
 		};
 	}
 }
