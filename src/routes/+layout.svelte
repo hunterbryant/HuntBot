@@ -75,10 +75,6 @@
 		}
 	});
 
-	onDestroy(() => {
-		console.log('Destroyed');
-	});
-
 	// On initial load set nav state based on entry path
 	if ($page.url.pathname == '/') {
 		// Reset nav state on index

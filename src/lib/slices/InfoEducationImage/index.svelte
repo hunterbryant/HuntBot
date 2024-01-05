@@ -2,6 +2,9 @@
 	import type { Content } from '@prismicio/client';
 	import { PrismicRichText, PrismicImage } from '@prismicio/svelte';
 
+	//Silences runtime svelte unused prop warnings
+	$$restProps;
+
 	export let slice: Content.InfoEducationImageSlice;
 </script>
 

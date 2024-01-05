@@ -2,6 +2,9 @@
 	import type { Content } from '@prismicio/client';
 	import { PrismicRichText } from '@prismicio/svelte';
 
+	//Silences runtime svelte unused prop warnings
+	$$restProps;
+
 	export let slice: Content.ExpertiseSlice;
 </script>
 

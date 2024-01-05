@@ -10,7 +10,10 @@
 	import { Application } from '@splinetool/runtime';
 	import { onMount } from 'svelte';
 
+	//Silences runtime svelte unused prop warnings
+	$$restProps;
 	export let slice: Content.ContentHighlightSlice;
+
 	let project: CaseStudyDocumentData;
 	let affiliation: AffiliationDocumentData;
 	let date: Date;
