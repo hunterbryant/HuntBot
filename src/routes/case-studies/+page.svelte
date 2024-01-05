@@ -1,7 +1,7 @@
 <script lang="ts">
 	import thumbnail from '$lib/assets/case-studies.jpg';
-	import { PrismicImage } from '@prismicio/svelte';
-	import { isFilled, type DateField } from '@prismicio/client';
+	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
+	import { isFilled, type DateField, documentToLinkField } from '@prismicio/client';
 	import type { AffiliationDocument, CaseStudyDocument } from '../../prismicio-types.js';
 
 	export let data;
@@ -51,7 +51,10 @@
 				class="col-span-full mb-8 grid grow grid-cols-subgrid items-end gap-2 sm:mb-0 sm:gap-4"
 			>
 				<!-- Title Block -->
-				<div class="group col-span-2 hidden cursor-pointer flex-col justify-end px-0 pt-1 sm:flex">
+				<PrismicLink
+					field={documentToLinkField(caseStudy)}
+					class="group col-span-2 hidden cursor-pointer flex-col justify-end px-0 pt-1 sm:flex"
+				>
 					<p class=" text-xs tracking-wider text-stone-900/50">
 						{formatDate(caseStudy.data.date)}
 					</p>
@@ -60,7 +63,7 @@
 					>
 						{caseStudy.data.title}
 					</h3>
-				</div>
+				</PrismicLink>
 
 				<!-- Out of box metadata -->
 				<div
@@ -115,7 +118,8 @@
 				</div>
 
 				<!-- Central image -->
-				<div
+				<PrismicLink
+					field={documentToLinkField(caseStudy)}
 					class="relative col-start-1 col-end-6 row-start-1
 		 h-32 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-6 sm:col-end-7 md:col-end-8 lg:col-end-10"
 				>
@@ -123,7 +127,7 @@
 						field={caseStudy.data.hightlight_image}
 						class="z-0 m-auto block h-full w-full transform-gpu object-cover transition-transform duration-500 hover:scale-110"
 					/>
-				</div>
+				</PrismicLink>
 			</article>
 		{/each}
 	</div>
