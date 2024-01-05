@@ -63,7 +63,10 @@
 				"fieldset": "Slice Zone",
 				"config": {
 					"choices": {
-						"content_highlight": {
+						"image_block": {
+							"type": "SharedSlice"
+						},
+						"text_block": {
 							"type": "SharedSlice"
 						}
 					}

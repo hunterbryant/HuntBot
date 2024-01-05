@@ -61,7 +61,7 @@ export interface CaseStudyDocumentDataResponsibilitiesItem {
 	skill: prismic.SelectField<'UI' | 'UX' | 'Research' | 'Strategy' | 'Data Viz'>;
 }
 
-type CaseStudyDocumentDataSlicesSlice = ContentHighlightSlice;
+type CaseStudyDocumentDataSlicesSlice = ImageBlockSlice | TextBlockSlice;
 
 /**
  * Content for Case Study documents
@@ -482,6 +482,96 @@ type ExpertiseSliceVariation = ExpertiseSliceDefault;
 export type ExpertiseSlice = prismic.SharedSlice<'expertise', ExpertiseSliceVariation>;
 
 /**
+ * Primary content in *ImageBlock → Primary*
+ */
+export interface ImageBlockSliceDefaultPrimary {
+	/**
+	 * image field in *ImageBlock → Primary*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: image_block.primary.image
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	image: prismic.ImageField<never>;
+
+	/**
+	 * caption field in *ImageBlock → Primary*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: image_block.primary.caption
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	caption: prismic.KeyTextField;
+}
+
+/**
+ * Default variation for ImageBlock Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ImageBlockSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Simplify<ImageBlockSliceDefaultPrimary>,
+	never
+>;
+
+/**
+ * Primary content in *ImageBlock → Items*
+ */
+export interface ImageBlockSliceCarouselItem {
+	/**
+	 * image field in *ImageBlock → Items*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: image_block.items[].image
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	image: prismic.ImageField<never>;
+
+	/**
+	 * caption field in *ImageBlock → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: image_block.items[].caption
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	caption: prismic.KeyTextField;
+}
+
+/**
+ * Carousel variation for ImageBlock Slice
+ *
+ * - **API ID**: `carousel`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ImageBlockSliceCarousel = prismic.SharedSliceVariation<
+	'carousel',
+	Record<string, never>,
+	Simplify<ImageBlockSliceCarouselItem>
+>;
+
+/**
+ * Slice variation for *ImageBlock*
+ */
+type ImageBlockSliceVariation = ImageBlockSliceDefault | ImageBlockSliceCarousel;
+
+/**
+ * ImageBlock Shared Slice
+ *
+ * - **API ID**: `image_block`
+ * - **Description**: ImageBlock
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ImageBlockSlice = prismic.SharedSlice<'image_block', ImageBlockSliceVariation>;
+
+/**
  * Primary content in *InfoEducationImage → Primary*
  */
 export interface InfoEducationImageSliceDefaultPrimary {
@@ -546,6 +636,48 @@ export type InfoEducationImageSlice = prismic.SharedSlice<
 	InfoEducationImageSliceVariation
 >;
 
+/**
+ * Primary content in *TextBlock → Primary*
+ */
+export interface TextBlockSliceDefaultPrimary {
+	/**
+	 * content field in *TextBlock → Primary*
+	 *
+	 * - **Field Type**: Rich Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: text_block.primary.content
+	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
+	 */
+	content: prismic.RichTextField;
+}
+
+/**
+ * Default variation for TextBlock Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type TextBlockSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Simplify<TextBlockSliceDefaultPrimary>,
+	never
+>;
+
+/**
+ * Slice variation for *TextBlock*
+ */
+type TextBlockSliceVariation = TextBlockSliceDefault;
+
+/**
+ * TextBlock Shared Slice
+ *
+ * - **API ID**: `text_block`
+ * - **Description**: TextBlock
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type TextBlockSlice = prismic.SharedSlice<'text_block', TextBlockSliceVariation>;
+
 declare module '@prismicio/client' {
 	interface CreateClient {
 		(
@@ -579,10 +711,20 @@ declare module '@prismicio/client' {
 			ExpertiseSliceDefaultItem,
 			ExpertiseSliceVariation,
 			ExpertiseSliceDefault,
+			ImageBlockSlice,
+			ImageBlockSliceDefaultPrimary,
+			ImageBlockSliceCarouselItem,
+			ImageBlockSliceVariation,
+			ImageBlockSliceDefault,
+			ImageBlockSliceCarousel,
 			InfoEducationImageSlice,
 			InfoEducationImageSliceDefaultPrimary,
 			InfoEducationImageSliceVariation,
-			InfoEducationImageSliceDefault
+			InfoEducationImageSliceDefault,
+			TextBlockSlice,
+			TextBlockSliceDefaultPrimary,
+			TextBlockSliceVariation,
+			TextBlockSliceDefault
 		};
 	}
 }
