@@ -9,7 +9,7 @@
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
-	import { onMount } from 'svelte';
+	import { onDestroy, onMount } from 'svelte';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 
@@ -73,6 +73,10 @@
 			mobileBreakpoint = true;
 			mobile.set(true);
 		}
+	});
+
+	onDestroy(() => {
+		console.log('Destroyed');
 	});
 
 	// On initial load set nav state based on entry path

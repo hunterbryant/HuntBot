@@ -1,5 +1,5 @@
 import * as prismic from '@prismicio/client';
-import { type CreateClientConfig, enableAutoPreviews } from '@prismicio/svelte/kit';
+import { enableAutoPreviews, type CreateClientConfig } from '@prismicio/svelte/kit';
 import config from '../../slicemachine.config.json';
 
 /**
@@ -16,9 +16,17 @@ export const repositoryName = import.meta.env.VITE_PRISMIC_ENVIRONMENT || config
 const routes: prismic.ClientConfig['routes'] = [
 	// Examples:
 	{
-		type: "case_study",
-		path: "/case-study/:uid",
+		type: 'case_study',
+		path: '/case-studies/:uid'
 	},
+	{
+		type: 'home',
+		path: '/'
+	},
+	{
+		type: 'information',
+		path: '/information'
+	}
 ];
 
 /**

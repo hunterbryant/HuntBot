@@ -1,4 +1,5 @@
 import { createClient } from '$lib/prismicio';
+import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -6,7 +7,9 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	const page = await client.getByUID('case_study', params.uid);
 
-	return {
-		page
-	};
+	if (page) {
+		return { page };
+	}
+
+	error(404, 'Not found');
 };
