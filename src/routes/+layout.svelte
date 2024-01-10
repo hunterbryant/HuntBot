@@ -266,7 +266,11 @@
 <!-- Look into using the View Transition API as it gains browser support -->
 <div bind:this={slotElement}>
 	{#key data.pathname}
-		<div in:fly={{ x: 100, duration: 200, delay: 200 }} out:fly={{ x: -100, duration: 200 }}>
+		<div
+			in:fly={{ x: 100, duration: 200, delay: 200 }}
+			out:fly={{ x: -100, duration: 200 }}
+			class="overflow-x-hidden"
+		>
 			<slot />
 		</div>
 	{/key}
