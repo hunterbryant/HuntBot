@@ -14,6 +14,9 @@ dependencies:
   '@splinetool/runtime':
     specifier: ^1.0.16
     version: 1.0.16
+  embla-carousel:
+    specifier: 8.0.0-rc19
+    version: 8.0.0-rc19
   embla-carousel-svelte:
     specifier: 8.0.0-rc19
     version: 8.0.0-rc19(svelte@4.2.8)

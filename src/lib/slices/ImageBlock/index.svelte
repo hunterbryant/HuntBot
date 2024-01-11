@@ -2,11 +2,12 @@
 	import type { Content } from '@prismicio/client';
 	import { PrismicImage } from '@prismicio/svelte';
 	import emblaCarouselSvelte from 'embla-carousel-svelte';
+	import type { EmblaOptionsType } from 'embla-carousel';
 	import { WheelGesturesPlugin } from 'embla-carousel-wheel-gestures';
 
 	export let slice: Content.ImageBlockSlice;
 
-	let options = { loop: false, align: 'start', skipsSnaps: true };
+	let options: EmblaOptionsType = { loop: false, align: 'start', skipSnaps: true };
 	let plugins = [WheelGesturesPlugin()];
 
 	//Silences runtime svelte unused prop warnings
