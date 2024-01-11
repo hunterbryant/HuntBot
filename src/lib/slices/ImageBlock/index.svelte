@@ -6,7 +6,7 @@
 
 	export let slice: Content.ImageBlockSlice;
 
-	let options = { loop: false };
+	let options = { loop: false, align: 'start', skipSnaps: true };
 	let plugins = [WheelGesturesPlugin()];
 
 	//Silences runtime svelte unused prop warnings
@@ -19,9 +19,9 @@
 	class="col-span-full mb-4 flex flex-col items-start gap-2 sm:col-span-4 sm:col-start-4 sm:mb-8"
 >
 	{#if slice.variation === 'default'}
-		<PrismicImage field={slice.primary.image} class="rounded" />
+		<PrismicImage field={slice.primary.image} class="rounded outline outline-1 outline-black/10" />
 		{#if slice.primary.caption}
-			<caption class="text-balance text-left text-xs uppercase tracking-wider text-stone-500"
+			<caption class="mb-2 text-balance text-left text-xs uppercase tracking-wider text-stone-500"
 				>{slice.primary.caption}</caption
 			>
 		{/if}
@@ -30,14 +30,16 @@
 			<div class="embla__container flex gap-4">
 				{#each slice.items as item}
 					<div
-						class="embla__slide relative flex min-w-0 flex-[0_0_90%] flex-col items-start gap-2 sm:flex-[0_0_auto]"
+						class="embla__slide relative flex min-w-0 max-w-full flex-[0_0_90%] flex-col items-start gap-2 sm:flex-[0_0_auto]"
 					>
 						<PrismicImage
 							field={item.image}
-							class="mr-4 block h-full w-full overflow-hidden rounded object-cover  sm:h-96"
+							class=" mr-4 block h-full w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:h-96"
 						/>
 						<caption
-							class="w-0 min-w-full text-balance text-left text-xs uppercase tracking-wider text-stone-500"
+							class="w-0 min-w-full text-balance text-left text-xs uppercase tracking-wider text-stone-500 {item.caption
+								? 'mb-4'
+								: 'mb-0'}"
 						>
 							{#if item.caption}
 								{item.caption}

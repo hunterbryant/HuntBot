@@ -158,10 +158,10 @@
 				</button>
 			</div>
 			{#if menuActive || !mobileBreakpoint}
-				<div class="pointer-events-auto flex grow flex-col" transition:fly={{ x: -350 }}>
+				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
-						<div class="grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent">
+						<div class="grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent pointer-events-auto">
 							<div
 								in:receive={{ key: 'links' }}
 								out:send={{ key: 'links' }}
