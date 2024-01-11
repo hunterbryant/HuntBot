@@ -35,7 +35,7 @@
 					>
 						<PrismicImage
 							field={item.image}
-							class=" block h-full max-h-56 w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:h-96"
+							class="h-full max-h-56 w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:max-h-96 "
 						/>
 						<caption
 							class="w-0 min-w-full text-balance text-left text-xs uppercase tracking-wider text-stone-500 {item.caption
