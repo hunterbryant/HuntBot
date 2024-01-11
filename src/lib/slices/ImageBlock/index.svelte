@@ -21,7 +21,7 @@
 	{#if slice.variation === 'default'}
 		<PrismicImage field={slice.primary.image} class="rounded" />
 		{#if slice.primary.caption}
-			<caption class="text-xs uppercase tracking-wider text-stone-600"
+			<caption class="text-balance text-left text-xs uppercase tracking-wider text-stone-500"
 				>{slice.primary.caption}</caption
 			>
 		{/if}
