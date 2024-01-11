@@ -6,7 +6,7 @@
 
 	export let slice: Content.ImageBlockSlice;
 
-	let options = { loop: false, align: 'start', skipSnaps: true };
+	let options = { loop: false, align: 'start', skipsSnaps: true };
 	let plugins = [WheelGesturesPlugin()];
 
 	//Silences runtime svelte unused prop warnings
@@ -34,7 +34,7 @@
 					>
 						<PrismicImage
 							field={item.image}
-							class=" mr-4 block h-full w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:h-96"
+							class=" block h-full max-h-56 w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:h-96"
 						/>
 						<caption
 							class="w-0 min-w-full text-balance text-left text-xs uppercase tracking-wider text-stone-500 {item.caption
