@@ -16,7 +16,7 @@
 <section
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
-	class="col-span-full mb-8 flex flex-col items-start gap-2 sm:col-span-4 sm:col-start-4 sm:mb-0 md:mb-32"
+	class="col-span-full mb-4 flex flex-col items-start gap-2 sm:col-span-4 sm:col-start-4 sm:mb-8"
 >
 	{#if slice.variation === 'default'}
 		<PrismicImage field={slice.primary.image} class="rounded" />

@@ -24,10 +24,10 @@
 		class="grid grow auto-rows-min grid-cols-5 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 	>
 		<div
-			class="col-start-1 col-end-6 mb-6 flex flex-col justify-start gap-8 overflow-hidden sm:col-start-4 sm:col-end-7 sm:gap-16 md:col-end-8 md:mb-16 lg:col-end-10"
+			class="col-start-1 col-end-6 mb-6 flex flex-col justify-start gap-8 overflow-hidden sm:col-start-4 sm:col-end-7 sm:gap-16 md:col-end-8 md:mb-12 lg:col-end-10"
 		>
 			<PrismicImage
-				class="aspect-video rounded object-cover sm:h-[calc(50svh-6rem)] sm:rounded-b sm:rounded-t-none"
+				class="aspect-video rounded object-cover sm:h-[24.5rem] sm:rounded-b sm:rounded-t-none"
 				field={data.page.data.hightlight_image}
 			/>
 			<h1
