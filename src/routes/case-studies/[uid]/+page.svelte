@@ -21,7 +21,7 @@
 >
 	<!-- Grid -->
 	<div
-		class="grid grow auto-rows-min grid-cols-5 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
+		class="grid grow auto-rows-min grid-cols-5 gap-x-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 	>
 		<div
 			class="col-start-1 col-end-6 mb-6 flex flex-col justify-start gap-8 overflow-hidden sm:col-start-4 sm:col-end-7 sm:gap-16 md:col-end-8 md:mb-12 lg:col-end-10"
