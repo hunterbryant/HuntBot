@@ -36,7 +36,9 @@
 							field={item.image}
 							class="mr-4 block h-full w-full overflow-hidden rounded object-cover  sm:h-96"
 						/>
-						<caption class="text-xs uppercase tracking-wider text-stone-600">
+						<caption
+							class="w-0 min-w-full text-balance text-left text-xs uppercase tracking-wider text-stone-500"
+						>
 							{#if item.caption}
 								{item.caption}
 							{:else}&nbsp;{/if}
