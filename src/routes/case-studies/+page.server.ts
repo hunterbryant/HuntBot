@@ -7,6 +7,10 @@ export async function load({ fetch, cookies }) {
 	const client = createClient({ fetch, cookies });
 
 	const page = await client.getAllByType<CaseStudyDocument>('case_study', {
+		orderings: {
+			field: 'my.case_study.date',
+			direction: 'desc'
+		},
 		fetchLinks: 'affiliation.title'
 	});
 
