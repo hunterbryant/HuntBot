@@ -61,7 +61,7 @@ export interface CaseStudyDocumentDataResponsibilitiesItem {
 	skill: prismic.SelectField<'UI' | 'UX' | 'Research' | 'Strategy' | 'Data Viz'>;
 }
 
-type CaseStudyDocumentDataSlicesSlice = ImageBlockSlice | TextBlockSlice;
+type CaseStudyDocumentDataSlicesSlice = ContentHighlightSlice | ImageBlockSlice | TextBlockSlice;
 
 /**
  * Content for Case Study documents

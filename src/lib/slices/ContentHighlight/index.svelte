@@ -52,7 +52,7 @@
 </script>
 
 <article
-	class="mb-8 grid grow grid-cols-5 items-stretch gap-2 sm:mb-0 sm:h-[calc(50vh-9rem)] sm:grid-cols-6 sm:gap-4 md:grid-cols-7 lg:grid-cols-9"
+	class="mb-8 grid grow grid-cols-5 items-stretch gap-2 sm:mb-0 sm:h-96 sm:grid-cols-6 sm:gap-4 md:grid-cols-7 lg:grid-cols-9"
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
 >
