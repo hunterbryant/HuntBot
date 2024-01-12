@@ -11,7 +11,7 @@ export interface BotAction {
 }
 
 export enum SupportedRoutes {
-	gathers = 'gathers-app',
+	gathers = 'gathers',
 	karooTwo = 'karoo-2',
 	dashboard = 'hammerhead-dashboard',
 	inSearchOfBirth = 'in-search-of-birch',

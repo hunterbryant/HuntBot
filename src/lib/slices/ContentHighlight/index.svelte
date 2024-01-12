@@ -44,10 +44,10 @@
 	}
 
 	onMount(() => {
-		// if (slice.variation == '3DModel' && slice.primary.model) {
-		// 	const app = new Application(interactiveCanvas);
-		// 	app.load(slice.primary.model);
-		// }
+		if (slice.variation == '3DModel' && slice.primary.model) {
+			const app = new Application(interactiveCanvas);
+			app.load(slice.primary.model);
+		}
 	});
 </script>
 

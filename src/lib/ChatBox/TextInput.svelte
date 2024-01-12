@@ -89,7 +89,7 @@
 					...m,
 					{ type: 'bot', message: `Routing you to page: ${action.arguments.page}` }
 				]);
-				switch (action.arguments.page as unknown as SupportedRoutes) {
+				switch (action.arguments.page as SupportedRoutes) {
 					case SupportedRoutes.gathers:
 						goto(`/case-studies/gathers`);
 						break;
@@ -98,6 +98,8 @@
 						break;
 					case SupportedRoutes.dovetail:
 					case SupportedRoutes.karooTwo:
+						goto(`/case-studies/karoo2`);
+						break;
 					case SupportedRoutes.dashboard:
 					case SupportedRoutes.inSearchOfBirth:
 						break;
