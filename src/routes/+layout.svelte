@@ -89,11 +89,12 @@
 		if (navData.to?.route.id === '/') {
 			// Reset nav state on index
 			navEngaged.set(false);
+			closeMenu();
 		} else if (navData.to?.route.id !== undefined) {
 			// Return to engaged if routing within the site
 			navEngaged.set(true);
+			closeMenu();
 		}
-		closeMenu();
 	});
 
 	afterNavigate(() => {
@@ -141,8 +142,9 @@
 	>
 		<!-- This div covers the first vertical half of the nav bar -->
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
+			<!-- This is the navbar -->
 			<div
-				class="pointer-events-auto z-40 flex justify-between bg-stone-100 pb-4 pt-8 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
+				class="pointer-events-auto z-40 flex justify-between bg-stone-100 pb-4 pt-4 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
 			>
 				<a
 					href={$page.url.pathname === '/' ? null : '/'}
@@ -161,7 +163,9 @@
 				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
-						<div class="grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent pointer-events-auto">
+						<div
+							class="pointer-events-auto grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent"
+						>
 							<div
 								in:receive={{ key: 'links' }}
 								out:send={{ key: 'links' }}

@@ -16,8 +16,8 @@
 		>Linkedin
 		<p>↗</p></a
 	>
-	<a class="inline-flex justify-between" href="https://www.instagram.com/hunter.bryant/"
-		>Instagram
+	<a class="inline-flex justify-between" href="https://github.com/hunterbryant"
+		>Github
 		<p>↗</p></a
 	>
 	<a

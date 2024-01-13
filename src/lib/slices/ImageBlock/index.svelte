@@ -20,9 +20,13 @@
 	class="col-span-full mb-4 flex flex-col items-start gap-2 sm:col-span-4 sm:col-start-4 sm:mb-8"
 >
 	{#if slice.variation === 'default'}
-		<PrismicImage field={slice.primary.image} class="rounded outline outline-1 outline-black/10" />
+		<PrismicImage
+			field={slice.primary.image}
+			class="rounded outline outline-1 outline-black/10 {slice.primary.caption ? 'mb-0' : 'mb-4'}"
+		/>
 		{#if slice.primary.caption}
-			<caption class="mb-2 text-balance text-left text-xs uppercase tracking-wider text-stone-500"
+			<caption
+				class="mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-500"
 				>{slice.primary.caption}</caption
 			>
 		{/if}
@@ -38,7 +42,7 @@
 							class="h-full max-h-56 w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:max-h-96 "
 						/>
 						<caption
-							class="w-0 min-w-full text-balance text-left text-xs uppercase tracking-wider text-stone-500 {item.caption
+							class="w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-500 {item.caption
 								? 'mb-4'
 								: 'mb-0'}"
 						>

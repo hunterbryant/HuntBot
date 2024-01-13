@@ -41,7 +41,7 @@
 		class="grid grow auto-rows-min grid-cols-5 gap-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 	>
 		<div
-			class="col-start-1 col-end-6 mb-16 mt-12 flex flex-col justify-end rounded text-6xl font-bold tracking-tighter text-stone-800 sm:col-start-4 sm:col-end-7 sm:mt-0 sm:h-[24.5rem] sm:text-5xl md:col-end-8 md:text-7xl lg:col-end-10 lg:text-8xl xl:text-9xl"
+			class="col-start-1 col-end-6 mb-4 mt-12 flex flex-col justify-end rounded text-6xl font-bold tracking-tighter text-stone-800 sm:col-start-4 sm:col-end-7 sm:mb-16 sm:mt-0 sm:h-[24.5rem] sm:text-5xl md:col-end-8 md:text-7xl lg:col-end-10 lg:text-8xl xl:text-9xl"
 		>
 			<h2 class="mb-0 sm:-mb-2 md:-mb-4 lg:-mb-5">Case Studies</h2>
 		</div>
