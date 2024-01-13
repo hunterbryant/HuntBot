@@ -32,7 +32,7 @@
 		{/if}
 	{:else if slice.variation === 'carousel'}
 		<div class="embla" use:emblaCarouselSvelte={{ options, plugins }}>
-			<div class="embla__container flex gap-4">
+			<div class="embla__container flex gap-4 {slice.items[0].caption ? 'mb-4' : 'mb-0'}">
 				{#each slice.items as item}
 					<div
 						class="embla__slide relative flex min-w-0 max-w-full flex-[0_0_90%] flex-col items-start gap-2 sm:flex-[0_0_auto]"
@@ -42,9 +42,7 @@
 							class="h-full max-h-56 w-full overflow-hidden rounded object-cover outline outline-1 outline-black/10 sm:max-h-96 "
 						/>
 						<caption
-							class="w-0 min-w-full text-balance text-left text-xs tracking-wide text-stone-500 {item.caption
-								? 'mb-4'
-								: 'mb-0'}"
+							class="w-0 min-w-full text-balance text-left text-xs tracking-wide text-stone-500"
 						>
 							{#if item.caption}
 								{item.caption}
