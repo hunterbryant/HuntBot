@@ -106,7 +106,7 @@
 	<PrismicLink
 		field={slice.primary.project}
 		class="relative col-start-1 col-end-6 row-start-1 h-48
-		 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-4 sm:col-end-7 sm:h-auto md:col-end-8 lg:col-end-10"
+		 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:z-50 sm:col-start-4 sm:col-end-7 sm:h-auto md:col-end-8 lg:col-end-10"
 	>
 		<div class="absolute left-4 top-4 z-10 hidden sm:block">
 			<h3 class="mb">{project.title}</h3>
