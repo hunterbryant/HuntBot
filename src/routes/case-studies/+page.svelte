@@ -125,7 +125,7 @@
 				>
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
-						class="z-0 m-auto block h-full w-full transform-gpu object-cover transition-transform duration-500 hover:scale-110"
+						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110"
 					/>
 				</PrismicLink>
 			</article>
