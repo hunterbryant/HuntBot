@@ -144,7 +144,7 @@
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
 			<!-- This is the navbar -->
 			<div
-				class="pointer-events-auto z-40 flex justify-between bg-stone-100 pb-4 pt-4 *:flex *:h-11 *:items-center sm:z-30 sm:pb-8 sm:pt-10"
+				class="pointer-events-auto z-40 -mx-2 flex justify-between bg-stone-100 px-2 pb-4 pt-4 *:flex *:h-11 *:items-center sm:z-30 sm:-ml-[100lvw] sm:-mr-4 sm:pb-8 sm:pl-[100lvw] sm:pr-4 sm:pt-10"
 			>
 				<a
 					href={$page.url.pathname === '/' ? null : '/'}
@@ -164,7 +164,7 @@
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
 						<div
-							class="pointer-events-auto grid grow grid-cols-1 bg-stone-100 sm:grow-0 sm:bg-transparent"
+							class="pointer-events-auto -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent"
 						>
 							<div
 								in:receive={{ key: 'links' }}
