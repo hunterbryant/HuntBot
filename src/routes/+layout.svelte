@@ -144,7 +144,7 @@
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
 			<!-- This is the navbar -->
 			<div
-				class="pointer-events-auto z-40 -mx-2 flex justify-between bg-stone-100 px-2 pb-4 pt-4 *:flex *:h-11 *:items-center sm:z-30 sm:-ml-[100lvw] sm:-mr-4 sm:pb-8 sm:pl-[100lvw] sm:pr-4 sm:pt-10"
+				class="pointer-events-auto z-40 -mx-2 flex justify-between bg-stone-100 px-2 pb-4 pt-4 *:flex *:h-11 *:items-center sm:z-30 sm:-ml-4 sm:-mr-4 sm:pb-8 sm:pl-4 sm:pr-4 sm:pt-10"
 			>
 				<a
 					href={$page.url.pathname === '/' ? null : '/'}
