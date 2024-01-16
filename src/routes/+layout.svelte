@@ -164,7 +164,7 @@
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
 						<div
-							class="pointer-events-auto -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent"
+							class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent"
 						>
 							<div
 								in:receive={{ key: 'links' }}
