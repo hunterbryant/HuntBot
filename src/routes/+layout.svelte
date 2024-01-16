@@ -174,7 +174,9 @@
 								<Links />
 							</div>
 						</div>
-						<div class="z-40 flex justify-end bg-stone-100 pb-4 pt-4 sm:z-30 sm:hidden sm:py-16">
+						<div
+							class="pointer-events-auto z-40 flex justify-end bg-stone-100 pb-4 pt-4 sm:z-30 sm:hidden sm:py-16"
+						>
 							<button
 								class="h-11 rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
 								on:click={menuActive ? closeMenu : openMenu}

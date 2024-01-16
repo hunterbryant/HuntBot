@@ -8,7 +8,7 @@ import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threa
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 const assistantId = env.OPENAI_ASISTANT_ID;
 
-export const POST: RequestHandler = async({ request }) => {
+export const POST: RequestHandler = async ({ request }) => {
 	try {
 		// Add the user message to the chat thread
 		const { message, sessionId } = await request.json();
@@ -47,7 +47,7 @@ export const POST: RequestHandler = async({ request }) => {
 		console.error('Error handling OpenAI API request: ', error);
 		return json({ error: 'An error occurred while processing your request' }, { status: 500 });
 	}
-}
+};
 
 async function waitForRunCompletion(
 	threadId: string,
@@ -93,7 +93,7 @@ function performAction(toolCall: RequiredActionFunctionToolCall, actionsPerforme
 		return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'true' }) };
 	} else {
 		// Handle errors
-		console.log('Received unexpected tool call');
+		console.log('Received unexpected tool call: ', toolCall.function.name);
 
 		// Respond to OpenAI with function status
 		return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'false' }) };
