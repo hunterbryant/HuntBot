@@ -2,7 +2,7 @@ import { createClient } from '$lib/prismicio';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const client = createClient();
 
 	const page = await client.getByUID('case_study', params.uid);
@@ -10,7 +10,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (page.data.protected) {
 		console.log('Password required');
 		if (!locals.user) {
-			throw redirect(303, '/login');
+			const redirectTo = url.pathname + url.search;
+			throw redirect(303, `/login?redirectTo=${redirectTo}`);
 		}
 	}
 

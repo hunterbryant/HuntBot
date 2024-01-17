@@ -1,4 +1,5 @@
 import { createClient } from '$lib/prismicio';
+import type { Actions } from './$types';
 
 export async function load({ fetch, cookies }) {
 	const client = createClient({ fetch, cookies });
@@ -60,6 +61,10 @@ export async function load({ fetch, cookies }) {
 	};
 }
 
-// export async function entries() {
-// 	return [{}];
-// }
+export const actions = {
+	default: async () => {
+		console.log('Logging out');
+	}
+} satisfies Actions;
+
+export const prerender = false;

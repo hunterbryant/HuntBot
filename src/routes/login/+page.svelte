@@ -36,7 +36,6 @@
 		</div>
 		<form
 			method="POST"
-			action="?/login"
 			class="col-start-1 col-end-6 flex flex-col gap-4 sm:col-start-4 sm:col-end-7"
 		>
 			<p>To access protected pages, <br /> please enter the password:</p>

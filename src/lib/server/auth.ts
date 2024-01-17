@@ -18,14 +18,6 @@ export const authenticateUser = (event: RequestEvent) => {
 		};
 		return user;
 	}
-	if (userToken === 'adminusertoken') {
-		const user = {
-			id: 2,
-			email: 'admin@example.com',
-			role: 'ADMIN'
-		};
-		return user;
-	}
 
 	return null;
 };

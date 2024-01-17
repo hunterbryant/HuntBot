@@ -1,17 +1,25 @@
+import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
 
 export const actions = {
-	login: async ({ request }) => {
+	default: async ({ request, url }) => {
 		// TODO log the user in
+		// event.locals.user = authenticateUser(event);
+		const redirectTo = url.searchParams.get('redirectTo');
+
 		const data = await request.formData();
 		const password = data.get('password');
-
 		console.log('User typed in password: ', password);
 
-		return { success: true };
-	},
-	logout: async ({ request }) => {
-		console.log('Logging out', request.referrer);
+		if (password !== 'alllowercase') {
+			return fail(401, { incorrect: true });
+		} else {
+			if (redirectTo) {
+				// Forces redirect from our domain, not external
+				throw redirect(302, `/${redirectTo.slice(1)}`);
+			}
+			throw redirect(302, '/');
+		}
 	}
 } satisfies Actions;
 
