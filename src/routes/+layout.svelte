@@ -135,6 +135,9 @@
 <div
 	class="pointer-events-none fixed inset-x-0 z-40 mx-auto grid h-full w-full grid-cols-5 gap-2 px-2 sm:max-w-screen-xl sm:grid-cols-6 sm:gap-4 sm:bg-transparent sm:px-8 md:grid-cols-7 lg:grid-cols-9 lg:px-16"
 >
+	<!-- Temp logout button for pwd testing -->
+	<button class="pointer-events-auto absolute right-4 top-4 z-50">Logout</button>
+
 	<div
 		class="col-span-5 flex h-dvh w-full flex-col justify-stretch {$delayedNavEngaged
 			? 'gap-4'
@@ -163,9 +166,7 @@
 				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
-						<div
-							class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent"
-						>
+						<div class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent">
 							<div
 								in:receive={{ key: 'links' }}
 								out:send={{ key: 'links' }}
