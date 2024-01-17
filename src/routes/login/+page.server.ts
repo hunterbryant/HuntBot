@@ -1,7 +1,7 @@
 import type { Actions } from './$types';
 
 export const actions = {
-	default: async ({ request }) => {
+	login: async ({ request }) => {
 		// TODO log the user in
 		const data = await request.formData();
 		const password = data.get('password');
@@ -9,6 +9,9 @@ export const actions = {
 		console.log('User typed in password: ', password);
 
 		return { success: true };
+	},
+	logout: async ({ request }) => {
+		console.log('Logging out', request.referrer);
 	}
 } satisfies Actions;
 
