@@ -8,7 +8,6 @@ export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const page = await client.getByUID('case_study', params.uid);
 
 	if (page.data.protected) {
-		console.log('Password required');
 		if (!locals.user) {
 			const redirectTo = url.pathname + url.search;
 			throw redirect(303, `/login?redirectTo=${redirectTo}`);

@@ -1,5 +1,9 @@
 <script lang="ts">
 	import lockClosed from '$lib/assets/lock-closed.svg';
+	import type { ActionData } from './$types';
+	import { enhance } from '$app/forms';
+
+	export let form: ActionData;
 </script>
 
 <svelte:head>
@@ -36,20 +40,29 @@
 		</div>
 		<form
 			method="POST"
+			use:enhance
 			class="col-start-1 col-end-6 flex flex-col gap-4 sm:col-start-4 sm:col-end-7"
 		>
 			<p>To access protected pages, <br /> please enter the password:</p>
+
 			<span class="flex h-12 gap-4">
 				<input
 					name="password"
 					type="password"
-					class="min-w-0 flex-1 rounded border border-stone-300 px-4 pt-0.5"
+					class="min-w-0 flex-1 rounded border px-4 pt-0.5 {form?.incorrect
+						? 'border-red-500'
+						: 'border-stone-300'}"
 				/>
 				<button
 					class="rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300"
 					>Submit</button
 				>
 			</span>
+			{#if form?.incorrect}
+				<p class="-mt-2 text-xs font-medium uppercase tracking-wider text-red-500">
+					Invalid password
+				</p>
+			{/if}
 		</form>
 	</div>
 </div>

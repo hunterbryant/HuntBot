@@ -45,10 +45,6 @@
 <div
 	class="inset-x-0 z-30 mx-auto flex w-full max-w-screen-xl flex-col gap-2 px-2 pb-16 pt-[4.75rem] sm:gap-4 sm:px-8 sm:pb-24 sm:pt-16 lg:px-16"
 >
-	<!-- Temp logout button for pwd testing -->
-	<form class="pointer-events-auto absolute right-4 top-4 z-50" method="POST">
-		<button>Logout</button>
-	</form>
 	<IntersectionObserver element={$mobile ? mobileElement : element} bind:intersecting={onScreen}>
 		<!-- Hidden absolute div for mobile scroll detection -->
 		<div class="absolute -top-4 h-4" bind:this={mobileElement}></div>
