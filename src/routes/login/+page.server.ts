@@ -1,5 +1,18 @@
 import { fail, redirect } from '@sveltejs/kit';
-import type { Actions } from './$types';
+import type { Actions, PageServerLoad } from './$types';
+
+export const load: PageServerLoad = ({ locals, url }) => {
+	// If already logged in continue to destination
+	if (locals.user) {
+		const redirectTo = url.searchParams.get('redirectTo');
+
+		console.log(redirectTo);
+		if (redirectTo) {
+			throw redirect(303, `/${redirectTo.slice(1)}`);
+		}
+		throw redirect(303, '/');
+	}
+};
 
 export const actions = {
 	default: async ({ request, url, cookies }) => {
