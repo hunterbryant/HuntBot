@@ -18,8 +18,14 @@ export const actions = {
 	default: async ({ request, url, cookies }) => {
 		// TODO log the user in
 		cookies.set('auth', 'userToken', {
-			path: '/'
+			path: '/',
+			httpOnly: true,
+			sameSite: 'strict',
+			secure: process.env.NODE_ENV === 'production',
+			maxAge: 60 * 60 * 24 // 1 day
 		});
+
+		console.log(process.env.NODE_ENV === 'production');
 
 		const redirectTo = url.searchParams.get('redirectTo');
 		const data = await request.formData();
