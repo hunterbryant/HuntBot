@@ -2,7 +2,7 @@
 import defaultTheme from 'tailwindcss/defaultTheme';
 
 export default {
-	content: ['./src/**/*.{html,js,svelte,ts}'],
+	content: ['./src/**/*.{html,js,svelte,ts,svg}'],
 	theme: {
 		fontFamily: {
 			sans: ['Favorit', ...defaultTheme.fontFamily.sans],

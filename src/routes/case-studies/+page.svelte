@@ -3,6 +3,7 @@
 	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
 	import { isFilled, type DateField, documentToLinkField } from '@prismicio/client';
 	import type { AffiliationDocument, CaseStudyDocument } from '../../prismicio-types.js';
+	import LockClosed from '$lib/assets/lock-closed.svelte';
 
 	export let data;
 
@@ -61,7 +62,11 @@
 					<h3
 						class=" decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline"
 					>
-						{caseStudy.data.title}
+						{#if caseStudy.data.protected}
+							Protected
+						{:else}
+							{caseStudy.data.title}
+						{/if}
 					</h3>
 				</PrismicLink>
 
@@ -125,8 +130,18 @@
 				>
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
-						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110"
+						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 {caseStudy
+							.data.protected
+							? 'blur'
+							: 'blur-none'}"
 					/>
+					{#if caseStudy.data.protected}
+						<div
+							class="align absolute left-1 top-1 flex items-start gap-0.5 rounded bg-stone-800 px-1.5 pb-0.5 pt-1 text-xs font-normal uppercase tracking-wider text-stone-100 [&_svg]:mt-px [&_svg]:inline [&_svg]:h-3 [&_svg]:w-3"
+						>
+							Protected <LockClosed />
+						</div>
+					{/if}
 				</PrismicLink>
 			</article>
 		{/each}

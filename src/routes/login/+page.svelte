@@ -2,6 +2,7 @@
 	import lockClosed from '$lib/assets/lock-closed.svg';
 	import type { ActionData } from './$types';
 	import { enhance } from '$app/forms';
+	import LockClosed from '$lib/assets/lock-closed.svelte';
 
 	export let form: ActionData;
 </script>
@@ -29,13 +30,10 @@
 			class="col-start-1 col-end-6 mb-8 mt-12 flex flex-col justify-end rounded sm:col-start-4 sm:col-end-7 sm:mb-16 sm:mt-0 sm:h-[25.5rem] md:col-end-8 lg:col-end-10"
 		>
 			<h2
-				class="text-balance text-4xl font-bold tracking-tighter text-stone-800 sm:text-5xl md:text-6xl lg:text-7xl"
+				class="flex items-center gap-2 text-balance text-4xl font-bold tracking-tighter text-stone-800 sm:text-5xl md:gap-2 md:text-6xl lg:gap-2 lg:text-7xl [&_svg]:mb-2 [&_svg]:size-8 sm:[&_svg]:mb-2 sm:[&_svg]:size-10 md:[&_svg]:mb-2 md:[&_svg]:size-12 lg:[&_svg]:mb-3 lg:[&_svg]:size-16"
 			>
-				Protected <img
-					class="mb-2 inline h-7 sm:mb-3 sm:h-10 md:mb-3 md:h-12 lg:mb-4 lg:h-14"
-					src={lockClosed}
-					alt=""
-				/>
+				Protected
+				<LockClosed />
 			</h2>
 		</div>
 		<form
