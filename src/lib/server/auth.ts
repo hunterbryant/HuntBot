@@ -8,13 +8,14 @@ export const authenticateUser = (cookies: Cookies) => {
 
 	// if the user token is not valid, return null
 	// this is where you would check the user token against your database
-	try {
-		if (userToken) {
+	if (userToken) {
+		try {
 			const claims = jwt.verify(userToken, env.JWT_KEY as string);
 			return claims as jwt.JwtPayload;
+		} catch (error) {
+			return null;
 		}
-	} catch (error) {
-		console.log(error);
+	} else {
 		return null;
 	}
 };

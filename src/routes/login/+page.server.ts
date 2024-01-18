@@ -44,9 +44,9 @@ export const actions = {
 			if (redirectTo) {
 				// Forces redirect from our domain, not external
 				throw redirect(302, `/${redirectTo.slice(1)}`);
+			} else {
+				throw redirect(302, '/');
 			}
-
-			throw redirect(302, '/');
 		}
 	}
 } satisfies Actions;
