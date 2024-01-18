@@ -19,6 +19,15 @@
 					"placeholder": ""
 				}
 			},
+			"protected": {
+				"type": "Boolean",
+				"config": {
+					"label": "protected",
+					"default_value": false,
+					"placeholder_true": "true",
+					"placeholder_false": "false"
+				}
+			},
 			"hightlight_image": {
 				"type": "Image",
 				"config": {

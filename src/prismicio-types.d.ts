@@ -79,6 +79,18 @@ interface CaseStudyDocumentData {
 	title: prismic.KeyTextField;
 
 	/**
+	 * protected field in *Case Study*
+	 *
+	 * - **Field Type**: Boolean
+	 * - **Placeholder**: *None*
+	 * - **Default Value**: false
+	 * - **API ID Path**: case_study.protected
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#boolean
+	 */
+	protected: prismic.BooleanField;
+
+	/**
 	 * Hightlight Image field in *Case Study*
 	 *
 	 * - **Field Type**: Image

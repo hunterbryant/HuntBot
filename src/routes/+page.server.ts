@@ -60,6 +60,4 @@ export async function load({ fetch, cookies }) {
 	};
 }
 
-// export async function entries() {
-// 	return [{}];
-// }
+export const prerender = true;
