@@ -4,7 +4,6 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals, url }) => {
 	const client = createClient();
-
 	const page = await client.getByUID('case_study', params.uid);
 
 	if (page.data.protected && !locals.user) {

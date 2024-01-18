@@ -1,4 +1,7 @@
+import { env } from '$env/dynamic/private';
 import { fail, redirect } from '@sveltejs/kit';
+import jwt from 'jsonwebtoken';
+import type { User } from '../../app';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
@@ -16,28 +19,33 @@ export const load: PageServerLoad = ({ locals, url }) => {
 
 export const actions = {
 	default: async ({ request, url, cookies }) => {
-		// TODO log the user in
-		cookies.set('auth', 'userToken', {
-			path: '/',
-			httpOnly: true,
-			sameSite: 'strict',
-			secure: process.env.NODE_ENV === 'production',
-			maxAge: 60 * 60 * 24 // 1 day
-		});
-
-		console.log(process.env.NODE_ENV === 'production');
-
-		const redirectTo = url.searchParams.get('redirectTo');
 		const data = await request.formData();
 		const password = data.get('password');
 
 		if (password !== 'alllowercase') {
 			return fail(401, { incorrect: true });
 		} else {
+			// Log the user in and reveice JWT
+			const user: User = {
+				authenticated: true
+			};
+			const authToken = jwt.sign(user, env.JWT_KEY as string, { expiresIn: '12h' });
+
+			cookies.set('auth', authToken, {
+				path: '/',
+				httpOnly: true,
+				sameSite: 'strict',
+				secure: process.env.NODE_ENV === 'production',
+				maxAge: 60 * 60 * 24 // 1 day
+			});
+
+			const redirectTo = url.searchParams.get('redirectTo');
+
 			if (redirectTo) {
 				// Forces redirect from our domain, not external
 				throw redirect(302, `/${redirectTo.slice(1)}`);
 			}
+
 			throw redirect(302, '/');
 		}
 	}

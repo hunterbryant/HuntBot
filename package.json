@@ -43,9 +43,12 @@
 		"@prismicio/client": "^7.3.1",
 		"@prismicio/svelte": "^1.0.3",
 		"@splinetool/runtime": "^1.0.26",
+		"@types/jsonwebtoken": "^9.0.5",
 		"embla-carousel": "8.0.0-rc19",
 		"embla-carousel-svelte": "8.0.0-rc19",
 		"embla-carousel-wheel-gestures": "8.0.0-rc05",
-		"openai": "^4.24.6"
+		"jsonwebtoken": "^9.0.2",
+		"openai": "^4.24.6",
+		"save": "^2.9.0"
 	}
 }

@@ -8,11 +8,11 @@ declare global {
 	namespace App {
 		// interface Error {}
 		interface Locals {
-			user: User | null;
+			user: jwt.JwtPayload | null;
 		}
 		// interface PageData {}
 		// interface Platform {}
 	}
 }
 
-export {};
+export { User };
