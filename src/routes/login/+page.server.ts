@@ -29,14 +29,14 @@ export const actions = {
 			const user: User = {
 				authenticated: true
 			};
-			const authToken = jwt.sign(user, env.JWT_KEY as string, { expiresIn: '12h' });
+			const authToken = jwt.sign(user, env.JWT_KEY as string, { expiresIn: '1h' });
 
 			cookies.set('auth', authToken, {
 				path: '/',
 				httpOnly: true,
 				sameSite: 'strict',
 				secure: process.env.NODE_ENV === 'production',
-				maxAge: 60 * 60 * 24 // 1 day
+				maxAge: 60 * 60 // 1 hour
 			});
 
 			const redirectTo = url.searchParams.get('redirectTo');
