@@ -128,19 +128,21 @@
 					class="relative col-start-1 col-end-6 row-start-1
 		 h-32 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-6 sm:col-end-7 md:col-end-8 lg:col-end-10"
 				>
-					<PrismicImage
-						field={caseStudy.data.hightlight_image}
-						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 {caseStudy
-							.data.protected
-							? 'blur'
-							: 'blur-none'}"
-					/>
 					{#if caseStudy.data.protected}
+						<PrismicImage
+							field={caseStudy.data.protected_image}
+							class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 "
+						/>
 						<div
 							class="align absolute left-1 top-1 flex items-start gap-0.5 rounded bg-stone-800 px-1.5 pb-0.5 pt-1 text-xs font-normal uppercase tracking-wider text-stone-100 [&_svg]:mt-px [&_svg]:inline [&_svg]:h-3 [&_svg]:w-3"
 						>
 							Protected <LockClosed />
 						</div>
+					{:else}
+						<PrismicImage
+							field={caseStudy.data.hightlight_image}
+							class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 "
+						/>
 					{/if}
 				</PrismicLink>
 			</article>

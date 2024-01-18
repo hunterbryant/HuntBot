@@ -67,6 +67,14 @@
 					}
 				}
 			},
+			"protected_image": {
+				"type": "Image",
+				"config": {
+					"label": "protected_image",
+					"constraint": {},
+					"thumbnails": []
+				}
+			},
 			"slices": {
 				"type": "Slices",
 				"fieldset": "Slice Zone",
