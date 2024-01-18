@@ -135,17 +135,6 @@ interface CaseStudyDocumentData {
 	responsibilities: prismic.GroupField<Simplify<CaseStudyDocumentDataResponsibilitiesItem>>;
 
 	/**
-	 * protected_image field in *Case Study*
-	 *
-	 * - **Field Type**: Image
-	 * - **Placeholder**: *None*
-	 * - **API ID Path**: case_study.protected_image
-	 * - **Tab**: Main
-	 * - **Documentation**: https://prismic.io/docs/field#image
-	 */
-	protected_image: prismic.ImageField<never>;
-
-	/**
 	 * Slice Zone field in *Case Study*
 	 *
 	 * - **Field Type**: Slice Zone
