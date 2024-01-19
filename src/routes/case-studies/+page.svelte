@@ -22,6 +22,8 @@
 			return caseStudy.data.affiliation;
 		}
 	}
+
+	console.log(data.page[1].data);
 </script>
 
 <svelte:head>
@@ -62,11 +64,7 @@
 					<h3
 						class=" decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline"
 					>
-						{#if caseStudy.data.protected}
-							Protected
-						{:else}
-							{caseStudy.data.title}
-						{/if}
+						{caseStudy.data.title}
 					</h3>
 				</PrismicLink>
 
@@ -76,11 +74,7 @@
 				>
 					<div class="flex flex-row items-baseline justify-between gap-4 sm:hidden">
 						<h3 class="mb text-balance">
-							{#if caseStudy.data.protected}
-								Protected
-							{:else}
-								{caseStudy.data.title}
-							{/if}
+							{caseStudy.data.title}
 						</h3>
 						<p class=" text-xs tracking-wider text-stone-900/50">
 							{formatDate(caseStudy.data.date)}
@@ -136,7 +130,7 @@
 				>
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
-						imgixParams={caseStudy.data.protected ? { blur: 500 } : {}}
+						imgixParams={caseStudy.data.protected ? { blur: 1000 } : {}}
 						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 "
 					/>
 					{#if caseStudy.data.protected}

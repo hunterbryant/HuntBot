@@ -3,7 +3,7 @@ import type { CaseStudyDocument } from '../../prismicio-types';
 
 export const prerender = true;
 
-export async function load({ fetch, cookies }) {
+export async function load({ fetch, cookies, locals }) {
 	const client = createClient({ fetch, cookies });
 
 	const page = await client.getAllByType<CaseStudyDocument>('case_study', {
@@ -14,11 +14,17 @@ export async function load({ fetch, cookies }) {
 		fetchLinks: 'affiliation.title'
 	});
 
+	// Scrub sensitive data when unauthed
+	page.forEach((caseStudy) => {
+		if (!locals.user && caseStudy.data.protected) {
+			caseStudy.data.title = 'Protected';
+			caseStudy.data.meta_title = 'Protected';
+			caseStudy.data.slices = [];
+			caseStudy.data.meta_description = 'Protected, enter password to view';
+		}
+	});
+
 	return {
 		page
 	};
 }
-
-// export async function entries() {
-// 	return [{}];
-// }
