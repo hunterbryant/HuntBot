@@ -22,8 +22,6 @@
 			return caseStudy.data.affiliation;
 		}
 	}
-
-	console.log(data.page[1].data);
 </script>
 
 <svelte:head>
@@ -130,10 +128,10 @@
 				>
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
-						imgixParams={caseStudy.data.protected ? { blur: 1000 } : {}}
+						imgixParams={caseStudy.data.title === 'Protected' ? { blur: 1000 } : {}}
 						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 "
 					/>
-					{#if caseStudy.data.protected}
+					{#if caseStudy.data.title === 'Protected'}
 						<div
 							class="align absolute left-1 top-1 flex items-start gap-0.5 rounded bg-stone-800 px-1.5 pb-0.5 pt-1 text-xs font-normal uppercase tracking-wider text-stone-100 [&_svg]:mt-px [&_svg]:inline [&_svg]:h-3 [&_svg]:w-3"
 						>
