@@ -22,7 +22,7 @@ export const actions = {
 		const data = await request.formData();
 		const password = data.get('password');
 
-		if (password !== 'alllowercase') {
+		if (password !== env.AUTH_PASSWORD) {
 			return fail(401, { incorrect: true });
 		} else {
 			// Log the user in and reveice JWT
