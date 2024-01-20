@@ -1,5 +1,4 @@
 <script lang="ts">
-	import lockClosed from '$lib/assets/lock-closed.svg';
 	import type { ActionData } from './$types';
 	import { enhance } from '$app/forms';
 	import LockClosed from '$lib/assets/lock-closed.svelte';

@@ -9,10 +9,10 @@ export const load: PageServerLoad = ({ locals, url }) => {
 	if (locals.user) {
 		const redirectTo = url.searchParams.get('redirectTo');
 
-		console.log(redirectTo);
 		if (redirectTo) {
 			throw redirect(303, `/${redirectTo.slice(1)}`);
 		}
+
 		throw redirect(303, '/');
 	}
 };
@@ -29,8 +29,8 @@ export const actions = {
 			const user: User = {
 				authenticated: true
 			};
-			const authToken = jwt.sign(user, env.JWT_KEY as string, { expiresIn: '1h' });
 
+			const authToken = jwt.sign(user, env.JWT_KEY as string, { expiresIn: '1h' });
 			cookies.set('auth', authToken, {
 				path: '/',
 				httpOnly: true,
