@@ -3,6 +3,7 @@
 	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
 	import { isFilled, type DateField, documentToLinkField } from '@prismicio/client';
 	import type { AffiliationDocument, CaseStudyDocument } from '../../prismicio-types.js';
+	import LockClosed from '$lib/assets/lock-closed.svelte';
 
 	export let data;
 
@@ -70,7 +71,9 @@
 					class="col-span-full flex flex-col justify-end gap-2 divide-y divide-stone-200 sm:col-span-3 sm:col-start-3 sm:divide-y-0"
 				>
 					<div class="flex flex-row items-baseline justify-between gap-4 sm:hidden">
-						<h3 class="mb text-balance">{caseStudy.data.title}</h3>
+						<h3 class="mb text-balance">
+							{caseStudy.data.title}
+						</h3>
 						<p class=" text-xs tracking-wider text-stone-900/50">
 							{formatDate(caseStudy.data.date)}
 						</p>
@@ -125,8 +128,16 @@
 				>
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
-						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110"
+						imgixParams={caseStudy.data.title === 'Protected' ? { blur: 1000 } : {}}
+						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 "
 					/>
+					{#if caseStudy.data.title === 'Protected'}
+						<div
+							class="align absolute left-1 top-1 flex items-start gap-0.5 rounded bg-stone-800 px-1.5 pb-0.5 pt-1 text-xs font-normal uppercase tracking-wider text-stone-100 [&_svg]:mt-px [&_svg]:inline [&_svg]:h-3 [&_svg]:w-3"
+						>
+							Protected <LockClosed />
+						</div>
+					{/if}
 				</PrismicLink>
 			</article>
 		{/each}
