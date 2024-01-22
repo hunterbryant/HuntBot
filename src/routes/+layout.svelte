@@ -160,13 +160,13 @@
 				</button>
 			</div>
 			{#if menuActive || !mobileBreakpoint}
-				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
+				<div class=" flex grow flex-col" transition:fly|global={{ x: -350 }}>
 					{#if $delayedNavEngaged || mobileBreakpoint}
 						<!-- This is the toggleable section in mobile breakpoints -->
 						<div class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent">
 							<div
-								in:receive={{ key: 'links' }}
-								out:send={{ key: 'links' }}
+								in:receive|global={{ key: 'links' }}
+								out:send|global={{ key: 'links' }}
 								class="mx-auto flex w-full max-w-80 flex-col justify-between pt-4 sm:max-w-none sm:pt-0"
 							>
 								<Links />
@@ -191,13 +191,13 @@
 			class="flex {$delayedNavEngaged
 				? 'min-h-10'
 				: 'min-h-0'} pointer-events-none flex-initial flex-col justify-between sm:flex-1"
-			transition:slide
+			transition:slide|global
 		>
 			{#if !$delayedNavEngaged}
 				<div
 					class="pointer-events-auto col-span-1 col-start-1 row-span-1 row-start-1 mb-2 flex h-12 w-full justify-between gap-4 sm:mb-0"
-					in:receive={{ key: 'huntbot' }}
-					out:send={{ key: 'huntbot' }}
+					in:receive|global={{ key: 'huntbot' }}
+					out:send|global={{ key: 'huntbot' }}
 					on:introstart={() => {
 						minimized = true;
 					}}
@@ -211,8 +211,8 @@
 
 				<div class="hidden grow grid-cols-1 sm:grid sm:grow-0">
 					<div
-						in:receive={{ key: 'links' }}
-						out:send={{ key: 'links' }}
+						in:receive|global={{ key: 'links' }}
+						out:send|global={{ key: 'links' }}
 						class="pointer-events-auto mx-auto -mb-8 flex w-full max-w-80 flex-col justify-between pt-16 sm:max-w-none sm:pt-0"
 					>
 						<Links />
@@ -220,8 +220,8 @@
 				</div>
 			{:else if !mobileBreakpoint}
 				<div
-					in:receive={{ key: 'huntbot' }}
-					out:send={{ key: 'huntbot' }}
+					in:receive|global={{ key: 'huntbot' }}
+					out:send|global={{ key: 'huntbot' }}
 					on:introstart={() => {
 						minimized = true;
 					}}
@@ -246,8 +246,8 @@
 <!-- Fixed chatbot div in mobile breakpoints -->
 {#if mobileBreakpoint && $delayedNavEngaged}
 	<div
-		in:receive={{ key: 'huntbot' }}
-		out:send={{ key: 'huntbot' }}
+		in:receive|global={{ key: 'huntbot' }}
+		out:send|global={{ key: 'huntbot' }}
 		on:introstart={() => {
 			minimized = true;
 		}}
@@ -271,8 +271,8 @@
 <div bind:this={slotElement}>
 	{#key data.pathname}
 		<div
-			in:fly={{ x: 100, duration: 200, delay: 200 }}
-			out:fly={{ x: -100, duration: 200 }}
+			in:fly|global={{ x: 100, duration: 200, delay: 200 }}
+			out:fly|global={{ x: -100, duration: 200 }}
 			class="overflow-x-hidden"
 		>
 			<slot />

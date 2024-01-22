@@ -60,7 +60,7 @@
 			class="relative overflow-scroll"
 			bind:this={scrollElement}
 			on:scroll={checkScrolledDown}
-			transition:slide={{ duration: 300, easing: cubicOut }}
+			transition:slide|global={{ duration: 300, easing: cubicOut }}
 			on:introend={() => {
 				scrollToBottom();
 			}}
@@ -68,7 +68,7 @@
 			<!-- This is the scroll to bottom button -->
 			{#if isScrolling && !scrolledToBottom}
 				<div
-					transition:fade
+					transition:fade|global
 					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white"
 				>
 					<button
@@ -85,7 +85,7 @@
 			<div class="first:pt-4 last:pb-6">
 				{#each $messages as message}
 					<div
-						in:slide={{ duration: 400 }}
+						in:slide|global={{ duration: 400 }}
 						on:introend={() => {
 							scrollToBottom();
 						}}

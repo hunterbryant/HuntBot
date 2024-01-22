@@ -14,7 +14,7 @@
 </script>
 
 <div
-	in:slide
+	in:slide|global
 	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1"
 >
 	<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
@@ -39,7 +39,7 @@
 	{:else}
 		<p
 			class="mr-6 mt-3 grow whitespace-pre-line font-normal text-stone-600"
-			in:slide={{ duration: 400 }}
+			in:slide|global={{ duration: 400 }}
 			on:introend={() => {
 				scrollToBottom();
 			}}
