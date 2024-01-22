@@ -10,10 +10,10 @@ export const load: PageServerLoad = ({ locals, url }) => {
 		const redirectTo = url.searchParams.get('redirectTo');
 
 		if (redirectTo) {
-			throw redirect(303, `/${redirectTo.slice(1)}`);
+			redirect(303, `/${redirectTo.slice(1)}`);
 		}
 
-		throw redirect(303, '/');
+		redirect(303, '/');
 	}
 };
 
@@ -43,9 +43,9 @@ export const actions = {
 
 			if (redirectTo) {
 				// Forces redirect from our domain, not external
-				throw redirect(302, `/${redirectTo.slice(1)}`);
+				redirect(302, `/${redirectTo.slice(1)}`);
 			} else {
-				throw redirect(302, '/');
+				redirect(302, '/');
 			}
 		}
 	}
