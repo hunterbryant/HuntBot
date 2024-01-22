@@ -49,7 +49,6 @@
 		"embla-carousel-svelte": "8.0.0-rc19",
 		"embla-carousel-wheel-gestures": "8.0.0-rc05",
 		"jsonwebtoken": "^9.0.2",
-		"openai": "^4.24.6",
-		"save": "^2.9.0"
+		"openai": "^4.24.6"
 	}
 }
