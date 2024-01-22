@@ -148,7 +148,9 @@
 			>
 				<a
 					href={$page.url.pathname === '/' ? null : '/'}
-					class="px-0 transition-all hover:rounded hover:bg-stone-200 hover:px-2"
+					class="rounded px-0 transition-all {$page.url.pathname === '/'
+						? 'hover:bg-none hover:px-0'
+						: 'hover:bg-stone-200 hover:px-2'}"
 					data-sveltekit-noscroll
 					><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a
 				>
