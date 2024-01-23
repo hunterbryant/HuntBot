@@ -1,12 +1,7 @@
 <script lang="ts">
-	import { isFilled, type Content } from '@prismicio/client';
-	import type {
-		AffiliationDocument,
-		AffiliationDocumentData,
-		ExperienceSlice,
-		ExperienceSliceDefaultItem
-	} from '../../../prismicio-types';
-	import { PrismicImage, PrismicRichText } from '@prismicio/svelte';
+	import { isFilled, type Content, LinkType, asLink } from '@prismicio/client';
+	import type { AffiliationDocument, ExperienceSliceDefaultItem } from '../../../prismicio-types';
+	import { PrismicImage, PrismicLink, PrismicRichText } from '@prismicio/svelte';
 
 	export let slice: Content.ExperienceSlice;
 
@@ -20,7 +15,11 @@
 				experience.affiliation
 			)
 		) {
-			return experience.affiliation;
+			if (isFilled.link(experience.affiliation.data?.link)) {
+				if (experience.affiliation.data.link.url !== undefined) {
+					return experience.affiliation;
+				}
+			}
 		}
 	}
 </script>
@@ -45,12 +44,16 @@
 			<div class="col-span-full grid grid-cols-subgrid gap-y-6">
 				<div class="col-span-5 flex flex-col items-start sm:col-span-3 lg:col-span-2">
 					<div class="flex flex-row items-center justify-stretch gap-4 lg:flex-col lg:items-start">
-						<PrismicImage field={typeAffliation(item)?.data?.logo} height="64" />
+						<PrismicImage field={typeAffliation(item)?.data?.logo} />
 						<div>
 							<h3 class="font-bold leading-tight">{item.title}</h3>
-							<p class="text-stone-600">
-								{typeAffliation(item)?.data?.verbose_title ?? typeAffliation(item)?.data?.title}
-							</p>
+
+							<a
+								href={asLink(typeAffliation(item)?.data?.link)}
+								class=" text-stone-600 decoration-slate-400 decoration-2 underline-offset-2 transition-all hover:underline"
+							>
+								{typeAffliation(item)?.data?.verbose_title ?? typeAffliation(item)?.data?.title} ↗
+							</a>
 						</div>
 					</div>
 					<div class="flex flex-col items-start">
