@@ -56,7 +56,7 @@
 					field={documentToLinkField(caseStudy)}
 					class="group col-span-2 hidden cursor-pointer flex-col justify-end px-0 pt-1 sm:flex"
 				>
-					<p class=" text-xs tracking-wider text-stone-900/50">
+					<p class=" text-xs tracking-wider text-stone-400">
 						{formatDate(caseStudy.data.date)}
 					</p>
 					<h3
@@ -74,24 +74,24 @@
 						<h3 class="mb text-balance">
 							{caseStudy.data.title}
 						</h3>
-						<p class=" mb-1 text-xs tracking-wider text-stone-900/50">
+						<p class=" mb-1 text-xs tracking-wider text-stone-400">
 							{formatDate(caseStudy.data.date)}
 						</p>
 					</div>
 					<div class="col-span-full grid grid-cols-subgrid pt-2 sm:pt-0">
 						<div class="col-span-2 flex flex-col gap-1 sm:col-span-1">
 							<p
-								class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
+								class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400"
 							>
 								Affiliation
 							</p>
 							<p
-								class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
+								class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400"
 							>
 								Type
 							</p>
 							<p
-								class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
+								class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400"
 							>
 								topics
 							</p>
