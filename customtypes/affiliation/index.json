@@ -26,6 +26,21 @@
 					"placeholder": "",
 					"select": null
 				}
+			},
+			"logo": {
+				"type": "Image",
+				"config": {
+					"label": "logo",
+					"constraint": {},
+					"thumbnails": []
+				}
+			},
+			"verbose_title": {
+				"type": "Text",
+				"config": {
+					"label": "Verbose Title",
+					"placeholder": ""
+				}
 			}
 		}
 	}

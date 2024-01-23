@@ -30,14 +30,6 @@
             ]
           }
         },
-        "url": {
-          "type": "Link",
-          "config": {
-            "label": "URL",
-            "placeholder": "",
-            "select": null
-          }
-        },
         "timeframe": {
           "type": "Text",
           "config": {

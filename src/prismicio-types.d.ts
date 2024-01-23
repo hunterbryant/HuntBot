@@ -29,6 +29,28 @@ interface AffiliationDocumentData {
 	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
 	 */
 	link: prismic.LinkField;
+
+	/**
+	 * logo field in *Affiliation*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: affiliation.logo
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	logo: prismic.ImageField<never>;
+
+	/**
+	 * Verbose Title field in *Affiliation*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: affiliation.verbose_title
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	verbose_title: prismic.KeyTextField;
 }
 
 /**
@@ -499,16 +521,6 @@ export interface ExperienceSliceDefaultItem {
 	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
 	 */
 	affiliation: prismic.ContentRelationshipField<'affiliation'>;
-
-	/**
-	 * URL field in *Experience → Items*
-	 *
-	 * - **Field Type**: Link
-	 * - **Placeholder**: *None*
-	 * - **API ID Path**: experience.items[].url
-	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
-	 */
-	url: prismic.LinkField;
 
 	/**
 	 * Timeframe field in *Experience → Items*

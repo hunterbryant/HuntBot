@@ -26,16 +26,6 @@
 						}
 					],
 					[
-						"url",
-						{
-							"__TYPE__": "LinkContent",
-							"value": {
-								"__TYPE__": "ExternalLink",
-								"url": "https://prismic.io"
-							}
-						}
-					],
-					[
 						"timeframe",
 						{
 							"__TYPE__": "FieldContent",

@@ -12,7 +12,7 @@
 		return dateObj.getFullYear();
 	}
 
-	// Made this to silence ts warnings about the affiliation type
+	// Silence ts warnings about the affiliation type
 	function typeAffliation(caseStudy: CaseStudyDocument) {
 		if (
 			isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
