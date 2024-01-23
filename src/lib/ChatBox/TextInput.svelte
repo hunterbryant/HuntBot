@@ -91,17 +91,20 @@
 				]);
 				switch (action.arguments.page as SupportedRoutes) {
 					case SupportedRoutes.gathers:
-						goto(`/case-studies/gathers`);
+						goto('/case-studies/gathers');
 						break;
 					case SupportedRoutes.home:
 						goto('/');
 						break;
 					case SupportedRoutes.dovetail:
+						goto('/case-studies/dovetail');
+						break;
 					case SupportedRoutes.karooTwo:
-						goto(`/case-studies/karoo2`);
+						goto('/case-studies/karoo2');
 						break;
 					case SupportedRoutes.dashboard:
-					case SupportedRoutes.inSearchOfBirth:
+						goto('/case-studies/hammerhead-dashboard');
+					case SupportedRoutes.inSearchOfBirch:
 						break;
 				}
 			}

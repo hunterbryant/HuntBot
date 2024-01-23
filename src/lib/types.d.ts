@@ -14,7 +14,7 @@ export enum SupportedRoutes {
 	gathers = 'gathers',
 	karooTwo = 'karoo-2',
 	dashboard = 'hammerhead-dashboard',
-	inSearchOfBirth = 'in-search-of-birch',
+	inSearchOfBirch = 'in-search-of-birch',
 	home = 'home',
 	dovetail = 'dovetail'
 }
