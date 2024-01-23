@@ -68,35 +68,35 @@
 
 				<!-- Out of box metadata -->
 				<div
-					class="col-span-full flex flex-col justify-end gap-2 divide-y divide-stone-200 sm:col-span-3 sm:col-start-3 sm:divide-y-0"
+					class="col-span-full grid grid-cols-subgrid justify-end gap-y-1 divide-y divide-stone-200 sm:col-span-3 sm:col-start-3 sm:divide-y-0"
 				>
-					<div class="flex flex-row items-baseline justify-between gap-4 sm:hidden">
+					<div class="col-span-full flex flex-row items-end justify-between gap-4 sm:hidden">
 						<h3 class="mb text-balance">
 							{caseStudy.data.title}
 						</h3>
-						<p class=" text-xs tracking-wider text-stone-900/50">
+						<p class=" mb-1 text-xs tracking-wider text-stone-900/50">
 							{formatDate(caseStudy.data.date)}
 						</p>
 					</div>
-					<div class="flex flex-row gap-4 pt-2 sm:pt-0">
-						<div class="flex flex-initial flex-col gap-1">
+					<div class="col-span-full grid grid-cols-subgrid pt-2 sm:pt-0">
+						<div class="col-span-2 flex flex-col gap-1 sm:col-span-1">
 							<p
 								class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
 							>
-								Organization
+								Affiliation
 							</p>
 							<p
 								class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
 							>
-								Project Type
+								Type
 							</p>
 							<p
 								class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
 							>
-								Responsibilities
+								topics
 							</p>
 						</div>
-						<div class="flex flex-1 flex-col gap-1">
+						<div class="col-span-3 flex flex-col gap-1 sm:col-span-2">
 							<p
 								class="col-span-2 col-start-2 row-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-900"
 							>
