@@ -68,16 +68,16 @@
 		</div>
 		<div class="flex flex-row gap-4 pt-2 sm:pt-0">
 			<div class="flex flex-initial flex-col gap-1">
-				<p class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50">
-					Organization
+				<p class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400">
+					Affiliation
 				</p>
-				<p class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50">
-					Project Type
+				<p class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400">
+					Type
 				</p>
 				<p
-					class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-500/50"
+					class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400"
 				>
-					Responsibilities
+					Topics
 				</p>
 			</div>
 			<div class="flex flex-1 flex-col gap-1">

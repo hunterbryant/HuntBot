@@ -26,7 +26,7 @@
 		/>
 		{#if slice.primary.caption}
 			<caption
-				class="mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-500"
+				class="mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-600"
 				>{slice.primary.caption}</caption
 			>
 		{/if}
@@ -42,7 +42,7 @@
 							class="h-full max-h-56 w-full overflow-hidden rounded border border-black/10 object-cover sm:max-h-96 "
 						/>
 						<caption
-							class="w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-500"
+							class="w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-600"
 						>
 							{#if item.caption}
 								{item.caption}
