@@ -25,6 +25,15 @@
 	let innerWidth = 0;
 	let slotElement: HTMLElement;
 
+	// On initial load set nav state based on entry path
+	if ($page.url.pathname == '/') {
+		// Reset nav state on index
+		navEngaged.set(false);
+	} else {
+		// Return to default on all others
+		navEngaged.set(true);
+	}
+
 	const engageHuntbot = () => {
 		const scrollDistance = mobileBreakpoint ? window.innerHeight / 2 : window.innerHeight / 2 - 64;
 		if (!$botEngaged) {
@@ -75,22 +84,13 @@
 		}
 	});
 
-	// On initial load set nav state based on entry path
-	if ($page.url.pathname == '/') {
-		// Reset nav state on index
-		navEngaged.set(false);
-	} else {
-		// Return to default on all others
-		navEngaged.set(true);
-	}
-
 	// Change the nav state based on destination path
 	beforeNavigate((navData) => {
 		if (navData.to?.route.id === '/') {
 			// Reset nav state on index
 			navEngaged.set(false);
 			closeMenu();
-		} else if (navData.to?.route.id !== undefined) {
+		} else if (navData.to?.route.id !== null) {
 			// Return to engaged if routing within the site
 			navEngaged.set(true);
 			closeMenu();

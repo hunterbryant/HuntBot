@@ -2,6 +2,9 @@ import { derived, writable } from 'svelte/store';
 
 export const navEngaged = writable(false);
 export const chatOpen = writable(false);
+export const mobile = writable(true);
+
+// Build in delay to await animation of closing chat box
 export const delayedNavEngaged = derived(
 	[navEngaged, chatOpen],
 	([$navEngaged, $chatOpen], set) => {
@@ -15,4 +18,3 @@ export const delayedNavEngaged = derived(
 	},
 	false
 );
-export const mobile = writable(true);
