@@ -2,7 +2,7 @@ import { derived, writable } from 'svelte/store';
 
 export const navEngaged = writable(false);
 export const chatOpen = writable(false);
-export const mobile = writable(true);
+export const mobile = writable(false);
 
 // Build in delay to await animation of closing chat box
 export const delayedNavEngaged = derived(

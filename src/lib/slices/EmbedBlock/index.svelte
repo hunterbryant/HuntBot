@@ -3,6 +3,9 @@
 	import { PrismicEmbed } from '@prismicio/svelte';
 
 	export let slice: Content.EmbedBlockSlice;
+
+	//Silences runtime svelte unused prop warnings
+	$$restProps;
 </script>
 
 <section

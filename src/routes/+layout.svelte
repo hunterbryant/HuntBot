@@ -21,12 +21,13 @@
 	let greetingResponse =
 		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
 	let menuActive = false;
-	let mobileBreakpoint = true;
-	let innerWidth = 0;
+	let mobileBreakpoint = false;
+	let innerWidth: number;
 	let slotElement: HTMLElement;
 
-	// On initial load set nav state based on entry path
-	if ($page.url.pathname == '/') {
+	// On initial load set nav state based on entry path,
+	// must not live within onMount
+	if ($page.url.pathname === '/') {
 		// Reset nav state on index
 		navEngaged.set(false);
 	} else {
@@ -73,12 +74,7 @@
 	};
 
 	onMount(() => {
-		if (innerWidth > 640) {
-			menuActive = true;
-			mobileBreakpoint = false;
-			mobile.set(false);
-		} else {
-			menuActive = false;
+		if (innerWidth <= 640) {
 			mobileBreakpoint = true;
 			mobile.set(true);
 		}
@@ -86,14 +82,17 @@
 
 	// Change the nav state based on destination path
 	beforeNavigate((navData) => {
-		if (navData.to?.route.id === '/') {
-			// Reset nav state on index
-			navEngaged.set(false);
-			closeMenu();
-		} else if (navData.to?.route.id !== null) {
-			// Return to engaged if routing within the site
-			navEngaged.set(true);
-			closeMenu();
+		// Don't rerun state animations if doing a hard refresh
+		if (!navData.willUnload) {
+			if (navData.to?.route.id === '/') {
+				// Reset nav state on index
+				navEngaged.set(false);
+				closeMenu();
+			} else if (navData.to?.route.id !== null) {
+				// Return to engaged if routing within the site
+				navEngaged.set(true);
+				closeMenu();
+			}
 		}
 	});
 
