@@ -24,6 +24,7 @@
 	let mobileBreakpoint = false;
 	let innerWidth: number;
 	let slotElement: HTMLElement;
+	let mounted = false;
 
 	// On initial load set nav state based on entry path,
 	// must not live within onMount
@@ -78,6 +79,7 @@
 			mobileBreakpoint = true;
 			mobile.set(true);
 		}
+		mounted = true;
 	});
 
 	// Change the nav state based on destination path
@@ -161,8 +163,8 @@
 				</button>
 			</div>
 			{#if menuActive || !mobileBreakpoint}
-				<div class=" flex grow flex-col" transition:fly|global={{ x: -350 }}>
-					{#if $delayedNavEngaged || mobileBreakpoint}
+				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
+					{#if ($delayedNavEngaged || mobileBreakpoint) && mounted}
 						<!-- This is the toggleable section in mobile breakpoints -->
 						<div class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent">
 							<div
