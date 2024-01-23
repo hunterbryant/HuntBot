@@ -72,6 +72,9 @@
 				"fieldset": "Slice Zone",
 				"config": {
 					"choices": {
+						"embed_block": {
+							"type": "SharedSlice"
+						},
 						"image_block": {
 							"type": "SharedSlice"
 						},

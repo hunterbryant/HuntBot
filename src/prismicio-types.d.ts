@@ -61,7 +61,7 @@ export interface CaseStudyDocumentDataResponsibilitiesItem {
 	skill: prismic.SelectField<'UI' | 'UX' | 'Research' | 'Strategy' | 'Data Viz'>;
 }
 
-type CaseStudyDocumentDataSlicesSlice = ImageBlockSlice | TextBlockSlice;
+type CaseStudyDocumentDataSlicesSlice = EmbedBlockSlice | ImageBlockSlice | TextBlockSlice;
 
 /**
  * Content for Case Study documents
@@ -432,6 +432,48 @@ export type ContentHighlightSlice = prismic.SharedSlice<
 >;
 
 /**
+ * Primary content in *EmbedBlock → Primary*
+ */
+export interface EmbedBlockSliceDefaultPrimary {
+	/**
+	 * embed field in *EmbedBlock → Primary*
+	 *
+	 * - **Field Type**: Embed
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: embed_block.primary.embed
+	 * - **Documentation**: https://prismic.io/docs/field#embed
+	 */
+	embed: prismic.EmbedField;
+}
+
+/**
+ * Default variation for EmbedBlock Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type EmbedBlockSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Simplify<EmbedBlockSliceDefaultPrimary>,
+	never
+>;
+
+/**
+ * Slice variation for *EmbedBlock*
+ */
+type EmbedBlockSliceVariation = EmbedBlockSliceDefault;
+
+/**
+ * EmbedBlock Shared Slice
+ *
+ * - **API ID**: `embed_block`
+ * - **Description**: EmbedBlock
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type EmbedBlockSlice = prismic.SharedSlice<'embed_block', EmbedBlockSliceVariation>;
+
+/**
  * Primary content in *Expertise → Items*
  */
 export interface ExpertiseSliceDefaultItem {
@@ -719,6 +761,10 @@ declare module '@prismicio/client' {
 			ContentHighlightSliceVariation,
 			ContentHighlightSliceDefault,
 			ContentHighlightSlice3DModel,
+			EmbedBlockSlice,
+			EmbedBlockSliceDefaultPrimary,
+			EmbedBlockSliceVariation,
+			EmbedBlockSliceDefault,
 			ExpertiseSlice,
 			ExpertiseSliceDefaultItem,
 			ExpertiseSliceVariation,

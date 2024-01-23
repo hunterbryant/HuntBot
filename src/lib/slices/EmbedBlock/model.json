@@ -1,0 +1,26 @@
+{
+  "id": "embed_block",
+  "type": "SharedSlice",
+  "name": "EmbedBlock",
+  "description": "EmbedBlock",
+  "variations": [
+    {
+      "id": "default",
+      "name": "Default",
+      "docURL": "...",
+      "version": "initial",
+      "description": "Default",
+      "imageUrl": "",
+      "primary": {
+        "embed": {
+          "type": "Embed",
+          "config": {
+            "label": "embed",
+            "placeholder": ""
+          }
+        }
+      },
+      "items": {}
+    }
+  ]
+}
