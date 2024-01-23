@@ -42,7 +42,7 @@
 						{/each}
 					{/if}
 				</ul>
-				<div class="*:text-balanced col-span-full col-start-2 text-stone-500 sm:col-start-1">
+				<div class="*:text-balanced col-span-full col-start-2 text-stone-600 sm:col-start-1">
 					<PrismicRichText field={item.skill_decription} />
 				</div>
 			</div>
