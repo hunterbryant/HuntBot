@@ -267,7 +267,10 @@ export type HomeDocument<Lang extends string = string> = prismic.PrismicDocument
 	Lang
 >;
 
-type InformationDocumentDataSlicesSlice = ExpertiseSlice | InfoEducationImageSlice;
+type InformationDocumentDataSlicesSlice =
+	| ExperienceSlice
+	| ExpertiseSlice
+	| InfoEducationImageSlice;
 
 /**
  * Content for Info documents
@@ -472,6 +475,98 @@ type EmbedBlockSliceVariation = EmbedBlockSliceDefault;
  * - **Documentation**: https://prismic.io/docs/slice
  */
 export type EmbedBlockSlice = prismic.SharedSlice<'embed_block', EmbedBlockSliceVariation>;
+
+/**
+ * Primary content in *Experience → Items*
+ */
+export interface ExperienceSliceDefaultItem {
+	/**
+	 * Title field in *Experience → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: experience.items[].title
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	title: prismic.KeyTextField;
+
+	/**
+	 * Affiliation field in *Experience → Items*
+	 *
+	 * - **Field Type**: Content Relationship
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: experience.items[].affiliation
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	affiliation: prismic.ContentRelationshipField<'affiliation'>;
+
+	/**
+	 * URL field in *Experience → Items*
+	 *
+	 * - **Field Type**: Link
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: experience.items[].url
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	url: prismic.LinkField;
+
+	/**
+	 * Timeframe field in *Experience → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: experience.items[].timeframe
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	timeframe: prismic.KeyTextField;
+
+	/**
+	 * Caption field in *Experience → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: experience.items[].caption
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	caption: prismic.KeyTextField;
+
+	/**
+	 * Body field in *Experience → Items*
+	 *
+	 * - **Field Type**: Rich Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: experience.items[].body
+	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
+	 */
+	body: prismic.RichTextField;
+}
+
+/**
+ * Default variation for Experience Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ExperienceSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Record<string, never>,
+	Simplify<ExperienceSliceDefaultItem>
+>;
+
+/**
+ * Slice variation for *Experience*
+ */
+type ExperienceSliceVariation = ExperienceSliceDefault;
+
+/**
+ * Experience Shared Slice
+ *
+ * - **API ID**: `experience`
+ * - **Description**: Experience
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ExperienceSlice = prismic.SharedSlice<'experience', ExperienceSliceVariation>;
 
 /**
  * Primary content in *Expertise → Items*
@@ -765,6 +860,10 @@ declare module '@prismicio/client' {
 			EmbedBlockSliceDefaultPrimary,
 			EmbedBlockSliceVariation,
 			EmbedBlockSliceDefault,
+			ExperienceSlice,
+			ExperienceSliceDefaultItem,
+			ExperienceSliceVariation,
+			ExperienceSliceDefault,
 			ExpertiseSlice,
 			ExpertiseSliceDefaultItem,
 			ExpertiseSliceVariation,

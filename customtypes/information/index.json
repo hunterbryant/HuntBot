@@ -18,6 +18,9 @@
 				"fieldset": "Slice Zone",
 				"config": {
 					"choices": {
+						"experience": {
+							"type": "SharedSlice"
+						},
 						"expertise": {
 							"type": "SharedSlice"
 						},

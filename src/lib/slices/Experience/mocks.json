@@ -1,0 +1,72 @@
+[
+	{
+		"__TYPE__": "SharedSliceContent",
+		"variation": "default",
+		"primary": {},
+		"items": [
+			{
+				"__TYPE__": "GroupItemContent",
+				"value": [
+					[
+						"title",
+						{
+							"__TYPE__": "FieldContent",
+							"value": "particles",
+							"type": "Text"
+						}
+					],
+					[
+						"affiliation",
+						{
+							"__TYPE__": "LinkContent",
+							"value": {
+								"__TYPE__": "DocumentLink",
+								"id": "mock_document_id"
+							}
+						}
+					],
+					[
+						"url",
+						{
+							"__TYPE__": "LinkContent",
+							"value": {
+								"__TYPE__": "ExternalLink",
+								"url": "https://prismic.io"
+							}
+						}
+					],
+					[
+						"timeframe",
+						{
+							"__TYPE__": "FieldContent",
+							"value": "plan",
+							"type": "Text"
+						}
+					],
+					[
+						"caption",
+						{
+							"__TYPE__": "FieldContent",
+							"value": "lady",
+							"type": "Text"
+						}
+					],
+					[
+						"body",
+						{
+							"__TYPE__": "StructuredTextContent",
+							"value": [
+								{
+									"type": "paragraph",
+									"content": {
+										"text": "Est mollit anim et sunt Lorem minim incididunt consequat aliqua ipsum do enim anim."
+									}
+								}
+							]
+						}
+					]
+				]
+			}
+		]
+	}
+]
