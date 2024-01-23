@@ -21,6 +21,7 @@ export async function load({ fetch, cookies, locals }) {
 			caseStudy.data.meta_title = 'Protected';
 			caseStudy.data.slices = [];
 			caseStudy.data.meta_description = 'Protected, enter password to view';
+			caseStudy.data.hightlight_image.alt = 'A blurred thumbnail image';
 		}
 	});
 
