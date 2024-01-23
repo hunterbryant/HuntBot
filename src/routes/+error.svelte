@@ -9,6 +9,9 @@
 		case 404:
 			message = 'I looked everywhere but couldn’t find this page. I’ll let Hunter know.';
 			break;
+		case 500:
+			message = 'My bad, my code got scrambled. I’ll let Hunter know.';
+			break;
 		default:
 			message = $page.error?.message ?? 'My bad, my code got scrambled. I’ll let Hunter know.';
 	}
