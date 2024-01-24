@@ -29,7 +29,7 @@
 
 	<!-- Education Block -->
 	<div
-		class="col-span-4 col-start-1 row-start-4 flex flex-col gap-8 text-balance text-stone-900 *:row-span-1 *:flex *:flex-col *:gap-4 sm:col-span-3 sm:col-start-4 sm:row-start-3 md:row-start-2 [&_p]:text-stone-600 [&_strong]:text-balance [&_strong]:leading-tight [&_strong]:text-stone-900"
+		class="col-span-4 col-start-1 row-start-4 flex flex-col gap-8 text-balance text-stone-900 *:row-span-1 *:flex *:flex-col *:gap-0 sm:col-span-3 sm:col-start-4 sm:row-start-3 sm:*:gap-2 md:row-start-2 [&_p]:text-stone-600 [&_strong]:text-balance [&_strong]:leading-tight [&_strong]:text-stone-900"
 	>
 		<PrismicRichText field={slice.primary.education} />
 	</div>
