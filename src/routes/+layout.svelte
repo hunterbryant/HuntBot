@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
-
+	import { dev } from '$app/environment';
+	import { inject } from '@vercel/analytics';
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import lettermark from '$lib/assets/lettermark.svg';
@@ -12,6 +13,8 @@
 	import { onMount } from 'svelte';
 	import { afterNavigate, beforeNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
+
+	inject({ mode: dev ? 'development' : 'production' });
 
 	export let data;
 

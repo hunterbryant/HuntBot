@@ -45,6 +45,7 @@
 		"@prismicio/svelte": "^1.0.3",
 		"@splinetool/runtime": "^1.0.31",
 		"@types/jsonwebtoken": "^9.0.5",
+		"@vercel/analytics": "^1.1.2",
 		"embla-carousel": "8.0.0-rc19",
 		"embla-carousel-svelte": "8.0.0-rc19",
 		"embla-carousel-wheel-gestures": "8.0.0-rc05",
