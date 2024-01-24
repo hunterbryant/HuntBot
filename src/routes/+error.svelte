@@ -7,7 +7,9 @@
 	//  Support other error messages here
 	switch ($page.status) {
 		case 404:
-			message = 'I looked everywhere but couldn’t find the right page. I’ll let Hunter know.';
+			message =
+				$page.error?.message ??
+				'I looked everywhere but couldn’t find the right page. I’ll let Hunter know.';
 			break;
 		case 500:
 			message = 'My bad, my code got scrambled. I’ll let Hunter know.';
