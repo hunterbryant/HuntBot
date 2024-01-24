@@ -136,6 +136,9 @@
 <svelte:head>
 	<meta property="interactive-widget" content="resizes-content" />
 	<meta property="og:site_name" content="Hunter Bryant" />
+
+	<!-- REMOVE ONCE DEPLOYED ON MY DOMAIN -->
+	<meta name="robots" content="noindex nofollow" />
 </svelte:head>
 
 <svelte:window bind:innerWidth />
