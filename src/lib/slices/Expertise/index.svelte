@@ -22,7 +22,7 @@
 
 	<!-- Skill Blocks -->
 	<div
-		class="col-span-full row-start-2 mb-8 grid grid-cols-subgrid gap-y-8 sm:col-start-4 sm:row-start-1 sm:mb-0 sm:gap-y-16 md:mb-32"
+		class="col-span-full row-start-2 mb-8 grid grid-cols-subgrid gap-y-8 sm:col-start-4 sm:row-start-1 sm:mb-0 sm:gap-y-16 md:mb-16"
 	>
 		{#each slice.items as item}
 			<div class="col-span-full grid grid-cols-subgrid gap-4 sm:col-span-4 lg:col-span-3">
