@@ -290,6 +290,7 @@ export type HomeDocument<Lang extends string = string> = prismic.PrismicDocument
 >;
 
 type InformationDocumentDataSlicesSlice =
+	| RecognitionSlice
 	| ExperienceSlice
 	| ExpertiseSlice
 	| InfoEducationImageSlice;
@@ -798,6 +799,88 @@ export type InfoEducationImageSlice = prismic.SharedSlice<
 >;
 
 /**
+ * Primary content in *Recognition → Items*
+ */
+export interface RecognitionSliceDefaultItem {
+	/**
+	 * title field in *Recognition → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: recognition.items[].title
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	title: prismic.KeyTextField;
+
+	/**
+	 * year field in *Recognition → Items*
+	 *
+	 * - **Field Type**: Number
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: recognition.items[].year
+	 * - **Documentation**: https://prismic.io/docs/field#number
+	 */
+	year: prismic.NumberField;
+
+	/**
+	 * description field in *Recognition → Items*
+	 *
+	 * - **Field Type**: Rich Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: recognition.items[].description
+	 * - **Documentation**: https://prismic.io/docs/field#rich-text-title
+	 */
+	description: prismic.RichTextField;
+
+	/**
+	 * link url field in *Recognition → Items*
+	 *
+	 * - **Field Type**: Link
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: recognition.items[].link_url
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	link_url: prismic.LinkField;
+
+	/**
+	 * link label field in *Recognition → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: recognition.items[].link_label
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	link_label: prismic.KeyTextField;
+}
+
+/**
+ * Default variation for Recognition Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type RecognitionSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Record<string, never>,
+	Simplify<RecognitionSliceDefaultItem>
+>;
+
+/**
+ * Slice variation for *Recognition*
+ */
+type RecognitionSliceVariation = RecognitionSliceDefault;
+
+/**
+ * Recognition Shared Slice
+ *
+ * - **API ID**: `recognition`
+ * - **Description**: Recognition
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type RecognitionSlice = prismic.SharedSlice<'recognition', RecognitionSliceVariation>;
+
+/**
  * Primary content in *TextBlock → Primary*
  */
 export interface TextBlockSliceDefaultPrimary {
@@ -890,6 +973,10 @@ declare module '@prismicio/client' {
 			InfoEducationImageSliceDefaultPrimary,
 			InfoEducationImageSliceVariation,
 			InfoEducationImageSliceDefault,
+			RecognitionSlice,
+			RecognitionSliceDefaultItem,
+			RecognitionSliceVariation,
+			RecognitionSliceDefault,
 			TextBlockSlice,
 			TextBlockSliceDefaultPrimary,
 			TextBlockSliceVariation,
