@@ -1,7 +1,10 @@
 <script lang="ts">
 	import '../app.css';
 	import { dev } from '$app/environment';
+
 	import { inject } from '@vercel/analytics';
+	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
+
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import lettermark from '$lib/assets/lettermark.svg';
@@ -15,6 +18,7 @@
 	import { page } from '$app/stores';
 
 	inject({ mode: dev ? 'development' : 'production' });
+	injectSpeedInsights();
 
 	export let data;
 
