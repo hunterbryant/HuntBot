@@ -12,6 +12,13 @@
 				"config": {
 					"choices": {}
 				}
+			},
+			"header": {
+				"type": "Text",
+				"config": {
+					"label": "Header",
+					"placeholder": ""
+				}
 			}
 		},
 		"SEO & Metadata": {

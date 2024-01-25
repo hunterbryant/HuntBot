@@ -1,8 +1,9 @@
 import { createClient } from '$lib/prismicio';
+import type { PageServerLoad } from './$types.js';
 
 export const prerender = true;
 
-export async function load({ fetch, cookies }) {
+export const load = (async ({ fetch, cookies }) => {
 	const client = createClient({ fetch, cookies });
 
 	const page = await client.getSingle('information', {
@@ -17,4 +18,4 @@ export async function load({ fetch, cookies }) {
 	return {
 		page
 	};
-}
+}) satisfies PageServerLoad;

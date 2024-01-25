@@ -26,6 +26,10 @@ const routes: prismic.ClientConfig['routes'] = [
 	{
 		type: 'information',
 		path: '/information'
+	},
+	{
+		type: 'other_projects',
+		path: '/projects'
 	}
 ];
 

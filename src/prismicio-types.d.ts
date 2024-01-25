@@ -395,7 +395,18 @@ interface OtherProjectsDocumentData {
 	 * - **Tab**: Main
 	 * - **Documentation**: https://prismic.io/docs/field#slices
 	 */
-	slices: prismic.SliceZone<OtherProjectsDocumentDataSlicesSlice> /**
+	slices: prismic.SliceZone<OtherProjectsDocumentDataSlicesSlice>;
+
+	/**
+	 * Header field in *Other Projects*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: other_projects.header
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	header: prismic.KeyTextField /**
 	 * Meta Description field in *Other Projects*
 	 *
 	 * - **Field Type**: Text
