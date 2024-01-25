@@ -1,7 +1,7 @@
 import { createClient } from '$lib/prismicio';
 import type { CaseStudyDocument } from '../../prismicio-types';
 
-export const prerender = true;
+export const prerender = false;
 
 export async function load({ fetch, cookies, locals }) {
 	const client = createClient({ fetch, cookies });
