@@ -15,7 +15,7 @@
 >
 	<!-- Out of box metadata -->
 	<div
-		class="col-span-1 col-start-1 row-start-3 mt-1 flex flex-col justify-start gap-2 text-left text-xs uppercase tracking-wider text-stone-500 sm:col-start-3 md:row-start-2"
+		class="[&_a]: col-span-1 col-start-1 row-start-3 mt-1 flex flex-col justify-start gap-2 text-left text-xs uppercase tracking-wider text-stone-500 underline-offset-2 sm:col-start-3 md:row-start-2"
 	>
 		Education
 	</div>
@@ -29,7 +29,8 @@
 
 	<!-- Education Block -->
 	<div
-		class="col-span-4 col-start-1 row-start-4 flex flex-col gap-8 text-balance text-stone-900 *:row-span-1 *:flex *:flex-col *:gap-0 sm:col-span-3 sm:col-start-4 sm:row-start-3 sm:*:gap-2 md:row-start-2 [&_p]:text-stone-600 [&_strong]:text-balance [&_strong]:leading-tight [&_strong]:text-stone-900"
+		class="col-span-4 col-start-1 row-start-4 flex flex-col gap-8 text-balance text-stone-900 *:row-span-1 *:flex *:flex-col *:gap-0 sm:col-span-3 sm:col-start-4 sm:row-start-3 sm:*:gap-2 md:row-start-2 [&>p>a]:decoration-slate-400 [&>p>a]:decoration-2 [&>p>a]:transition-all hover:[&>p>a]:underline [&_br]:mb-2
+		[&_p]:text-stone-600 [&_strong]:text-balance [&_strong]:leading-tight [&_strong]:text-stone-900"
 	>
 		<PrismicRichText field={slice.primary.education} />
 	</div>
