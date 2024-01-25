@@ -41,8 +41,8 @@ dependencies:
 
 devDependencies:
   '@slicemachine/adapter-sveltekit':
-    specifier: ^0.3.33
-    version: 0.3.33(@prismicio/client@7.3.1)(@sveltejs/kit@2.4.1)(@types/uuid@9.0.7)(prettier-plugin-svelte@3.1.2)(prettier@3.2.4)(svelte@4.2.9)(uuid@9.0.1)
+    specifier: ^0.3.34
+    version: 0.3.34(@prismicio/client@7.3.1)(@sveltejs/kit@2.4.1)(@types/uuid@9.0.7)(prettier-plugin-svelte@3.1.2)(prettier@3.2.4)(svelte@4.2.9)(uuid@9.0.1)
   '@sveltejs/adapter-vercel':
     specifier: ^5.1.0
     version: 5.1.0(@sveltejs/kit@2.4.1)
@@ -92,8 +92,8 @@ devDependencies:
     specifier: ^0.5.11
     version: 0.5.11(prettier-plugin-organize-imports@3.2.4)(prettier-plugin-svelte@3.1.2)(prettier@3.2.4)
   slice-machine-ui:
-    specifier: ^1.23.0
-    version: 1.23.0(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(react-dom@18.2.0)(react@18.2.0)(uuid@9.0.1)
+    specifier: ^1.23.1
+    version: 1.23.1(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(react-dom@18.2.0)(react@18.2.0)(uuid@9.0.1)
   svelte:
     specifier: ^4.2.9
     version: 4.2.9
@@ -861,8 +861,8 @@ packages:
     resolution: {integrity: sha512-RNiOoTPkptFtSVzQevY/yWtZwf/RxyVnPy/OcA9HBM3MlGDnBEYL5B41H0MTn0Uec8Hi+2qUtTfG2WWZBmMejQ==}
     dev: true
 
-  /@slicemachine/adapter-sveltekit@0.3.33(@prismicio/client@7.3.1)(@sveltejs/kit@2.4.1)(@types/uuid@9.0.7)(prettier-plugin-svelte@3.1.2)(prettier@3.2.4)(svelte@4.2.9)(uuid@9.0.1):
-    resolution: {integrity: sha512-eBtG8dz/5+E1Ssgqss1CZ8XAn4GAGqXypO+8l0pngMrfCGUwesY7UBieWTWN6N+5DqfgF5YKpHjmzcHzQpCNwA==}
+  /@slicemachine/adapter-sveltekit@0.3.34(@prismicio/client@7.3.1)(@sveltejs/kit@2.4.1)(@types/uuid@9.0.7)(prettier-plugin-svelte@3.1.2)(prettier@3.2.4)(svelte@4.2.9)(uuid@9.0.1):
+    resolution: {integrity: sha512-bLfeGdsFuRpadVCq4oz3fFrK5hC6N+XpUtCek1rR7kJWn7Lu/3XwvaWpr6f8KXQVd6NdTrOkM8/SXLFJCt04eA==}
     engines: {node: '>=14.15.0'}
     peerDependencies:
       '@sveltejs/kit': ^1 || ^2
@@ -877,7 +877,7 @@ packages:
     dependencies:
       '@prismicio/simulator': 0.1.4
       '@prismicio/types-internal': 2.3.1(@types/uuid@9.0.7)(fp-ts@2.16.2)(io-ts-types@0.5.19)(io-ts@2.2.21)(uuid@9.0.1)
-      '@slicemachine/plugin-kit': 0.4.33(@prismicio/client@7.3.1)
+      '@slicemachine/plugin-kit': 0.4.34(@prismicio/client@7.3.1)
       '@sveltejs/kit': 2.4.1(@sveltejs/vite-plugin-svelte@3.0.1)(svelte@4.2.9)(vite@5.0.12)
       common-tags: 1.8.2
       fp-ts: 2.16.2
@@ -898,8 +898,8 @@ packages:
       - uuid
     dev: true
 
-  /@slicemachine/manager@0.17.7(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1):
-    resolution: {integrity: sha512-Ju4WKLVG/k6OkCrYrWMgoMz0vWLjzAqElBSnm2T4bYxCO+E3pOUQv3CO8cLXzCnXcUD5gB6pUkf91ENFy93c3g==}
+  /@slicemachine/manager@0.17.8(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1):
+    resolution: {integrity: sha512-/TqxPciCFIRFmzrl/GeZTrrfeW/KfKzooYq26NdIuxeIM7Szpw+Je/Cf4t1YMGnM9Xp1zPLKisGoZQZoJhDRtA==}
     engines: {node: '>=14.15.0'}
     peerDependencies:
       msw: ^1.1.0
@@ -912,7 +912,7 @@ packages:
       '@prismicio/mocks': 2.0.0
       '@prismicio/types-internal': 2.3.1(@types/uuid@9.0.7)(fp-ts@2.16.2)(io-ts-types@0.5.19)(io-ts@2.2.21)(uuid@9.0.1)
       '@segment/analytics-node': 1.1.3
-      '@slicemachine/plugin-kit': 0.4.33(@prismicio/client@7.3.1)
+      '@slicemachine/plugin-kit': 0.4.34(@prismicio/client@7.3.1)
       '@wooorm/starry-night': 1.7.0
       cookie: 0.5.0
       cors: 2.8.5
@@ -947,8 +947,8 @@ packages:
       - uuid
     dev: true
 
-  /@slicemachine/plugin-kit@0.4.33(@prismicio/client@7.3.1):
-    resolution: {integrity: sha512-NRLp491klRz40T/kkqB6C2kA2FO4cy576+Te6iJdTFQUbsT86LspXEubpTvjnOt/XEgbxtB0S0TFxy4vpym3ZQ==}
+  /@slicemachine/plugin-kit@0.4.34(@prismicio/client@7.3.1):
+    resolution: {integrity: sha512-B4Rng2NBZknpVLoKg3ll2gj7/46OtH0yRHZgCPafzID4P0xJJfCCa3y2crEBnFFEVmFmwm1A6k+ErgeROVpPGA==}
     engines: {node: '>=14.15.0'}
     dependencies:
       common-tags: 1.8.2
@@ -4666,14 +4666,14 @@ packages:
     engines: {node: '>=8'}
     dev: true
 
-  /slice-machine-ui@1.23.0(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(react-dom@18.2.0)(react@18.2.0)(uuid@9.0.1):
-    resolution: {integrity: sha512-TkVXJQtaFm8O104cWTTuRwlNaj6+4mKUAlJNSTQ3yVTGmYYwaeU+UZd9DL9z2QdxrOMVKGpu89KeWyRq8SUF8A==}
+  /slice-machine-ui@1.23.1(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(react-dom@18.2.0)(react@18.2.0)(uuid@9.0.1):
+    resolution: {integrity: sha512-7SXsJYbFtnajdeMosDGN2GM50SufeeuushIpUP7QFTCqSaupHLhhoceJ33vswz/Cnra04Ipz8jBSNPBOGR31VA==}
     engines: {node: '>=14'}
     hasBin: true
     dependencies:
       '@radix-ui/react-visually-hidden': 1.0.3(react-dom@18.2.0)(react@18.2.0)
-      '@slicemachine/manager': 0.17.7(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1)
-      start-slicemachine: 0.12.13(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1)
+      '@slicemachine/manager': 0.17.8(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1)
+      start-slicemachine: 0.12.14(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1)
     transitivePeerDependencies:
       - '@prismicio/client'
       - '@prismicio/types'
@@ -4708,14 +4708,14 @@ packages:
     resolution: {integrity: sha512-PEGlAwrG8yXGXRjW32fGbg66JAlOAwbObuqVoJpv/mRgoWDQfgH1wDPvtzWyUSNAXBGSk8h755YDbbcEy3SH2Q==}
     dev: true
 
-  /start-slicemachine@0.12.13(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1):
-    resolution: {integrity: sha512-7cQOK1oyOvPUJxpwuFpKXC4epAMl5nOrKntp0P9mUbUfsh6zOSB3Z8/iPahPyUHKdnqR2Z1jRirAbVUynIFd+w==}
+  /start-slicemachine@0.12.14(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1):
+    resolution: {integrity: sha512-cDmvYxmZudRNSxrMCDhMTUBEluX7Colt8WJ9oKoJD+2+F+Bjj9VR+/eZVvHCw34DBkayiMN199s8rSE7Qg6/iA==}
     engines: {node: '>=14.15.0'}
     hasBin: true
     dependencies:
       '@prismicio/mocks': 2.1.1
       '@prismicio/types-internal': 2.3.1(@types/uuid@9.0.7)(fp-ts@2.16.2)(io-ts-types@0.5.19)(io-ts@2.2.21)(uuid@9.0.1)
-      '@slicemachine/manager': 0.17.7(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1)
+      '@slicemachine/manager': 0.17.8(@prismicio/client@7.3.1)(@types/uuid@9.0.7)(uuid@9.0.1)
       body-parser: 1.20.2
       chalk: 4.1.2
       cors: 2.8.5

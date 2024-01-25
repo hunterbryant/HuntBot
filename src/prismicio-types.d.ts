@@ -380,11 +380,76 @@ export type InformationDocument<Lang extends string = string> = prismic.PrismicD
 	Lang
 >;
 
+type OtherProjectsDocumentDataSlicesSlice = never;
+
+/**
+ * Content for Other Projects documents
+ */
+interface OtherProjectsDocumentData {
+	/**
+	 * Slice Zone field in *Other Projects*
+	 *
+	 * - **Field Type**: Slice Zone
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: other_projects.slices[]
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#slices
+	 */
+	slices: prismic.SliceZone<OtherProjectsDocumentDataSlicesSlice> /**
+	 * Meta Description field in *Other Projects*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: A brief summary of the page
+	 * - **API ID Path**: other_projects.meta_description
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */;
+	meta_description: prismic.KeyTextField;
+
+	/**
+	 * Meta Image field in *Other Projects*
+	 *
+	 * - **Field Type**: Image
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: other_projects.meta_image
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#image
+	 */
+	meta_image: prismic.ImageField<never>;
+
+	/**
+	 * Meta Title field in *Other Projects*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: A title of the page used for social media and search engines
+	 * - **API ID Path**: other_projects.meta_title
+	 * - **Tab**: SEO & Metadata
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	meta_title: prismic.KeyTextField;
+}
+
+/**
+ * Other Projects document from Prismic
+ *
+ * - **API ID**: `other_projects`
+ * - **Repeatable**: `false`
+ * - **Documentation**: https://prismic.io/docs/custom-types
+ *
+ * @typeParam Lang - Language API ID of the document.
+ */
+export type OtherProjectsDocument<Lang extends string = string> = prismic.PrismicDocumentWithoutUID<
+	Simplify<OtherProjectsDocumentData>,
+	'other_projects',
+	Lang
+>;
+
 export type AllDocumentTypes =
 	| AffiliationDocument
 	| CaseStudyDocument
 	| HomeDocument
-	| InformationDocument;
+	| InformationDocument
+	| OtherProjectsDocument;
 
 /**
  * Primary content in *ContentHighlight → Primary*
@@ -956,6 +1021,9 @@ declare module '@prismicio/client' {
 			InformationDocument,
 			InformationDocumentData,
 			InformationDocumentDataSlicesSlice,
+			OtherProjectsDocument,
+			OtherProjectsDocumentData,
+			OtherProjectsDocumentDataSlicesSlice,
 			AllDocumentTypes,
 			ContentHighlightSlice,
 			ContentHighlightSliceDefaultPrimary,
