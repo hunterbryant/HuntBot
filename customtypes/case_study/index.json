@@ -36,6 +36,15 @@
 					"thumbnails": []
 				}
 			},
+			"image_fill": {
+				"type": "Boolean",
+				"config": {
+					"label": "Image Fill",
+					"default_value": false,
+					"placeholder_true": "true",
+					"placeholder_false": "false"
+				}
+			},
 			"date": {
 				"type": "Date",
 				"config": {

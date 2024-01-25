@@ -129,7 +129,10 @@
 					<PrismicImage
 						field={caseStudy.data.hightlight_image}
 						imgixParams={caseStudy.data.title === 'Protected' ? { blur: 1000 } : {}}
-						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] object-contain transition-transform duration-500 hover:scale-110 "
+						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD]  transition-transform duration-500 hover:scale-110 {caseStudy
+							.data.image_fill
+							? 'object-cover'
+							: 'object-contain'}"
 					/>
 					{#if caseStudy.data.title === 'Protected'}
 						<div

@@ -19,6 +19,7 @@ export async function load({ fetch, cookies }) {
                                 project {
                                     title
                                     hightlight_image
+                                    image_fill
                                     date
                                     affiliation {
                                         title

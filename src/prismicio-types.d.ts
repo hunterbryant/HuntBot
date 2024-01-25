@@ -124,6 +124,18 @@ interface CaseStudyDocumentData {
 	hightlight_image: prismic.ImageField<never>;
 
 	/**
+	 * Image Fill field in *Case Study*
+	 *
+	 * - **Field Type**: Boolean
+	 * - **Placeholder**: *None*
+	 * - **Default Value**: false
+	 * - **API ID Path**: case_study.image_fill
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#boolean
+	 */
+	image_fill: prismic.BooleanField;
+
+	/**
 	 * Date field in *Case Study*
 	 *
 	 * - **Field Type**: Date
