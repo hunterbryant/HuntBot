@@ -380,7 +380,7 @@ export type InformationDocument<Lang extends string = string> = prismic.PrismicD
 	Lang
 >;
 
-type OtherProjectsDocumentDataSlicesSlice = ProjectLinkSlice;
+type OtherProjectsDocumentDataSlicesSlice = GridGapSlice | ProjectLinkSlice;
 
 /**
  * Content for Other Projects documents
@@ -515,7 +515,18 @@ interface ProjectDocumentData {
 	 * - **Tab**: Main
 	 * - **Documentation**: https://prismic.io/docs/field#slices
 	 */
-	slices: prismic.SliceZone<ProjectDocumentDataSlicesSlice> /**
+	slices: prismic.SliceZone<ProjectDocumentDataSlicesSlice>;
+
+	/**
+	 * BG COlor field in *Project*
+	 *
+	 * - **Field Type**: Color
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: project.bg_color
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#color
+	 */
+	bg_color: prismic.ColorField /**
 	 * Meta Description field in *Project*
 	 *
 	 * - **Field Type**: Text
@@ -840,6 +851,33 @@ type ExpertiseSliceVariation = ExpertiseSliceDefault;
  * - **Documentation**: https://prismic.io/docs/slice
  */
 export type ExpertiseSlice = prismic.SharedSlice<'expertise', ExpertiseSliceVariation>;
+
+/**
+ * Default variation for GridGap Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type GridGapSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Record<string, never>,
+	never
+>;
+
+/**
+ * Slice variation for *GridGap*
+ */
+type GridGapSliceVariation = GridGapSliceDefault;
+
+/**
+ * GridGap Shared Slice
+ *
+ * - **API ID**: `grid_gap`
+ * - **Description**: GridGap
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type GridGapSlice = prismic.SharedSlice<'grid_gap', GridGapSliceVariation>;
 
 /**
  * Primary content in *ImageBlock → Primary*
@@ -1209,6 +1247,9 @@ declare module '@prismicio/client' {
 			ExpertiseSliceDefaultItem,
 			ExpertiseSliceVariation,
 			ExpertiseSliceDefault,
+			GridGapSlice,
+			GridGapSliceVariation,
+			GridGapSliceDefault,
 			ImageBlockSlice,
 			ImageBlockSliceDefaultPrimary,
 			ImageBlockSliceCarouselItem,

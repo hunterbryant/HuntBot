@@ -8,7 +8,8 @@ export const load = (async ({ fetch, cookies }) => {
 			'project.highlight_image',
 			'project.title',
 			'project.project_type',
-			'project.image_fill'
+			'project.image_fill',
+			'project.bg_color'
 		]
 	});
 

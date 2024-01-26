@@ -18,6 +18,9 @@
 				"fieldset": "Slice Zone",
 				"config": {
 					"choices": {
+						"grid_gap": {
+							"type": "SharedSlice"
+						},
 						"project_link": {
 							"type": "SharedSlice"
 						}

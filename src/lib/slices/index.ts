@@ -4,6 +4,7 @@ import ContentHighlight from './ContentHighlight/index.svelte';
 import EmbedBlock from './EmbedBlock/index.svelte';
 import Experience from './Experience/index.svelte';
 import Expertise from './Expertise/index.svelte';
+import GridGap from './GridGap/index.svelte';
 import ImageBlock from './ImageBlock/index.svelte';
 import InfoEducationImage from './InfoEducationImage/index.svelte';
 import ProjectLink from './ProjectLink/index.svelte';
@@ -15,6 +16,7 @@ export const components = {
 	embed_block: EmbedBlock,
 	experience: Experience,
 	expertise: Expertise,
+	grid_gap: GridGap,
 	image_block: ImageBlock,
 	info_education_image: InfoEducationImage,
 	project_link: ProjectLink,

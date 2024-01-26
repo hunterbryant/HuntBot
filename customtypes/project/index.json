@@ -59,6 +59,13 @@
 						}
 					}
 				}
+			},
+			"bg_color": {
+				"type": "Color",
+				"config": {
+					"label": "BG COlor",
+					"placeholder": ""
+				}
 			}
 		},
 		"SEO & Metadata": {

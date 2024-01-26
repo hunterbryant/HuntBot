@@ -9,6 +9,7 @@
 	$$restProps;
 
 	let project: ProjectDocumentData;
+	let color: string;
 
 	// Silence ts warnings about the affiliation type
 	if (
@@ -25,21 +26,21 @@
 	class="group col-span-full flex cursor-pointer flex-col sm:col-span-3 md:col-span-2"
 >
 	<div
-		class="h-32 w-full overflow-hidden rounded bg-[#DDDDDD] transition group-hover:ring group-hover:ring-slate-400 group-hover:ring-offset-2 sm:aspect-square sm:h-auto"
+		class="h-32 w-full overflow-hidden rounded transition group-hover:ring group-hover:ring-slate-400 group-hover:ring-offset-2 md:aspect-square md:h-auto"
 	>
 		<PrismicImage
 			field={project.highlight_image}
-			class="h-full w-full transform-gpu rounded transition-transform duration-500 group-hover:scale-110  {project.image_fill
+			class="h-full w-full transform-gpu rounded transition-transform  duration-500 group-hover:scale-110  {project.image_fill
 				? 'object-cover'
-				: 'object-contain'}"
+				: 'object-contain'} "
 		></PrismicImage>
 	</div>
 	<h3
-		class="mt-4 decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline"
+		class="mt-4 text-balance leading-tight decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline"
 	>
 		{project.title}
 	</h3>
-	<p class="mt-0 text-xs font-medium uppercase tracking-wider text-stone-600">
+	<p class="mt-1 text-xs font-medium uppercase tracking-wider text-stone-500">
 		{project.project_type}
 	</p>
 </PrismicLink>
