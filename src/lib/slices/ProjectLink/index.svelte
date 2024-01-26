@@ -25,11 +25,11 @@
 	class="group col-span-full flex cursor-pointer flex-col sm:col-span-3 md:col-span-2"
 >
 	<div
-		class="w-full overflow-hidden rounded bg-[#DDDDDD] transition group-hover:ring group-hover:ring-slate-400 group-hover:ring-offset-2"
+		class="h-32 w-full overflow-hidden rounded bg-[#DDDDDD] transition group-hover:ring group-hover:ring-slate-400 group-hover:ring-offset-2 sm:aspect-square sm:h-auto"
 	>
 		<PrismicImage
 			field={project.highlight_image}
-			class="aspect-video  transform-gpu rounded transition-transform duration-500 group-hover:scale-110 {project.image_fill
+			class="h-full w-full transform-gpu rounded transition-transform duration-500 group-hover:scale-110  {project.image_fill
 				? 'object-cover'
 				: 'object-contain'}"
 		></PrismicImage>
