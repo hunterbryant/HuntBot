@@ -380,23 +380,12 @@ export type InformationDocument<Lang extends string = string> = prismic.PrismicD
 	Lang
 >;
 
-type OtherProjectsDocumentDataSlicesSlice = never;
+type OtherProjectsDocumentDataSlicesSlice = ProjectLinkSlice;
 
 /**
  * Content for Other Projects documents
  */
 interface OtherProjectsDocumentData {
-	/**
-	 * Slice Zone field in *Other Projects*
-	 *
-	 * - **Field Type**: Slice Zone
-	 * - **Placeholder**: *None*
-	 * - **API ID Path**: other_projects.slices[]
-	 * - **Tab**: Main
-	 * - **Documentation**: https://prismic.io/docs/field#slices
-	 */
-	slices: prismic.SliceZone<OtherProjectsDocumentDataSlicesSlice>;
-
 	/**
 	 * Header field in *Other Projects*
 	 *
@@ -406,7 +395,18 @@ interface OtherProjectsDocumentData {
 	 * - **Tab**: Main
 	 * - **Documentation**: https://prismic.io/docs/field#key-text
 	 */
-	header: prismic.KeyTextField /**
+	header: prismic.KeyTextField;
+
+	/**
+	 * Slice Zone field in *Other Projects*
+	 *
+	 * - **Field Type**: Slice Zone
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: other_projects.slices[]
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#slices
+	 */
+	slices: prismic.SliceZone<OtherProjectsDocumentDataSlicesSlice> /**
 	 * Meta Description field in *Other Projects*
 	 *
 	 * - **Field Type**: Text
@@ -997,6 +997,48 @@ export type InfoEducationImageSlice = prismic.SharedSlice<
 >;
 
 /**
+ * Primary content in *ProjectLink → Primary*
+ */
+export interface ProjectLinkSliceDefaultPrimary {
+	/**
+	 * project field in *ProjectLink → Primary*
+	 *
+	 * - **Field Type**: Content Relationship
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: project_link.primary.project
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	project: prismic.ContentRelationshipField<'project'>;
+}
+
+/**
+ * Default variation for ProjectLink Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ProjectLinkSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Simplify<ProjectLinkSliceDefaultPrimary>,
+	never
+>;
+
+/**
+ * Slice variation for *ProjectLink*
+ */
+type ProjectLinkSliceVariation = ProjectLinkSliceDefault;
+
+/**
+ * ProjectLink Shared Slice
+ *
+ * - **API ID**: `project_link`
+ * - **Description**: ProjectLink
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type ProjectLinkSlice = prismic.SharedSlice<'project_link', ProjectLinkSliceVariation>;
+
+/**
  * Primary content in *Recognition → Items*
  */
 export interface RecognitionSliceDefaultItem {
@@ -1177,6 +1219,10 @@ declare module '@prismicio/client' {
 			InfoEducationImageSliceDefaultPrimary,
 			InfoEducationImageSliceVariation,
 			InfoEducationImageSliceDefault,
+			ProjectLinkSlice,
+			ProjectLinkSliceDefaultPrimary,
+			ProjectLinkSliceVariation,
+			ProjectLinkSliceDefault,
 			RecognitionSlice,
 			RecognitionSliceDefaultItem,
 			RecognitionSliceVariation,

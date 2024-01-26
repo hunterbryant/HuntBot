@@ -6,18 +6,22 @@
 	"status": true,
 	"json": {
 		"Main": {
-			"slices": {
-				"type": "Slices",
-				"fieldset": "Slice Zone",
-				"config": {
-					"choices": {}
-				}
-			},
 			"header": {
 				"type": "Text",
 				"config": {
 					"label": "Header",
 					"placeholder": ""
+				}
+			},
+			"slices": {
+				"type": "Slices",
+				"fieldset": "Slice Zone",
+				"config": {
+					"choices": {
+						"project_link": {
+							"type": "SharedSlice"
+						}
+					}
 				}
 			}
 		},
