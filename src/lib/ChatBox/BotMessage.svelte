@@ -1,5 +1,5 @@
 <script lang="ts">
-	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
+	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide } from 'svelte/transition';
 	import { getContext } from 'svelte';
 
@@ -15,14 +15,14 @@
 
 <div
 	in:slide|global
-	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1"
+	class="text-stone-800 flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1 dark:text-stone-200"
 >
-	<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
+	<Huntbotlogo />
 
 	{#if value == ''}
 		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
-				class="inline-block h-5 w-5 animate-spin text-slate-400"
+				class="text-slate-400 inline-block h-5 w-5 animate-spin dark:text-slate-600"
 				xmlns="http://www.w3.org/2000/svg"
 				fill="none"
 				viewBox="0 0 24 24"
@@ -38,7 +38,7 @@
 		</p>
 	{:else}
 		<p
-			class="mr-6 mt-3 grow whitespace-pre-line font-normal text-stone-600"
+			class="text-stone-600 mr-6 mt-3 grow whitespace-pre-line font-normal dark:text-stone-400"
 			in:slide|global={{ duration: 400 }}
 			on:introend={() => {
 				scrollToBottom();

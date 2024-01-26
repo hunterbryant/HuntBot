@@ -22,11 +22,13 @@
 	{#if slice.variation === 'default'}
 		<PrismicImage
 			field={slice.primary.image}
-			class="rounded border border-black/10 {slice.primary.caption ? 'mb-0' : 'mb-4'}"
+			class="rounded border border-black/10 dark:border-white/10 {slice.primary.caption
+				? 'mb-0'
+				: 'mb-4'}"
 		/>
 		{#if slice.primary.caption}
 			<caption
-				class="mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-600"
+				class="text-stone-600 mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide dark:text-stone-400"
 				>{slice.primary.caption}</caption
 			>
 		{/if}
@@ -39,10 +41,10 @@
 					>
 						<PrismicImage
 							field={item.image}
-							class="h-full max-h-56 w-full overflow-hidden rounded border border-black/10 object-cover sm:max-h-96 "
+							class="h-full max-h-56 w-full overflow-hidden rounded border border-black/10 object-cover  sm:max-h-96 dark:border-white/10 "
 						/>
 						<caption
-							class="w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-600"
+							class="text-stone-600 w-0 min-w-full text-balance text-left text-sm tracking-wide dark:text-stone-400"
 						>
 							{#if item.caption}
 								{item.caption}

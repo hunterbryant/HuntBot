@@ -4,6 +4,7 @@
 
 	import { inject } from '@vercel/analytics';
 	import { injectSpeedInsights } from '@vercel/speed-insights/sveltekit';
+	import Lettermark from '$lib/assets/lettermark.svelte';
 
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
@@ -155,18 +156,19 @@
 		<div class=" flex min-h-0 flex-grow flex-col sm:flex-1">
 			<!-- This is the navbar -->
 			<div
-				class="pointer-events-auto z-40 -mx-2 flex justify-between bg-stone-100 px-2 pb-4 pt-4 *:flex *:h-11 *:items-center sm:z-30 sm:-ml-4 sm:-mr-4 sm:pb-8 sm:pl-4 sm:pr-4 sm:pt-10"
+				class="text-stone-800 bg-stone-100 pointer-events-auto z-40 -mx-2 flex justify-between px-2 pb-4 pt-4 dark:text-stone-200 dark:bg-stone-900 *:flex *:h-11 *:items-center sm:z-30 sm:-ml-4 sm:-mr-4 sm:pb-8 sm:pl-4 sm:pr-4 sm:pt-10"
 			>
 				<a
 					href={$page.url.pathname === '/' ? null : '/'}
 					class="rounded px-0 transition-all {$page.url.pathname === '/'
 						? 'hover:bg-none hover:px-0'
-						: 'hover:bg-stone-200 hover:px-2'}"
+						: 'hover:bg-stone-200 dark:hover:bg-stone-800 hover:px-2'}"
 					data-sveltekit-noscroll
-					><img class="inline-block" src={lettermark} alt="Hunters lettermark logo" /></a
 				>
+					<Lettermark />
+				</a>
 				<button
-					class="rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition-all hover:bg-stone-300 sm:hidden"
+					class="text-stone-900 bg-stone-200 rounded px-2 text-xs font-bold uppercase tracking-wider transition-all hover:bg-stone-300 dark:text-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 sm:hidden"
 					on:click={menuActive ? closeMenu : openMenu}
 				>
 					{menuActive ? 'Close' : 'Menu'}
@@ -176,7 +178,9 @@
 				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if ($delayedNavEngaged || mobileBreakpoint) && mounted}
 						<!-- This is the toggleable section in mobile breakpoints -->
-						<div class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent">
+						<div
+							class=" bg-stone-100 -mx-2 grid grow grid-cols-1 px-2 dark:bg-stone-900 sm:grow-0 sm:bg-transparent"
+						>
 							<div
 								in:receive|global={{ key: 'links' }}
 								out:send|global={{ key: 'links' }}
@@ -186,10 +190,10 @@
 							</div>
 						</div>
 						<div
-							class="pointer-events-auto z-40 flex justify-end bg-stone-100 pb-4 pt-4 sm:z-30 sm:hidden sm:py-16"
+							class="bg-stone-100 pointer-events-auto z-40 flex justify-end pb-4 pt-4 dark:bg-stone-900 sm:z-30 sm:hidden sm:py-16"
 						>
 							<button
-								class="h-11 rounded bg-stone-200 px-2 text-xs font-bold uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 sm:hidden"
+								class="text-stone-900 bg-stone-200 h-11 rounded px-2 text-xs font-bold uppercase tracking-wider transition hover:bg-stone-300 dark:text-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 sm:hidden"
 								on:click={menuActive ? closeMenu : openMenu}
 							>
 								{menuActive ? 'Close' : 'Menu'}
@@ -215,9 +219,13 @@
 						minimized = true;
 					}}
 				>
-					<h3 class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl">How?</h3>
+					<h3
+						class="text-stone-800 text-5xl font-bold tracking-tighter dark:text-stone-200 xl:text-6xl"
+					>
+						How?
+					</h3>
 					<button
-						class="h-12 rounded bg-blue-600 px-3 text-stone-50 transition hover:bg-blue-700 active:bg-blue-600"
+						class="text-stone-50 bg-blue-600 h-12 rounded px-3 transition hover:bg-blue-700 active:bg-blue-600 dark:text-stone-950"
 						on:click={engageHuntbot}>Ask HuntBot</button
 					>
 				</div>

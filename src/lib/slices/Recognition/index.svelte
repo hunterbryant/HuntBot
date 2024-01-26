@@ -15,7 +15,7 @@
 >
 	<!-- Out of box metadata -->
 	<div
-		class="col-span-1 col-start-1 row-start-1 mt-1 flex flex-col justify-start gap-2 text-left text-xs uppercase tracking-wider text-stone-500 sm:col-start-3"
+		class="text-stone-500 col-span-1 col-start-1 row-start-1 mt-1 flex flex-col justify-start gap-2 text-left text-xs uppercase tracking-wider sm:col-start-3"
 	>
 		Recognition
 	</div>
@@ -27,21 +27,21 @@
 		{#each slice.items as item}
 			<div class="col-span-full flex h-min flex-col gap-2 first:row-span-5 lg:col-span-3">
 				<div class="flex items-start gap-2">
-					<h3 class="flex-grow font-bold leading-tight">
+					<h3 class="text-stone-800 flex-grow font-bold leading-tight dark:text-stone-200">
 						{item.title}
 					</h3>
 					<p
-						class="rounded bg-stone-200 p-1 pb-[2px] text-xs uppercase tracking-wider text-stone-900"
+						class="text-stone-900 bg-stone-200 rounded p-1 pb-[2px] text-xs uppercase tracking-wider dark:text-stone-100 dark:bg-stone-800"
 					>
 						{item.year}
 					</p>
 				</div>
-				<div class=" *:text-stone-600">
+				<div class=" *:text-stone-600 dark:*:text-stone-400">
 					<PrismicRichText field={item.description} />
 				</div>
 				<PrismicLink
 					field={item.link_url}
-					class=" text-stone-600 decoration-slate-400 decoration-2 underline-offset-2 transition-all hover:underline"
+					class=" text-stone-600 decoration-slate-400 decoration-2 underline-offset-2 transition-all dark:text-stone-400 hover:underline dark:decoration-slate-600"
 					>{item.link_label} ↗</PrismicLink
 				>
 			</div>

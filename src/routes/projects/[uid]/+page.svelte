@@ -29,7 +29,7 @@
 				field={data.page.data.highlight_image}
 			/>
 			<h2
-				class="text-balance text-4xl font-bold tracking-tighter text-stone-800 sm:text-5xl md:text-6xl lg:text-7xl"
+				class="text-stone-800 text-balance text-4xl font-bold tracking-tighter dark:text-stone-200 sm:text-5xl md:text-6xl lg:text-7xl"
 			>
 				{data.page.data.title}
 			</h2>

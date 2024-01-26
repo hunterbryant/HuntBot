@@ -6,6 +6,7 @@
 	import { goto } from '$app/navigation';
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen, mobile } from '$lib/nav/navstore';
+	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 
 	let message = '';
 	let inputElement: HTMLInputElement;
@@ -117,7 +118,7 @@
 	on:submit|preventDefault={handleSubmit}
 	on:click={focusInput}
 	on:keydown={focusInput}
-	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200"
+	class="text-stone-800 relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 outline-2 -outline-offset-2 dark:text-stone-200 focus-within:outline focus-within:outline-blue-200 dark:focus-within:outline-blue-800"
 >
 	{#if message.trim() === '' && minimized}
 		<button
@@ -125,17 +126,17 @@
 				minimized = false;
 				chatOpen.set(true);
 			}}
-			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none"
+			class="peer bg-white h-12 basis-12 rounded transition hover:bg-stone-100 active:bg-slate-200 dark:bg-black dark:hover:bg-stone-900 dark:active:bg-slate-800 active:shadow-none"
 		>
 			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none -scale-y-100" />
 		</button>
 	{:else}
 		<button
 			type="submit"
-			class="peer aspect-square h-12 basis-12 rounded bg-blue-600 transition hover:bg-blue-700 active:bg-blue-600 disabled:bg-blue-200"
+			class="peer bg-blue-600 aspect-square h-12 basis-12 rounded transition hover:bg-blue-700 active:bg-blue-600 disabled:bg-blue-200 dark:disabled:bg-blue-900"
 			disabled={message.trim() === '' || awaitingBotResponse}
 		>
-			<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none" />
+			<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none dark:invert" />
 		</button>
 	{/if}
 
@@ -146,10 +147,10 @@
 		bind:this={inputElement}
 		inputmode="search"
 	/>
-	<hr class="absolute inset-x-2 -top-px bg-slate-200 peer-focus:hidden" />
+	<hr class="border-slate-200 absolute inset-x-2 -top-px dark:border-slate-800 peer-focus:hidden" />
 
 	<!-- Show HuntBot icon when chatbox is minimized -->
 	{#if minimized}
-		<img src={huntbotlogo} alt="HuntBot&apos;s Avatar" class="h-12 flex-none basis-12" />
+		<Huntbotlogo />
 	{/if}
 </form>

@@ -47,7 +47,7 @@
 </script>
 
 <div
-	class="flex-col-rev z-50 mb-0 flex max-h-[calc(100dvh-5.25rem)] w-full flex-col flex-nowrap overflow-hidden rounded-none border border-stone-200 bg-white sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg"
+	class="flex-col-rev bg-white border-stone-200 z-50 mb-0 flex max-h-[calc(100dvh-5.25rem)] w-full flex-col flex-nowrap overflow-hidden rounded-none border dark:bg-black dark:border-stone-800 sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
 	{#if $messages.length == 0 || !minimized}
@@ -69,15 +69,15 @@
 			{#if isScrolling && !scrolledToBottom}
 				<div
 					transition:fade|global
-					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white"
+					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white dark:to-black"
 				>
 					<button
 						on:click={() => {
 							scrollToBottom();
 						}}
-						class="absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border border-stone-300 bg-stone-200 transition hover:bg-stone-300"
+						class="dark:hover:ng-stone-700 bg-stone-200 border-stone-300 absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border transition hover:bg-stone-300 dark:bg-stone-800 dark:border-stone-700 dark:hover:bg-stone-700"
 					>
-						<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none" />
+						<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none dark:invert" />
 					</button>
 				</div>
 			{/if}

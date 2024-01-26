@@ -15,7 +15,7 @@
 >
 	<!-- Out of box metadata -->
 	<div
-		class="col-span-1 col-start-1 row-start-1 mt-1 flex flex-col justify-start gap-2 text-left text-xs uppercase tracking-wider text-stone-500 sm:col-start-3"
+		class="text-stone-500 col-span-1 col-start-1 row-start-1 mt-1 flex flex-col justify-start gap-2 text-left text-xs uppercase tracking-wider sm:col-start-3"
 	>
 		Expertise
 	</div>
@@ -26,7 +26,9 @@
 	>
 		{#each slice.items as item}
 			<div class="col-span-full grid grid-cols-subgrid gap-4 sm:col-span-4 lg:col-span-3">
-				<h3 class="col-span-full mb-2 font-bold leading-tight sm:col-span-2 sm:mb-0 lg:col-span-1">
+				<h3
+					class="text-stone-800 col-span-full mb-2 font-bold leading-tight dark:text-stone-200 sm:col-span-2 sm:mb-0 lg:col-span-1"
+				>
 					{item.skill_name}
 				</h3>
 				<ul
@@ -35,14 +37,16 @@
 					{#if item.skill_tags}
 						{#each item.skill_tags.split(',') as skill}
 							<li
-								class="rounded bg-stone-200 p-1 pb-[2px] text-xs uppercase tracking-wider text-stone-900"
+								class="text-stone-900 bg-stone-200 rounded p-1 pb-[2px] text-xs uppercase tracking-wider dark:text-stone-100 dark:bg-stone-800"
 							>
 								{skill}
 							</li>
 						{/each}
 					{/if}
 				</ul>
-				<div class="*:text-balanced col-span-full col-start-2 text-stone-600 sm:col-start-1">
+				<div
+					class="*:text-balanced text-stone-600 col-span-full col-start-2 dark:text-stone-400 sm:col-start-1"
+				>
 					<PrismicRichText field={item.skill_decription} />
 				</div>
 			</div>
