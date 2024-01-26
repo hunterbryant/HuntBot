@@ -55,12 +55,10 @@
 			<!-- Todo: animate title right after scroll -->
 			<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
 				<h1
-					class="text-stone-900 absolute -top-[3.09rem] my-auto text-5xl font-bold tracking-tighter dark:text-stone-100 sm:relative sm:top-0 sm:z-40 xl:text-6xl dark:mix-blend-exclusion"
+					class="absolute -top-[3.09rem] my-auto text-5xl font-bold tracking-tighter text-stone-900 sm:relative sm:top-0 sm:z-40 xl:text-6xl dark:text-stone-100 dark:mix-blend-exclusion"
 					bind:this={element}
 				>
-					I’m the designer that will build you a product your users <span class="font-serif italic"
-						>really</span
-					>
+					I’ll design you a product your users <span class="font-serif italic">actually</span>
 					want.
 				</h1>
 			</div>
@@ -71,7 +69,7 @@
 			class="-order-1 grid h-[calc(50svh-2rem)] grow grid-cols-5 gap-4 sm:-order-none sm:h-[calc(50svh-9rem)] sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9"
 		>
 			<div
-				class="bg-stone-200 col-start-1 col-end-6 h-full overflow-hidden rounded dark:bg-stone-800 sm:col-start-4 sm:col-end-7 md:col-end-8 lg:col-end-10"
+				class="col-start-1 col-end-6 h-full overflow-hidden rounded bg-stone-200 sm:col-start-4 sm:col-end-7 md:col-end-8 lg:col-end-10 dark:bg-stone-800"
 			>
 				<PrismicImage
 					field={data.page.data.landing_image}
