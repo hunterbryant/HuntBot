@@ -1,9 +1,9 @@
 import { createClient } from '$lib/prismicio';
-import { error, redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import type { CaseStudyDocument } from '../../../prismicio-types';
-import type { PageServerLoad } from './$types';
+import type { EntryGenerator, PageServerLoad, RouteParams } from './$types';
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params }) => {
 	const client = createClient();
 	let page: CaseStudyDocument<string>;
 
@@ -16,27 +16,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		});
 	}
 
-	if (page.data.protected && !locals.user) {
-		redirect(303, `/login?redirectTo=/case-studies/${params.uid}`);
-	}
-
 	return { page };
 };
 
-// export const entries: EntryGenerator = async () => {
-// 	const slugArray: RouteParams[] = [];
-// 	const client = createClient();
-// 	const page = await client.getAllByType<CaseStudyDocument>('case_study');
+export const entries: EntryGenerator = async () => {
+	const slugArray: RouteParams[] = [];
+	const client = createClient();
+	const page = await client.getAllByType<CaseStudyDocument>('case_study');
 
-// 	page.forEach((caseStudy) => {
-// 		if (!caseStudy.data.protected) {
-// 			slugArray.push({ uid: caseStudy.uid });
-// 		}
-// 	});
+	page.forEach((caseStudy) => {
+		slugArray.push({ uid: caseStudy.uid });
+	});
 
-// 	console.log(slugArray);
+	console.log(slugArray);
 
-// 	return slugArray;
-// };
+	return slugArray;
+};
 
-export const prerender = false;
+export const prerender = true;
