@@ -26,7 +26,7 @@
 	class="group col-span-full flex cursor-pointer flex-col sm:col-span-3 md:col-span-2"
 >
 	<div
-		class="h-32 w-full overflow-hidden rounded transition group-hover:ring group-hover:ring-slate-400 group-hover:ring-offset-2 md:aspect-square md:h-auto dark:group-hover:ring-slate-600"
+		class="h-32 w-full overflow-hidden rounded transition group-hover:ring group-hover:ring-slate-400 group-hover:ring-offset-2 md:aspect-video md:h-auto dark:group-hover:ring-slate-600"
 	>
 		<PrismicImage
 			field={project.highlight_image}
@@ -36,11 +36,11 @@
 		></PrismicImage>
 	</div>
 	<h3
-		class="text-stone-800 mt-4 text-balance leading-tight decoration-slate-400 decoration-2 underline-offset-2 transition-all dark:text-stone-200 group-hover:underline dark:decoration-slate-600"
+		class="mt-4 text-balance leading-tight text-stone-800 decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline dark:text-stone-200 dark:decoration-slate-600"
 	>
 		{project.title}
 	</h3>
-	<p class="text-stone-500 mt-1 text-xs font-medium uppercase tracking-wider">
+	<p class="mt-1 text-xs font-medium uppercase tracking-wider text-stone-500">
 		{project.project_type}
 	</p>
 </PrismicLink>

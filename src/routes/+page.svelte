@@ -60,6 +60,7 @@
 				>
 					I’ll design you a product your users <span class="font-serif italic">actually</span>
 					want.
+					<!-- I’m the designer that will build you a product your users really want. -->
 				</h1>
 			</div>
 		</div>
