@@ -80,7 +80,9 @@ export interface CaseStudyDocumentDataResponsibilitiesItem {
 	 * - **API ID Path**: case_study.responsibilities[].skill
 	 * - **Documentation**: https://prismic.io/docs/field#select
 	 */
-	skill: prismic.SelectField<'UI' | 'UX' | 'Research' | 'Strategy' | 'Data Viz'>;
+	skill: prismic.SelectField<
+		'UI' | 'UX' | 'Research' | 'Strategy' | 'Data Viz' | 'Dev' | 'Webflow' | 'Brand' | 'Marketing'
+	>;
 }
 
 type CaseStudyDocumentDataSlicesSlice = EmbedBlockSlice | ImageBlockSlice | TextBlockSlice;

@@ -60,7 +60,7 @@
 						{formatDate(caseStudy.data.date)}
 					</p>
 					<h3
-						class="text-stone-800 decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline dark:text-stone-200 dark:decoration-slate-500"
+						class="text-balance text-stone-800 decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline dark:text-stone-200 dark:decoration-slate-500"
 					>
 						{caseStudy.data.title}
 					</h3>

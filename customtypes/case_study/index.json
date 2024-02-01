@@ -70,7 +70,17 @@
 							"config": {
 								"label": "Skill",
 								"placeholder": "",
-								"options": ["UI", "UX", "Research", "Strategy", "Data Viz"]
+								"options": [
+									"UI",
+									"UX",
+									"Research",
+									"Strategy",
+									"Data Viz",
+									"Dev",
+									"Webflow",
+									"Brand",
+									"Marketing"
+								]
 							}
 						}
 					}
