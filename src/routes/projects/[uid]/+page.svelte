@@ -22,14 +22,14 @@
 	<!-- Grid -->
 	<div class="grid grow grid-cols-5 gap-x-4 sm:grid-cols-6 md:grid-cols-7 lg:grid-cols-9">
 		<div
-			class="col-start-1 col-end-6 mb-6 flex flex-col justify-start gap-8 overflow-hidden sm:col-span-full sm:col-start-4 sm:gap-16 md:col-end-8 md:mb-12 lg:col-end-10"
+			class="col-start-1 col-end-6 mb-6 flex flex-col justify-start gap-8 overflow-visible sm:col-span-full sm:col-start-4 sm:gap-16 md:col-end-8 md:mb-12 lg:col-end-10"
 		>
 			<PrismicImage
 				class="aspect-video rounded object-cover sm:h-[24.5rem] sm:rounded-b sm:rounded-t-none"
 				field={data.page.data.highlight_image}
 			/>
 			<h2
-				class="text-stone-800 text-balance text-4xl font-bold tracking-tighter dark:text-stone-200 sm:text-5xl md:text-6xl lg:text-7xl"
+				class="text-balance text-4xl font-bold tracking-tighter text-stone-800 sm:text-5xl md:text-6xl lg:text-7xl dark:text-stone-200"
 			>
 				{data.page.data.title}
 			</h2>
