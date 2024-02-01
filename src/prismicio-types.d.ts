@@ -302,6 +302,7 @@ export type HomeDocument<Lang extends string = string> = prismic.PrismicDocument
 >;
 
 type InformationDocumentDataSlicesSlice =
+	| LinksSlice
 	| RecognitionSlice
 	| ExperienceSlice
 	| ExpertiseSlice
@@ -1046,6 +1047,58 @@ export type InfoEducationImageSlice = prismic.SharedSlice<
 >;
 
 /**
+ * Primary content in *Links → Items*
+ */
+export interface LinksSliceDefaultItem {
+	/**
+	 * link field in *Links → Items*
+	 *
+	 * - **Field Type**: Link
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: links.items[].link
+	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
+	 */
+	link: prismic.LinkField;
+
+	/**
+	 * Label field in *Links → Items*
+	 *
+	 * - **Field Type**: Text
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: links.items[].label
+	 * - **Documentation**: https://prismic.io/docs/field#key-text
+	 */
+	label: prismic.KeyTextField;
+}
+
+/**
+ * Default variation for Links Slice
+ *
+ * - **API ID**: `default`
+ * - **Description**: Default
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type LinksSliceDefault = prismic.SharedSliceVariation<
+	'default',
+	Record<string, never>,
+	Simplify<LinksSliceDefaultItem>
+>;
+
+/**
+ * Slice variation for *Links*
+ */
+type LinksSliceVariation = LinksSliceDefault;
+
+/**
+ * Links Shared Slice
+ *
+ * - **API ID**: `links`
+ * - **Description**: Links
+ * - **Documentation**: https://prismic.io/docs/slice
+ */
+export type LinksSlice = prismic.SharedSlice<'links', LinksSliceVariation>;
+
+/**
  * Primary content in *ProjectLink → Primary*
  */
 export interface ProjectLinkSliceDefaultPrimary {
@@ -1271,6 +1324,10 @@ declare module '@prismicio/client' {
 			InfoEducationImageSliceDefaultPrimary,
 			InfoEducationImageSliceVariation,
 			InfoEducationImageSliceDefault,
+			LinksSlice,
+			LinksSliceDefaultItem,
+			LinksSliceVariation,
+			LinksSliceDefault,
 			ProjectLinkSlice,
 			ProjectLinkSliceDefaultPrimary,
 			ProjectLinkSliceVariation,

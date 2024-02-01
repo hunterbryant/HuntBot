@@ -7,6 +7,7 @@ import Expertise from './Expertise/index.svelte';
 import GridGap from './GridGap/index.svelte';
 import ImageBlock from './ImageBlock/index.svelte';
 import InfoEducationImage from './InfoEducationImage/index.svelte';
+import Links from './Links/index.svelte';
 import ProjectLink from './ProjectLink/index.svelte';
 import Recognition from './Recognition/index.svelte';
 import TextBlock from './TextBlock/index.svelte';
@@ -19,6 +20,7 @@ export const components = {
 	grid_gap: GridGap,
 	image_block: ImageBlock,
 	info_education_image: InfoEducationImage,
+	links: Links,
 	project_link: ProjectLink,
 	recognition: Recognition,
 	text_block: TextBlock

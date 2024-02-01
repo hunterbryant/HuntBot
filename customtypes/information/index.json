@@ -18,6 +18,9 @@
 				"fieldset": "Slice Zone",
 				"config": {
 					"choices": {
+						"links": {
+							"type": "SharedSlice"
+						},
 						"recognition": {
 							"type": "SharedSlice"
 						},

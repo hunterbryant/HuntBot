@@ -11,7 +11,7 @@
 <section
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
-	class="col-span-full mb-8 grid grow grid-cols-subgrid items-stretch gap-4 gap-y-4 sm:mb-0 md:mb-32"
+	class="col-span-full mb-8 grid grow grid-cols-subgrid items-stretch gap-4 gap-y-4 sm:mb-16 md:mb-32"
 >
 	<!-- Out of box metadata -->
 	<div
