@@ -39,6 +39,7 @@
 
 			date = new Date(project.date as string);
 			projectType = 'Case Study';
+			project.type = 'case_study';
 
 			// Repeat the content relationship check for the project affiliation
 			if (
@@ -53,6 +54,7 @@
 			bgImage = project.highlight_image.url as string;
 			date = new Date(project.date as string);
 			projectType = project.project_type as string;
+			project.type = 'project';
 		}
 	}
 
@@ -84,19 +86,19 @@
 		<div class="flex flex-row gap-4 pt-2 sm:pt-0">
 			<div class="flex flex-initial flex-col gap-1">
 				<p
-					class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-600"
+					class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-500"
 				>
 					{#if affiliation}
 						Affiliation
 					{/if}
 				</p>
 				<p
-					class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-600"
+					class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-500"
 				>
 					Type
 				</p>
 				<p
-					class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-600"
+					class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-500"
 				>
 					{#if project.type === 'case_study'}
 						Topics
