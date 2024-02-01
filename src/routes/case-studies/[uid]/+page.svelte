@@ -26,10 +26,10 @@
 		>
 			<PrismicImage
 				class="aspect-video rounded object-cover sm:h-[24.5rem] sm:rounded-b sm:rounded-t-none"
-				field={data.page.data.hightlight_image}
+				field={data.page.data.highlight_image}
 			/>
 			<h2
-				class="text-stone-800 text-balance text-4xl font-bold tracking-tighter dark:text-stone-200 sm:text-5xl md:text-6xl lg:text-7xl"
+				class="text-balance text-4xl font-bold tracking-tighter text-stone-800 sm:text-5xl md:text-6xl lg:text-7xl dark:text-stone-200"
 			>
 				{data.page.data.title}
 			</h2>
