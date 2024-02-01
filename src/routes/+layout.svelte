@@ -178,7 +178,9 @@
 				<div class=" flex grow flex-col" transition:fly={{ x: -350 }}>
 					{#if ($delayedNavEngaged || mobileBreakpoint) && mounted}
 						<!-- This is the toggleable section in mobile breakpoints -->
-						<div class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent">
+						<div
+							class=" -mx-2 grid grow grid-cols-1 bg-stone-100 px-2 sm:grow-0 sm:bg-transparent dark:bg-stone-900 sm:dark:bg-transparent"
+						>
 							<div
 								in:receive|global={{ key: 'links' }}
 								out:send|global={{ key: 'links' }}
