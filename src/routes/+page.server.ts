@@ -17,15 +17,24 @@ export async function load({ fetch, cookies }) {
                         ...on default {
                             primary {
                                 project {
-                                    title
-                                    hightlight_image
-                                    image_fill
-                                    date
-                                    affiliation {
+                                    ...on case_study {
                                         title
+                                        highlight_image
+                                        image_fill
+                                        date
+                                        affiliation {
+                                            title
+                                        }
+                                        responsibilities {
+                                            skill
+                                        }
                                     }
-                                    responsibilities {
-                                        skill
+                                    ...on project {
+                                        title
+                                        highlight_image
+                                        image_fill
+                                        date
+                                        project_type
                                     }
                                 }
                             }
@@ -34,7 +43,7 @@ export async function load({ fetch, cookies }) {
                             primary {
                                 project {
                                     title
-                                    hightlight_image
+                                    highlight_image
                                     date
                                     affiliation {
                                         title

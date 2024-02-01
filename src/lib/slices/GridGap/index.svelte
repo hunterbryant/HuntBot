@@ -2,6 +2,9 @@
 	import type { Content } from '@prismicio/client';
 
 	export let slice: Content.GridGapSlice;
+
+	//Silences runtime svelte unused prop warnings
+	$$restProps;
 </script>
 
 <div

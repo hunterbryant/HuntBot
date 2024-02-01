@@ -43,6 +43,13 @@
 					"placeholder": ""
 				}
 			},
+			"bg_color": {
+				"type": "Color",
+				"config": {
+					"label": "BG Color",
+					"placeholder": ""
+				}
+			},
 			"slices": {
 				"type": "Slices",
 				"fieldset": "Slice Zone",
@@ -60,10 +67,10 @@
 					}
 				}
 			},
-			"bg_color": {
-				"type": "Color",
+			"date": {
+				"type": "Date",
 				"config": {
-					"label": "BG COlor",
+					"label": "Date",
 					"placeholder": ""
 				}
 			}

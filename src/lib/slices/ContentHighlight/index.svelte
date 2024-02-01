@@ -5,7 +5,9 @@
 		AffiliationDocumentData,
 		AffiliationDocument,
 		CaseStudyDocument,
-		CaseStudyDocumentData
+		CaseStudyDocumentData,
+		ProjectDocument,
+		ProjectDocumentData
 	} from '../../../prismicio-types';
 	// import { Application } from '@splinetool/runtime';
 	import { onMount } from 'svelte';
@@ -14,7 +16,9 @@
 	$$restProps;
 	export let slice: Content.ContentHighlightSlice;
 
-	let project: CaseStudyDocumentData;
+	type Highlightable<T> = T & { type: string; responsibilities: [any] };
+
+	let project: Highlightable<CaseStudyDocumentData | ProjectDocumentData>;
 	let affiliation: AffiliationDocumentData;
 	let date: Date;
 	let projectType: string;
@@ -23,23 +27,32 @@
 
 	// This section is to accept the content relationship fields as the proper type (for now it can only be case_study)
 	if (
-		isFilled.contentRelationship<'case_study', string, CaseStudyDocument['data']>(
-			slice.primary.project
-		)
+		isFilled.contentRelationship<
+			'case_study' | 'project',
+			string,
+			CaseStudyDocument['data'] | ProjectDocument['data']
+		>(slice.primary.project)
 	) {
-		project = slice.primary.project.data as CaseStudyDocumentData;
-		bgImage = project.hightlight_image.url as string;
+		if (slice.primary.project.type === 'case_study') {
+			project = slice.primary.project.data as Highlightable<CaseStudyDocumentData>;
+			bgImage = project.highlight_image.url as string;
 
-		date = new Date(project.date as string);
-		projectType = 'Case Study';
+			date = new Date(project.date as string);
+			projectType = 'Case Study';
 
-		// Repeat the content relationship check for the project affiliation
-		if (
-			isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-				project.affiliation
-			)
-		) {
-			affiliation = project.affiliation.data as AffiliationDocumentData;
+			// Repeat the content relationship check for the project affiliation
+			if (
+				isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
+					project.affiliation
+				)
+			) {
+				affiliation = project.affiliation.data as AffiliationDocumentData;
+			}
+		} else if (slice.primary.project.type === 'project') {
+			project = slice.primary.project.data as Highlightable<ProjectDocumentData>;
+			bgImage = project.highlight_image.url as string;
+			date = new Date(project.date as string);
+			projectType = project.project_type as string;
 		}
 	}
 
@@ -61,7 +74,9 @@
 		class="col-span-full flex flex-col justify-end gap-2 divide-y divide-stone-200 sm:col-span-3 sm:divide-y-0 dark:divide-stone-800"
 	>
 		<div class="flex flex-row items-baseline justify-between gap-4 sm:hidden">
-			<h3 class="mb text-stone-800 text-balance dark:text-stone-200">{project.title}</h3>
+			<h3 class="mb text-balance text-stone-800 dark:text-stone-200">
+				{project.title}
+			</h3>
 			<p class=" text-xs tracking-wider text-stone-900/50 dark:text-stone-100/50">
 				{date.getFullYear()}
 			</p>
@@ -69,40 +84,48 @@
 		<div class="flex flex-row gap-4 pt-2 sm:pt-0">
 			<div class="flex flex-initial flex-col gap-1">
 				<p
-					class="text-stone-400 col-start-1 whitespace-nowrap text-xs uppercase tracking-wider dark:text-stone-600"
+					class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-600"
 				>
-					Affiliation
+					{#if affiliation}
+						Affiliation
+					{/if}
 				</p>
 				<p
-					class="text-stone-400 col-start-1 whitespace-nowrap text-xs uppercase tracking-wider dark:text-stone-600"
+					class="col-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-600"
 				>
 					Type
 				</p>
 				<p
-					class="text-stone-400 col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider dark:text-stone-600"
+					class="col-start-1 mt-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-400 dark:text-stone-600"
 				>
-					Topics
+					{#if project.type === 'case_study'}
+						Topics
+					{/if}
 				</p>
 			</div>
 			<div class="flex flex-1 flex-col gap-1">
 				<p
-					class="text-stone-900 col-span-2 col-start-2 row-start-1 whitespace-nowrap text-xs uppercase tracking-wider dark:text-stone-100"
+					class="col-span-2 col-start-2 row-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-900 dark:text-stone-100"
 				>
-					{affiliation.title}
+					{#if affiliation}
+						{affiliation.title}
+					{/if}
 				</p>
 				<p
-					class="text-stone-900 col-span-2 col-start-2 row-start-2 whitespace-nowrap text-xs uppercase tracking-wider dark:text-stone-100"
+					class="col-span-2 col-start-2 row-start-2 whitespace-nowrap text-xs uppercase tracking-wider text-stone-900 dark:text-stone-100"
 				>
 					{projectType}
 				</p>
 				<div
-					class="text-stone-900 col-span-2 col-start-2 row-start-3 flex flex-row flex-wrap gap-[2px] whitespace-nowrap text-xs uppercase tracking-wider dark:text-stone-100"
+					class="col-span-2 col-start-2 row-start-3 flex flex-row flex-wrap gap-[2px] whitespace-nowrap text-xs uppercase tracking-wider text-stone-900 dark:text-stone-100"
 				>
-					{#each project.responsibilities as responsibility}
-						<p class="bg-stone-200 rounded p-1 pb-[2px] tracking-wider dark:bg-stone-800">
-							{responsibility.skill}
-						</p>
-					{/each}
+					{#if project.type === 'case_study'}
+						{#each project.responsibilities as responsibility}
+							<p class="rounded bg-stone-200 p-1 pb-[2px] tracking-wider dark:bg-stone-800">
+								{responsibility.skill}
+							</p>
+						{/each}
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -122,7 +145,7 @@
 		</div>
 		{#if slice.variation == 'default'}
 			<PrismicImage
-				field={project.hightlight_image}
+				field={project.highlight_image}
 				class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] transition-transform duration-500 hover:scale-110 
 				{project.image_fill ? 'object-cover' : 'object-contain'}"
 			/>

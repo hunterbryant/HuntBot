@@ -113,15 +113,15 @@ interface CaseStudyDocumentData {
 	protected: prismic.BooleanField;
 
 	/**
-	 * Hightlight Image field in *Case Study*
+	 * Highlight Image field in *Case Study*
 	 *
 	 * - **Field Type**: Image
 	 * - **Placeholder**: *None*
-	 * - **API ID Path**: case_study.hightlight_image
+	 * - **API ID Path**: case_study.highlight_image
 	 * - **Tab**: Main
 	 * - **Documentation**: https://prismic.io/docs/field#image
 	 */
-	hightlight_image: prismic.ImageField<never>;
+	highlight_image: prismic.ImageField<never>;
 
 	/**
 	 * Image Fill field in *Case Study*
@@ -507,6 +507,17 @@ interface ProjectDocumentData {
 	project_type: prismic.KeyTextField;
 
 	/**
+	 * BG Color field in *Project*
+	 *
+	 * - **Field Type**: Color
+	 * - **Placeholder**: *None*
+	 * - **API ID Path**: project.bg_color
+	 * - **Tab**: Main
+	 * - **Documentation**: https://prismic.io/docs/field#color
+	 */
+	bg_color: prismic.ColorField;
+
+	/**
 	 * Slice Zone field in *Project*
 	 *
 	 * - **Field Type**: Slice Zone
@@ -518,15 +529,15 @@ interface ProjectDocumentData {
 	slices: prismic.SliceZone<ProjectDocumentDataSlicesSlice>;
 
 	/**
-	 * BG COlor field in *Project*
+	 * Date field in *Project*
 	 *
-	 * - **Field Type**: Color
+	 * - **Field Type**: Date
 	 * - **Placeholder**: *None*
-	 * - **API ID Path**: project.bg_color
+	 * - **API ID Path**: project.date
 	 * - **Tab**: Main
-	 * - **Documentation**: https://prismic.io/docs/field#color
+	 * - **Documentation**: https://prismic.io/docs/field#date
 	 */
-	bg_color: prismic.ColorField /**
+	date: prismic.DateField /**
 	 * Meta Description field in *Project*
 	 *
 	 * - **Field Type**: Text
@@ -595,7 +606,7 @@ export interface ContentHighlightSliceDefaultPrimary {
 	 * - **API ID Path**: content_highlight.primary.project
 	 * - **Documentation**: https://prismic.io/docs/field#link-content-relationship
 	 */
-	project: prismic.ContentRelationshipField<'case_study'>;
+	project: prismic.ContentRelationshipField<'case_study' | 'project'>;
 }
 
 /**

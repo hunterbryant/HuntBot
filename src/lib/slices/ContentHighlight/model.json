@@ -18,7 +18,8 @@
             "label": "Project",
             "select": "document",
             "customtypes": [
-              "case_study"
+              "case_study",
+              "project"
             ]
           }
         }
