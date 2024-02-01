@@ -225,7 +225,7 @@
 						How?
 					</h3>
 					<button
-						class="h-12 rounded bg-blue-600 px-3 text-stone-50 transition hover:bg-blue-700 active:bg-blue-600 dark:bg-blue-500 dark:text-stone-950 dark:hover:bg-blue-600 dark:active:bg-blue-500"
+						class="h-12 rounded bg-blue-600 px-3 pt-0.5 text-stone-50 transition hover:bg-blue-700 active:bg-blue-600 dark:bg-blue-500 dark:text-stone-950 dark:hover:bg-blue-600 dark:active:bg-blue-500"
 						on:click={engageHuntbot}>Ask HuntBot</button
 					>
 				</div>

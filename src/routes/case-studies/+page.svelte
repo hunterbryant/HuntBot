@@ -60,7 +60,7 @@
 						{formatDate(caseStudy.data.date)}
 					</p>
 					<h3
-						class="text-stone-800 decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline dark:text-stone-200 dark:decoration-slate-600"
+						class="text-stone-800 decoration-slate-400 decoration-2 underline-offset-2 transition-all group-hover:underline dark:text-stone-200 dark:decoration-slate-500"
 					>
 						{caseStudy.data.title}
 					</h3>
@@ -124,7 +124,7 @@
 				<PrismicLink
 					field={documentToLinkField(caseStudy)}
 					class="relative col-start-1 col-end-6 row-start-1
-		 h-32 cursor-pointer overflow-hidden rounded bg-zinc-200 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-6 sm:col-end-7 md:col-end-8 lg:col-end-10 dark:hover:ring-slate-600"
+		 h-32 cursor-pointer overflow-hidden rounded bg-zinc-200 ring-offset-stone-100 transition hover:ring hover:ring-slate-400 hover:ring-offset-2 sm:col-start-6 sm:col-end-7 md:col-end-8 lg:col-end-10 dark:ring-offset-stone-900 dark:hover:ring-slate-500"
 				>
 					<PrismicImage
 						field={caseStudy.data.highlight_image}
