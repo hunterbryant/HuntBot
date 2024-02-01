@@ -47,7 +47,7 @@
 </script>
 
 <div
-	class="flex-col-rev bg-white border-stone-200 z-50 mb-0 flex max-h-[calc(100dvh-5.25rem)] w-full flex-col flex-nowrap overflow-hidden rounded-none border dark:bg-black dark:border-stone-800 sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg"
+	class="flex-col-rev z-50 mb-0 flex max-h-[calc(100dvh-5.25rem)] w-full flex-col flex-nowrap overflow-hidden rounded-t-lg border-y border-stone-200 bg-white sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:border dark:border-stone-800 dark:bg-black"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
 	{#if $messages.length == 0 || !minimized}
@@ -75,7 +75,7 @@
 						on:click={() => {
 							scrollToBottom();
 						}}
-						class="dark:hover:ng-stone-700 bg-stone-200 border-stone-300 absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border transition hover:bg-stone-300 dark:bg-stone-800 dark:border-stone-700 dark:hover:bg-stone-700"
+						class="dark:hover:ng-stone-700 absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border border-stone-300 bg-stone-200 transition hover:bg-stone-300 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700"
 					>
 						<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none dark:invert" />
 					</button>
