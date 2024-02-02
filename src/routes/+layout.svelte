@@ -8,7 +8,6 @@
 
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
-	import lettermark from '$lib/assets/lettermark.svg';
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen } from '$lib/nav/navstore';
 	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
 
@@ -137,9 +136,6 @@
 <svelte:head>
 	<meta property="interactive-widget" content="resizes-content" />
 	<meta property="og:site_name" content="Hunter Bryant" />
-
-	<!-- REMOVE ONCE DEPLOYED ON MY DOMAIN -->
-	<meta name="robots" content="noindex nofollow" />
 </svelte:head>
 
 <svelte:window bind:innerWidth />
