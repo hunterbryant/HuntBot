@@ -93,7 +93,7 @@
 						<Beaker /> In Development
 					</h6>
 					<p class=" mb-1 text-sm leading-tight text-yellow-700 dark:text-yellow-300">
-						HuntBot is being rewritten for speed, accuracy, and funcitonality. Take anything he says
+						HuntBot is being rewritten for speed, accuracy, and functionality. Take anything he says
 						with a grain of salt.
 					</p>
 				</div>
