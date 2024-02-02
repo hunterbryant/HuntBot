@@ -9,6 +9,7 @@
 	import arrowdown from '$lib/assets/arrow-down.svg';
 	import { setContext } from 'svelte';
 	import { navEngaged, chatOpen } from '$lib/nav/navstore';
+	import Beaker from '$lib/assets/beaker.svelte';
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -83,6 +84,19 @@
 			{/if}
 			<!-- Render the chat messages -->
 			<div class="first:pt-4 last:pb-6">
+				<div
+					class="mx-2 -mt-2 mb-2 rounded border border-yellow-400 bg-yellow-200 px-3 py-2 text-xs dark:border-yellow-600 dark:bg-yellow-800"
+				>
+					<h6
+						class="mb-2 mt-1 flex items-center gap-x-2 font-bold uppercase tracking-wider text-yellow-800 dark:text-yellow-200"
+					>
+						<Beaker /> In Development
+					</h6>
+					<p class=" mb-1 text-sm leading-tight text-yellow-700 dark:text-yellow-300">
+						HuntBot is being rewritten for speed, accuracy, and funcitonality. Take anything he says
+						with a grain of salt.
+					</p>
+				</div>
 				{#each $messages as message}
 					<div
 						in:slide|global={{ duration: 400 }}

@@ -15,11 +15,11 @@
 	"devDependencies": {
 		"@slicemachine/adapter-sveltekit": "^0.3.34",
 		"@sveltejs/adapter-vercel": "^5.1.0",
-		"@sveltejs/kit": "^2.4.1",
-		"@sveltejs/vite-plugin-svelte": "^3.0.1",
+		"@sveltejs/kit": "^2.5.0",
+		"@sveltejs/vite-plugin-svelte": "^3.0.2",
 		"@tailwindcss/typography": "^0.5.10",
-		"@typescript-eslint/eslint-plugin": "^6.19.0",
-		"@typescript-eslint/parser": "^6.19.0",
+		"@typescript-eslint/eslint-plugin": "^6.20.0",
+		"@typescript-eslint/parser": "^6.20.0",
 		"autoprefixer": "^10.4.17",
 		"eslint": "^8.56.0",
 		"eslint-config-prettier": "^9.1.0",
@@ -43,14 +43,14 @@
 	"dependencies": {
 		"@prismicio/client": "^7.3.1",
 		"@prismicio/svelte": "^1.0.3",
-		"@splinetool/runtime": "^1.0.31",
+		"@splinetool/runtime": "^1.0.46",
 		"@types/jsonwebtoken": "^9.0.5",
 		"@vercel/analytics": "^1.1.2",
-		"@vercel/speed-insights": "^1.0.7",
+		"@vercel/speed-insights": "^1.0.9",
 		"embla-carousel": "8.0.0-rc19",
 		"embla-carousel-svelte": "8.0.0-rc19",
 		"embla-carousel-wheel-gestures": "8.0.0-rc05",
 		"jsonwebtoken": "^9.0.2",
-		"openai": "^4.25.0"
+		"openai": "^4.26.0"
 	}
 }
