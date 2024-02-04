@@ -10,6 +10,7 @@
 	import { setContext } from 'svelte';
 	import { navEngaged, chatOpen } from '$lib/nav/navstore';
 	import Beaker from '$lib/assets/beaker.svelte';
+	import ActionMessage from './ActionMessage.svelte';
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -106,8 +107,10 @@
 					>
 						{#if message.type == 'user'}
 							<UserMessage value={message.message} />
-						{:else}
+						{:else if message.type == 'bot'}
 							<BotMessage value={message.message} />
+						{:else}
+							<ActionMessage value={message} />
 						{/if}
 					</div>
 				{/each}

@@ -1,8 +1,11 @@
 import { writable } from 'svelte/store';
 
-interface ChatObject {
+export interface ChatObject {
 	type: string;
 	message: string;
+	state: {
+		completed: boolean;
+	};
 }
 
 export const messages = writable<Array<ChatObject>>([]);

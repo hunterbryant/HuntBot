@@ -1,7 +1,6 @@
 <script lang="ts">
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import { messages } from './MessageStore';
-	import huntbotlogo from '$lib/assets/huntbotlogo.webp';
 	import { SupportedActions, type BotAction, SupportedRoutes } from '$lib/types.d.js';
 	import { goto } from '$app/navigation';
 	import caretdown from '$lib/assets/caret-down.svg';
@@ -30,10 +29,13 @@
 		}
 
 		// Add the user message
-		messages.update((m) => [...m, { type: 'user', message: inputMessage }]);
+		messages.update((m) => [
+			...m,
+			{ type: 'user', message: inputMessage, state: { completed: false } }
+		]);
 
 		// Insert blank value for loading state
-		messages.update((m) => [...m, { type: 'bot', message: '' }]);
+		messages.update((m) => [...m, { type: 'bot', message: '', state: { completed: false } }]);
 
 		try {
 			const response = await fetch('/api/chat', {
@@ -54,13 +56,21 @@
 			const botResponse = await response.json();
 			chatSessionId = botResponse.threadId;
 			messages.update((m) => {
-				m[m.length - 1] = { type: 'bot', message: botResponse.message };
+				m[m.length - 1] = {
+					type: 'bot',
+					message: botResponse.message,
+					state: { completed: false }
+				};
 				return m;
 			});
 			handleActions(botResponse.actions);
 		} catch (error) {
 			messages.update((m) => {
-				m[m.length - 1] = { type: 'bot', message: `Uh oh, I'm not thinking straight... ${error}` };
+				m[m.length - 1] = {
+					type: 'bot',
+					message: `Uh oh, I'm not thinking straight... ${error}`,
+					state: { completed: false }
+				};
 				return m;
 			});
 		} finally {
@@ -81,33 +91,56 @@
 
 	function handleActions(actions: BotAction[]) {
 		actions.forEach((action) => {
-			console.log(action.arguments);
 			if (action.name == SupportedActions.minimize_chat) {
-				messages.update((m) => [...m, { type: 'bot', message: 'Minimized the chat' }]);
-				minimized = true;
+				messages.update((m) => [
+					...m,
+					{ type: 'action', message: 'Minimizing the chat', state: { completed: false } }
+				]);
+				setTimeout(() => {
+					messages.update((m) => {
+						m[m.length - 1].state.completed = true;
+						return m;
+					});
+					setTimeout(() => {
+						minimized = true;
+					}, 500);
+				}, 2000);
 			} else if (action.name == SupportedActions.route_to_page) {
 				messages.update((m) => [
 					...m,
-					{ type: 'bot', message: `Routing you to page: ${action.arguments.page}` }
+					{
+						type: 'action',
+						message: `Routing you to ${action.arguments.page}`,
+						state: { completed: false }
+					}
 				]);
-				switch (action.arguments.page as SupportedRoutes) {
-					case SupportedRoutes.gathers:
-						goto('/case-studies/gathers');
-						break;
-					case SupportedRoutes.home:
-						goto('/');
-						break;
-					case SupportedRoutes.dovetail:
-						goto('/case-studies/dovetail');
-						break;
-					case SupportedRoutes.karooTwo:
-						goto('/case-studies/karoo2');
-						break;
-					case SupportedRoutes.dashboard:
-						goto('/case-studies/hammerhead-dashboard');
-					case SupportedRoutes.inSearchOfBirch:
-						break;
-				}
+				setTimeout(() => {
+					messages.update((m) => {
+						m[m.length - 1].state.completed = true;
+						return m;
+					});
+
+					setTimeout(() => {
+						switch (action.arguments.page as SupportedRoutes) {
+							case SupportedRoutes.gathers:
+								goto('/case-studies/gathers');
+								break;
+							case SupportedRoutes.home:
+								goto('/');
+								break;
+							case SupportedRoutes.dovetail:
+								goto('/case-studies/dovetail');
+								break;
+							case SupportedRoutes.karooTwo:
+								goto('/case-studies/karoo2');
+								break;
+							case SupportedRoutes.dashboard:
+								goto('/case-studies/hammerhead-dashboard');
+							case SupportedRoutes.inSearchOfBirch:
+								break;
+						}
+					}, 500);
+				}, 1000);
 			}
 		});
 	}

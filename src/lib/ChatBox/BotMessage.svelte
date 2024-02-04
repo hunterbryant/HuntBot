@@ -15,14 +15,14 @@
 
 <div
 	in:slide|global
-	class="text-stone-800 flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1 dark:text-stone-200"
+	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1 text-stone-800 dark:text-stone-200"
 >
 	<Huntbotlogo />
 
 	{#if value == ''}
 		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
-				class="text-slate-400 inline-block h-5 w-5 animate-spin dark:text-slate-600"
+				class="inline-block h-5 w-5 animate-spin text-slate-400"
 				xmlns="http://www.w3.org/2000/svg"
 				fill="none"
 				viewBox="0 0 24 24"
@@ -38,7 +38,7 @@
 		</p>
 	{:else}
 		<p
-			class="text-stone-600 mr-6 mt-3 grow whitespace-pre-line font-normal dark:text-stone-400"
+			class="mr-6 mt-3 grow whitespace-pre-line font-normal text-stone-600 dark:text-stone-400"
 			in:slide|global={{ duration: 400 }}
 			on:introend={() => {
 				scrollToBottom();

@@ -13,7 +13,7 @@
 
 	function handleGreet() {
 		// Insert blank value for loading state
-		messages.update((m) => [...m, { type: 'bot', message: '' }]);
+		messages.update((m) => [...m, { type: 'bot', message: '', state: { completed: false } }]);
 
 		botEngaged.set(true);
 		minimized = false;
@@ -21,7 +21,7 @@
 
 		setTimeout(() => {
 			messages.update((m) => {
-				m[m.length - 1] = { type: 'bot', message: greetingResponse };
+				m[m.length - 1] = { type: 'bot', message: greetingResponse, state: { completed: false } };
 				return m;
 			});
 		}, 600);
