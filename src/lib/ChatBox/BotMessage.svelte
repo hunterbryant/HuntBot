@@ -1,9 +1,10 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide } from 'svelte/transition';
-	import { getContext } from 'svelte';
 
 	export let value: string;
+
+	$: updatedVal = value;
 </script>
 
 <div
@@ -12,7 +13,7 @@
 >
 	<Huntbotlogo />
 
-	{#if value == ''}
+	{#if updatedVal === ' '}
 		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
 				class="inline-block h-5 w-5 animate-spin text-slate-400"

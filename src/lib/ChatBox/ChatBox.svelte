@@ -117,7 +117,7 @@
 					>
 						{#if message.role === 'user'}
 							<UserMessage value={message.content} />
-						{:else if message.role === 'assistant' && typeof message.function_call === 'undefined'}
+						{:else if message.role === 'assistant' && message.content}
 							<BotMessage value={message.content} />
 						{:else if message.role === 'function'}
 							<ActionMessage value={message} />

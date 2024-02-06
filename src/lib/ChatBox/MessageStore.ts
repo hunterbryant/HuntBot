@@ -10,7 +10,7 @@ const greetingResponse: string =
 
 const initMessage: Message = {
 	id: 'initialmessage',
-	content: greetingResponse,
+	content: ' ',
 	role: 'assistant'
 };
 
@@ -28,6 +28,10 @@ export const chat = () => {
 
 	// Capture setMessages in a wider scope to be accessible by functionCallHandler
 	setMessagesGlobal = setMessages;
+
+	setTimeout(() => {
+		setMessagesGlobal([{ ...initMessage, content: greetingResponse }]);
+	}, 2000);
 
 	return { setMessages, ...chatProps };
 };
