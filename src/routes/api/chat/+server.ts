@@ -8,10 +8,6 @@ import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 // Initialize OpenAI API client
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
-export const config = {
-	runtime: 'edge'
-};
-
 // Function definition:
 const functions: ChatCompletionCreateParams.Function[] = [
 	{

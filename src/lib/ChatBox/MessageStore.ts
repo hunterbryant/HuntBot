@@ -45,10 +45,6 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 
 	if (functionCall.name === 'minimize_chat') {
 		if (functionCall.arguments) {
-			const parsedFunctionCallArguments = JSON.parse(functionCall.arguments);
-			// You now have access to the parsed arguments here (assuming the JSON was valid)
-			// If JSON is invalid, return an appropriate message to the model so that it may retry?
-
 			const functionMessage: FunctionMessage = {
 				id: nanoid(),
 				content: 'Minimizing the chat',
@@ -89,6 +85,5 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		}
 	} else {
 		console.log('Unexpected function call: ', functionCall.name);
-		
 	}
 };
