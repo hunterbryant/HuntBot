@@ -58,7 +58,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			const { name, status, headers, message } = error;
 			return json({ name, status, headers, message }, { status: 500 });
 		} else {
-			return json({ error: 'An error occurred while processing your request' }, { status: 500 });
+			return json(
+				{ error: `An error occurred while processing your request: ${error}` },
+				{ status: 500 }
+			);
 		}
 	}
 };

@@ -9,7 +9,7 @@
 	import { navEngaged, chatOpen } from '$lib/nav/navstore';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
-	import { chat } from './MessageStore';
+	import { chat, botEngaged, minimized } from './MessageStore';
 
 	const { messages } = chat();
 
@@ -17,7 +17,6 @@
 	let isScrolling = false;
 	let scrolledToBottom = false;
 
-	export let minimized = true;
 	export let greeting: string = "Hi 👋, I'm HuntBot";
 
 	// Check if scrolled to the bottom
@@ -49,7 +48,7 @@
 	});
 
 	$: if (!$navEngaged) {
-		minimized = true;
+		minimized.set(true);
 	}
 </script>
 
@@ -57,11 +56,11 @@
 	class="flex-col-rev z-50 mb-0 flex max-h-[calc(100dvh-4.5rem)] w-full flex-col flex-nowrap overflow-hidden rounded-t-lg border-t border-stone-200 bg-white sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:border dark:border-stone-800 dark:bg-black"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
-	{#if $messages.length === 0 || !minimized}
-		<GreetingMessage bind:minimized bind:greeting />
+	{#if !$botEngaged || !$minimized}
+		<GreetingMessage bind:greeting />
 	{/if}
 
-	{#if !minimized}
+	{#if !$minimized}
 		<!-- This is the scrollable zone -->
 		<div
 			class="relative overflow-scroll"
@@ -111,11 +110,14 @@
 						in:slide|global={{ duration: 400 }}
 						on:introend={() => {
 							scrollToBottom();
+							setTimeout(() => {
+								scrollToBottom();
+							}, 400);
 						}}
 					>
 						{#if message.role === 'user'}
 							<UserMessage value={message.content} />
-						{:else if message.role === 'assistant'}
+						{:else if message.role === 'assistant' && typeof message.function_call === 'undefined'}
 							<BotMessage value={message.content} />
 						{:else if message.role === 'function'}
 							<ActionMessage value={message} />
@@ -125,7 +127,7 @@
 			</div>
 		</div>
 	{/if}
-	{#if $messages.length !== 0}
-		<TextInput bind:minimized />
+	{#if $botEngaged}
+		<TextInput />
 	{/if}
 </div>

@@ -3,22 +3,20 @@
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen, mobile } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { chat } from './MessageStore';
+	import { chat, minimized } from './MessageStore';
 
 	const { input, handleSubmit, isLoading } = chat();
 
 	let inputElement: HTMLInputElement;
 	let placeholder = 'Message HuntBot';
 
-	export let minimized: boolean;
-
-	$: if (minimized) {
+	$: if ($minimized) {
 		placeholder = 'If you need me... ask away!';
 	}
 
 	async function handleLocalSubmit(event: SubmitEvent) {
 		// Clear the message after sending
-		minimized = false;
+		minimized.set(false);
 
 		// Dismiss mobile keyboard
 		if ($mobile) {
@@ -43,10 +41,10 @@
 	on:keydown={focusInput}
 	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 text-stone-800 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200 dark:text-stone-200 dark:focus-within:outline-blue-800"
 >
-	{#if $input.trim() === '' && minimized}
+	{#if $input.trim() === '' && $minimized}
 		<button
 			on:click={() => {
-				minimized = false;
+				minimized.set(false);
 				chatOpen.set(true);
 			}}
 			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-slate-800"
@@ -65,7 +63,7 @@
 
 	<input
 		{placeholder}
-		class="peer min-w-0 grow bg-transparent focus:outline-none {minimized ? 'ml-0' : 'mx-2'}"
+		class="peer min-w-0 grow bg-transparent focus:outline-none {$minimized ? 'ml-0' : 'mx-2'}"
 		bind:value={$input}
 		bind:this={inputElement}
 		inputmode="search"
@@ -73,7 +71,7 @@
 	<hr class="absolute inset-x-2 -top-px border-slate-200 peer-focus:hidden dark:border-slate-800" />
 
 	<!-- Show HuntBot icon when chatbox is minimized -->
-	{#if minimized}
+	{#if $minimized}
 		<Huntbotlogo />
 	{/if}
 </form>
