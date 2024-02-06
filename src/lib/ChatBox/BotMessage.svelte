@@ -4,13 +4,6 @@
 	import { getContext } from 'svelte';
 
 	export let value: string;
-
-	interface ScrollContext {
-		scrollToBottom: () => void;
-	}
-
-	// Access the chat box's scroll function
-	const { scrollToBottom } = getContext<ScrollContext>('scroll');
 </script>
 
 <div
@@ -40,9 +33,6 @@
 		<p
 			class="mr-6 mt-3 grow whitespace-pre-line font-normal text-stone-600 dark:text-stone-400"
 			in:slide|global={{ duration: 400 }}
-			on:introend={() => {
-				scrollToBottom();
-			}}
 		>
 			{@html value}
 		</p>

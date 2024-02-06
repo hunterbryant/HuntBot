@@ -1,31 +1,18 @@
 <script lang="ts">
-	import { getContext } from 'svelte';
 	import { slide } from 'svelte/transition';
 	import Check from '$lib/assets/check.svelte';
-	import type { ChatObject } from './MessageStore';
+	import type { Message } from 'ai/svelte';
 
-	export let value: ChatObject;
-
-	interface ScrollContext {
-		scrollToBottom: () => void;
-	}
-
-	
-
-	// Access the chat box's scroll function
-	const { scrollToBottom } = getContext<ScrollContext>('scroll');
+	export let value: Message;
 </script>
 
 <div
 	in:slide|global={{ duration: 400 }}
-	on:introend={() => {
-		scrollToBottom();
-	}}
 	class="mb-4 ml-12 mr-6 mt-4 flex h-8 w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center justify-between gap-1 rounded-full bg-stone-200 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:bg-stone-800 dark:text-stone-300"
 >
-	{value.message}
+	{value.function_call}
 
-	{#if !value.state.completed}
+	{#if !value.function_call}
 		<svg
 			class="inline-block h-5 w-5 animate-spin text-slate-400"
 			xmlns="http://www.w3.org/2000/svg"

@@ -1,30 +1,17 @@
 <script lang="ts">
-	import huntbotlogo from '$lib/assets/huntbotlogo.svg';
-	import { botEngaged, messages } from './MessageStore';
+	import { botEngaged } from './MessageStore';
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
+	import { chat } from './MessageStore';
 
 	export let minimized: boolean;
 	export let greeting: string;
 
-	let greetingResponse =
-		'I know, I know, another chatbot. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
-
 	function handleGreet() {
-		// Insert blank value for loading state
-		messages.update((m) => [...m, { type: 'bot', message: '', state: { completed: false } }]);
-
 		botEngaged.set(true);
 		minimized = false;
 		chatOpen.set(true);
-
-		setTimeout(() => {
-			messages.update((m) => {
-				m[m.length - 1] = { type: 'bot', message: greetingResponse, state: { completed: false } };
-				return m;
-			});
-		}, 600);
 	}
 </script>
 

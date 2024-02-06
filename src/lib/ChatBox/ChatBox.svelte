@@ -3,14 +3,15 @@
 	import UserMessage from './UserMessage.svelte';
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
-	import { messages } from './MessageStore';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
-	import { setContext } from 'svelte';
 	import { navEngaged, chatOpen } from '$lib/nav/navstore';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
+	import { chat } from './MessageStore';
+
+	const { messages } = chat();
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -22,7 +23,7 @@
 	// Check if scrolled to the bottom
 	function checkScrolledDown() {
 		scrolledToBottom =
-			scrollElement.scrollTop === scrollElement.scrollHeight - scrollElement.offsetHeight;
+			scrollElement.scrollTop >= scrollElement.scrollHeight - scrollElement.offsetHeight - 40;
 	}
 
 	// Check if scrolling is active
@@ -40,8 +41,12 @@
 		}
 	};
 
-	// Share the scroll function with child components
-	setContext('scroll', { scrollToBottom });
+	messages.subscribe(() => {
+		scrollToBottom();
+		setTimeout(() => {
+			scrollToBottom;
+		}, 400);
+	});
 
 	$: if (!$navEngaged) {
 		minimized = true;
@@ -52,7 +57,7 @@
 	class="flex-col-rev z-50 mb-0 flex max-h-[calc(100dvh-4.5rem)] w-full flex-col flex-nowrap overflow-hidden rounded-t-lg border-t border-stone-200 bg-white sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:border dark:border-stone-800 dark:bg-black"
 >
 	<!-- This initial "message" acts as the header and original kickoff button -->
-	{#if $messages.length == 0 || !minimized}
+	{#if $messages.length === 0 || !minimized}
 		<GreetingMessage bind:minimized bind:greeting />
 	{/if}
 
@@ -105,11 +110,11 @@
 							scrollToBottom();
 						}}
 					>
-						{#if message.type == 'user'}
-							<UserMessage value={message.message} />
-						{:else if message.type == 'bot'}
-							<BotMessage value={message.message} />
-						{:else}
+						{#if message.role === 'user'}
+							<UserMessage value={message.content} />
+						{:else if message.role === 'assistant'}
+							<BotMessage value={message.content} />
+						{:else if message.role === 'function'}
 							<ActionMessage value={message} />
 						{/if}
 					</div>
@@ -117,7 +122,7 @@
 			</div>
 		</div>
 	{/if}
-	{#if $messages.length != 0}
+	{#if $messages.length !== 0}
 		<TextInput bind:minimized />
 	{/if}
 </div>

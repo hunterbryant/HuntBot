@@ -9,7 +9,7 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen } from '$lib/nav/navstore';
-	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
+	import { botEngaged, chat } from '$lib/ChatBox/MessageStore';
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
@@ -25,8 +25,6 @@
 	let minimized = true;
 	let greeting = 'Any questions?';
 	let hitButton = false;
-	let greetingResponse =
-		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
 	let menuActive = false;
 	let mobileBreakpoint = false;
 	let innerWidth: number;
@@ -62,18 +60,10 @@
 		if (!$botEngaged && hitButton) {
 			setTimeout(() => {
 				// Insert blank value for loading state
-				messages.update((m) => [...m, { type: 'bot', message: '' }]);
 
 				botEngaged.set(true);
 				minimized = false;
 				chatOpen.set(true);
-
-				setTimeout(() => {
-					messages.update((m) => {
-						m[m.length - 1] = { type: 'bot', message: greetingResponse };
-						return m;
-					});
-				}, 600);
 			}, 100);
 		}
 		if ($chatOpen) {
