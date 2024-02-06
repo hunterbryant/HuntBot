@@ -36,7 +36,7 @@
 		if (scrollElement) {
 			// Check to see if the scroll is active
 			if (scrollElement.scrollHeight > scrollElement.clientHeight) {
-				scrollElement.scroll({ top: scrollElement.scrollHeight, behavior: 'smooth' });
+				scrollElement.scroll({ top: scrollElement.scrollHeight + 10, behavior: 'smooth' });
 			}
 		}
 	};
@@ -44,7 +44,7 @@
 	messages.subscribe(() => {
 		scrollToBottom();
 		setTimeout(() => {
-			scrollToBottom;
+			scrollToBottom();
 		}, 400);
 	});
 
@@ -70,6 +70,9 @@
 			transition:slide|global={{ duration: 300, easing: cubicOut }}
 			on:introend={() => {
 				scrollToBottom();
+				setTimeout(() => {
+					scrollToBottom();
+				}, 400);
 			}}
 		>
 			<!-- This is the scroll to bottom button -->

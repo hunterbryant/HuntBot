@@ -4,13 +4,15 @@
 	import type { Message } from 'ai/svelte';
 
 	export let value: Message;
+
+	console.log(value);
 </script>
 
 <div
 	in:slide|global={{ duration: 400 }}
 	class="mb-4 ml-12 mr-6 mt-4 flex h-8 w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center justify-between gap-1 rounded-full bg-stone-200 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:bg-stone-800 dark:text-stone-300"
 >
-	{value.function_call}
+	{value}
 
 	{#if !value.function_call}
 		<svg
