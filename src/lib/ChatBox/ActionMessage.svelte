@@ -3,6 +3,7 @@
 <script lang="ts">
 	import { slide } from 'svelte/transition';
 	import Check from '$lib/assets/check.svelte';
+	import Close from '$lib/assets/close.svelte';
 	import type { Message } from 'ai/svelte';
 	import { FunctionState, type FunctionMessage } from '$lib/types';
 
@@ -13,16 +14,18 @@
 
 <div
 	in:slide|global={{ duration: 400 }}
-	class="items-top mb-4 ml-12 mr-6 mt-4 flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap justify-between gap-1 rounded-2xl bg-stone-200 py-1 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:bg-stone-800 dark:text-stone-300"
+	class="items-top mb-4 ml-12 mr-6 mt-4 flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap justify-between gap-1 rounded-2xl border border-stone-200 bg-stone-100 py-1 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300"
 >
 	<p class="my-1">{typedValue.content}</p>
 
 	{#if typedValue.data === FunctionState.loading}
 		<svg
-			class="inline-block h-5 w-5 animate-spin text-slate-400"
+			class="mt-0.5 inline-block h-5 w-5 animate-spin text-slate-400"
 			xmlns="http://www.w3.org/2000/svg"
 			fill="none"
 			viewBox="0 0 24 24"
+			width="24"
+			height="24"
 		>
 			<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
 			></circle>
@@ -38,7 +41,7 @@
 		</div>
 	{:else}
 		<div class="-mr-0.5 text-red-400 dark:text-red-600">
-			<Check />
+			<Close />
 		</div>
 	{/if}
 </div>

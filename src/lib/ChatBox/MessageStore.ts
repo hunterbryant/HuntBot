@@ -89,5 +89,6 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		}
 	} else {
 		console.log('Unexpected function call: ', functionCall.name);
+		
 	}
 };

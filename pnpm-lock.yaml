@@ -42,8 +42,8 @@ dependencies:
     specifier: ^5.0.5
     version: 5.0.5
   openai:
-    specifier: ^4.26.0
-    version: 4.26.0
+    specifier: ^4.26.1
+    version: 4.26.1
 
 devDependencies:
   '@slicemachine/adapter-sveltekit':
@@ -1143,7 +1143,7 @@ packages:
   /@types/node-fetch@2.6.11:
     resolution: {integrity: sha512-24xFj9R5+rfQJLRyM56qh+wnVSYhyXC2tkoBndtY0U+vubqNsYXGjufB2nn8Q6gt0LrARwL6UBtMCSVCwl4B1g==}
     dependencies:
-      '@types/node': 18.19.14
+      '@types/node': 20.11.16
       form-data: 4.0.0
     dev: false
 
@@ -4079,8 +4079,8 @@ packages:
       is-wsl: 2.2.0
     dev: true
 
-  /openai@4.26.0:
-    resolution: {integrity: sha512-HPC7tgYdeP38F3uHA5WgnoXZyGbAp9jgcIo23p6It+q/07u4C+NZ8xHKlMShsPbDDmFRpPsa3vdbXYpbhJH3eg==}
+  /openai@4.26.1:
+    resolution: {integrity: sha512-DvWbjhWbappsFRatOWmu4Dp1/Q4RG9oOz6CfOSjy0/Drb8G+5iAiqWAO4PfpGIkhOOKtvvNfQri2SItl+U7LhQ==}
     hasBin: true
     dependencies:
       '@types/node': 18.19.14
