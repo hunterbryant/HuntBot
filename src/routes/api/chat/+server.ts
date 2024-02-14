@@ -1,63 +1,118 @@
 import { env } from '$env/dynamic/private';
-import { SupportedRoutes } from '$lib/types';
+import { createChatEngine } from '$lib/ChatEngine/engine';
+import { LlamaIndexStream } from '$lib/ChatEngine/llamaindex-stream';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import OpenAI from 'openai';
-import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
+import { StreamingTextResponse } from 'ai';
+import { OpenAI, type ChatMessage, type MessageContent } from 'llamaindex';
 
-// Initialize OpenAI API client
-const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-
-// Function definition:
-const functions: ChatCompletionCreateParams.Function[] = [
-	{
-		name: 'minimize_chat',
-		description: 'Minimize the chat interface in which this thread is taking place.'
-	},
-	{
-		name: 'route_to_page',
-		description: 'Route the user to a local route on Hunters website. Only route to one at a time.',
-		parameters: {
-			type: 'object',
-			properties: {
-				page: {
-					type: 'string',
-					enum: Object.values(SupportedRoutes),
-					description: 'The local route to use.'
-				}
-			},
-			required: ['page']
+const convertMessageContent = (
+	textMessage: string,
+	imageUrl: string | undefined
+): MessageContent => {
+	if (!imageUrl) return textMessage;
+	return [
+		{
+			type: 'text',
+			text: textMessage
+		},
+		{
+			type: 'image_url',
+			image_url: {
+				url: imageUrl
+			}
 		}
-	}
-];
+	];
+};
+
+// // Function definition:
+// const minimizeChat = () => {
+// 	console.log('Minimizing chat from the sevrer');
+// };
+
+// const minimizeJSON = {
+// 	type: 'object',
+// 	properties: {}
+// };
+
+// const minimizeFunctionTool = new FunctionTool(minimizeChat, {
+// 	name: 'minimize_chat',
+// 	description: 'Minimize the chat interface in which this thread is taking place.',
+// 	parameters: minimizeJSON
+// });
+
+// const routeToPage = (page: string) => {
+// 	console.log('On the server, routing to page: ', page);
+// };
+
+// const routeJSON = {
+// 	type: 'object',
+// 	properties: {
+// 		page: {
+// 			type: 'string',
+// 			enum: Object.values(SupportedRoutes),
+// 			description: 'The local route to use.'
+// 		}
+// 	},
+// 	required: ['page']
+// };
+
+// const routeFunctionTool = new FunctionTool(routeToPage, {
+// 	name: 'route_to_page',
+// 	description: 'Route the user to a local route on Hunters website. Only route to one at a time.',
+// 	parameters: routeJSON
+// });
+
+const llm = new OpenAI({
+	model: 'gpt-3.5-turbo',
+	maxTokens: 512,
+	apiKey: env.OPENAI_API_KEY
+});
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		// Add the user message to the chat thread
-		const { messages } = await request.json();
+		const body = await request.json();
+		const { messages }: { messages: ChatMessage[] } = body;
+		const userMessage = messages.pop();
 
-		// Ask OpenAI for a streaming chat completion given the prompt
-		const response = await openai.chat.completions.create({
-			model: 'gpt-3.5-turbo',
-			stream: true,
-			messages,
-			functions
-		});
-
-		// Convert the response into a friendly text-stream
-		const stream = OpenAIStream(response);
-		// Respond with the stream
-		return new StreamingTextResponse(stream);
-	} catch (error) {
-		// Check if the error is an APIError
-		if (error instanceof OpenAI.APIError) {
-			const { name, status, headers, message } = error;
-			return json({ name, status, headers, message }, { status: 500 });
-		} else {
+		if (!messages || !userMessage || userMessage.role !== 'user') {
 			return json(
-				{ error: `An error occurred while processing your request: ${error}` },
-				{ status: 500 }
+				{
+					error:
+						'messages are required in the request body and the last message must be from the user'
+				},
+				{ status: 400 }
 			);
 		}
+
+		// const agent = new OpenAIAgent({
+		// 	tools: [routeFunctionTool, minimizeFunctionTool],
+		// 	verbose: true,
+		// });
+
+		const chatEngine = await createChatEngine(llm);
+
+		// Convert message content from Vercel/AI format to LlamaIndex/OpenAI format
+		const userMessageContent = convertMessageContent(userMessage.content, undefined);
+
+		// Calling LlamaIndex's ChatEngine to get a streamed response
+		const response = await chatEngine.chat({
+			message: userMessageContent,
+			chatHistory: messages,
+			stream: true
+		});
+
+		// Transform LlamaIndex stream to Vercel/AI format
+		const { stream, data: streamData } = LlamaIndexStream(response);
+
+		// Respond with the stream
+		return new StreamingTextResponse(stream, {}, streamData);
+	} catch (error) {
+		// Check if the error is an APIError
+		console.error('[LlamaIndex]', error);
+		return json(
+			{ error: `An error occurred while processing your request: ${error}` },
+			{ status: 500 }
+		);
 	}
 };

@@ -41,6 +41,7 @@
 	};
 
 	messages.subscribe(() => {
+		console.log($messages[$messages.length - 1]);
 		scrollToBottom();
 		setTimeout(() => {
 			scrollToBottom();
