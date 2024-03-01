@@ -10,7 +10,7 @@ export const chunkedUpsert = async (
 	index: Index,
 	vectors: Array<PineconeRecord>,
 	namespace: string,
-	chunkSize = 10
+	chunkSize = 512
 ) => {
 	// Split the vectors into chunks
 	const chunks = sliceIntoChunks<PineconeRecord>(vectors, chunkSize);

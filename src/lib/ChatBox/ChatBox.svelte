@@ -56,7 +56,7 @@
 
 	onMount(() => {
 		urls.forEach((url) => {
-			crawlDocument(url.url, 'recursive', 1024, 256);
+			crawlDocument(url.url, 'recursive', 512, 56);
 		});
 	});
 </script>
