@@ -3,6 +3,7 @@ import { SupportedRoutes } from '$lib/types';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
+import type { Message } from 'ai/svelte';
 import OpenAI from 'openai';
 import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 
@@ -40,39 +41,37 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Get the last message
 		const lastMessage = messages[messages.length - 1];
 
-
 		// Get the context from the last message
 		const context = await getContext(lastMessage.content, '');
-
 
 		// Completion prompt
 		const prompt = [
 			{
 				role: 'system',
-				content: `You are the digitized brain of digital product designer Hunter Bryant. You exist on his website as a way to show off his previous work and try to sell Hunter as a great person and software product design job candidate. Answer any question to the best of your ability without making anything up. If you dont have the answer, be up front. I'll try to give you context where relevant.  
+				content: `You are an assistant on product designer Hunter Bryants website. You exist as a way to show off his previous work and try to sell Hunter as a great product design job candidate.
 
-				Responses should be brief, as if in a chat app. Only write more than two sentences if going into the specifics of a topic. Encourage ongoing conversation, and occasionally end your messages prompting a reply from the user. 
+				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic. Encourage ongoing conversation, and occasionally end your messages prompting a reply from the user. 
 				
-				When you begin talking about a topic that might have a relevant page, feel free to route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
+				When you begin talking about a topic that might have a relevant page, route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
 				
 				START CONTEXT BLOCK
 				${context}
 				END OF CONTEXT BLOCK
 
-				AI assistant will take into account any CONTEXT BLOCK that is provided in a conversation.
-				If the context does not provide the answer to question, the AI assistant will say it doesn't know.
+				Take into account any CONTEXT BLOCK that is provided in a conversation.
+				If the context does not provide the answer to question, the say you don't know.
 
-				AI assistant will not apologize for previous responses, but instead will indicated new information was gained.
-				AI assistant will not invent anything that is not drawn directly from the context.
+				You will not apologize for previous responses, but instead will indicated new information was gained.
+				You will not invent anything that is not drawn directly from the context.
 				`
 			}
 		];
 
 		// Ask OpenAI for a streaming chat completion given the prompt
 		const response = await openai.chat.completions.create({
-			model: 'gpt-3.5-turbo',
+			model: 'gpt-3.5-turbo-0125',
 			stream: true,
-			messages: [...prompt, ...messages],
+			messages: [...prompt, ...messages.filter((message: Message) => message.role === 'user')],
 			functions
 		});
 

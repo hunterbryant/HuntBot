@@ -12,8 +12,8 @@ class Crawler {
 	private queue: { url: string; depth: number }[] = [];
 
 	constructor(
-		private maxDepth = 2,
-		private maxPages = 1
+		private maxDepth = 10,
+		private maxPages = 10
 	) {}
 
 	async crawl(startUrl: string): Promise<Page[]> {

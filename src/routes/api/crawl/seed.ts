@@ -1,3 +1,4 @@
+import { env } from '$env/dynamic/private';
 import { chunkedUpsert } from '$lib/utilities/chunkedUpsert';
 import { getEmbeddings } from '$lib/utilities/embeddings';
 import { truncateStringByBytes } from '$lib/utilities/truncateString';
@@ -21,7 +22,9 @@ type DocumentSplitter = RecursiveCharacterTextSplitter | MarkdownTextSplitter;
 async function seed(url: string, limit: number, indexName: string, options: SeedOptions) {
 	try {
 		// Initialize the Pinecone client
-		const pinecone = new Pinecone();
+		const pinecone = new Pinecone({
+			apiKey: env.PINECONE_API_KEY
+		});
 
 		// Destructure the options object
 		const { splittingMethod, chunkSize, chunkOverlap } = options;
@@ -47,7 +50,7 @@ async function seed(url: string, limit: number, indexName: string, options: Seed
 		if (!indexExists) {
 			await pinecone.createIndex({
 				name: indexName,
-				dimension: 512,
+				dimension: 1536,
 				spec: {
 					serverless: {
 						cloud: 'aws',
