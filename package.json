@@ -41,6 +41,8 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"@pinecone-database/doc-splitter": "^0.0.1",
+		"@pinecone-database/pinecone": "^2.0.1",
 		"@prismicio/client": "^7.3.1",
 		"@prismicio/svelte": "^1.0.3",
 		"@splinetool/runtime": "^1.0.46",
