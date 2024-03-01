@@ -1,101 +1,79 @@
 import { env } from '$env/dynamic/private';
-import { SupportedActions, type BotAction } from '$lib/types.d.js';
+import { SupportedRoutes } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
+import { OpenAIStream, StreamingTextResponse } from 'ai';
 import OpenAI from 'openai';
-import type { RequiredActionFunctionToolCall } from 'openai/resources/beta/threads/runs/runs.mjs';
+import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 
 // Initialize OpenAI API client
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
-const assistantId = env.OPENAI_ASISTANT_ID;
+
+// Function definition:
+const functions: ChatCompletionCreateParams.Function[] = [
+	{
+		name: 'minimize_chat',
+		description: 'Minimize the chat interface in which this thread is taking place.'
+	},
+	{
+		name: 'route_to_page',
+		description: 'Route the user to a local route on Hunters website. Only route to one at a time.',
+		parameters: {
+			type: 'object',
+			properties: {
+				page: {
+					type: 'string',
+					enum: Object.values(SupportedRoutes),
+					description: 'The local route to use.'
+				}
+			},
+			required: ['page']
+		}
+	}
+];
+
+// Initial prompt
+const prompt = [
+	{
+		role: 'system',
+		content: `You are the digitized brain of digital product designer Hunter Bryant. You exist on his website as a way to show off his previous work and try to sell Hunter as a great person and software product design job candidate. Answer any question to the best of your ability without making anything up. If you dont have the answer, be up front. I'll try to give you context where relevant.  
+
+		Responses should be brief, as if in a chat app. Only write more than two sentences if going into the specifics of a topic. Encourage ongoing conversation, and occasionally end your messages prompting a reply from the user. 
+		
+		When you begin talking about a topic that might have a relevant page, feel free to route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
+		
+		The user began the chat by saying, "Not another GPT!"
+		You responded, "I know, I know. Hear me out, Im a Frankenstein project Hunter hacked together to pitch himself. Im wired into his site. If youre game, ask me a question. You could ask about his work, design philosophy, or about life. If you dont want to play along, you can minimize me up to your right↗"
+	`
+	}
+];
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		// Add the user message to the chat thread
-		const { message, sessionId } = await request.json();
+		const { messages } = await request.json();
 
-		// Configure thread
-		let thread: OpenAI.Beta.Thread;
-		if (sessionId) {
-			// Retreive the existing thread
-			thread = await openai.beta.threads.retrieve(sessionId);
-		} else {
-			// Start a new thread
-			thread = await openai.beta.threads.create();
-		}
-
-		// Add message to thread
-		await openai.beta.threads.messages.create(thread.id, { role: 'user', content: message });
-
-		// Run the thread and wait for completion
-		const run = await openai.beta.threads.runs.create(thread.id, { assistant_id: assistantId });
-		const actionsPerformed: Array<BotAction> = [];
-		await waitForRunCompletion(thread.id, run.id, actionsPerformed);
-
-		// Retrieve and return the assistant's message
-		const allMessages = await openai.beta.threads.messages.list(thread.id);
-		if (allMessages.data[0].content[0].type == 'text') {
-			return json({
-				threadId: thread.id,
-				message: allMessages.data[0].content[0].text.value,
-				actions: actionsPerformed
-			});
-		} else {
-			// Needed to silence TS errors for possible mysterious API responses from Open AI
-			throw new Error('Expected text response, but received image_file');
-		}
-	} catch (error) {
-		console.error('Error handling OpenAI API request: ', error);
-		return json({ error: 'An error occurred while processing your request' }, { status: 500 });
-	}
-};
-
-async function waitForRunCompletion(
-	threadId: string,
-	runId: string,
-	actionsPerformed: BotAction[]
-) {
-	let runStatus;
-	do {
-		const run = await openai.beta.threads.runs.retrieve(threadId, runId);
-		runStatus = run.status;
-
-		if (runStatus === 'failed') {
-			throw new Error(run.last_error?.message);
-		} else if (runStatus === 'requires_action') {
-			const toolOutputArray = [];
-
-			// Perform required actions here
-			for (const action of run.required_action!.submit_tool_outputs.tool_calls) {
-				toolOutputArray.push(performAction(action, actionsPerformed));
-			}
-
-			// Respond to OpenAI with function status
-			await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
-				tool_outputs: toolOutputArray
-			});
-		}
-
-		// Sleep for a short duration before checking again
-		await new Promise((resolve) => setTimeout(resolve, 500));
-	} while (runStatus !== 'completed');
-	return;
-}
-
-function performAction(toolCall: RequiredActionFunctionToolCall, actionsPerformed: BotAction[]) {
-	// See if the funciton is valid
-	if (toolCall.function.name in SupportedActions) {
-		actionsPerformed.push({
-			name: toolCall.function.name as SupportedActions,
-			arguments: JSON.parse(toolCall.function.arguments)
+		// Ask OpenAI for a streaming chat completion given the prompt
+		const response = await openai.chat.completions.create({
+			model: 'gpt-3.5-turbo',
+			stream: true,
+			messages: [...prompt, ...messages],
+			functions
 		});
 
-		// Respond to OpenAI with function status
-		return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'true' }) };
-	} else {
-		// Handle errors
-		console.log('Received unexpected tool call: ', toolCall.function.name);
-
-		// Respond to OpenAI with function status
-		return { tool_call_id: toolCall.id, output: JSON.stringify({ success: 'false' }) };
+		// Convert the response into a friendly text-stream
+		const stream = OpenAIStream(response);
+		// Respond with the stream
+		return new StreamingTextResponse(stream);
+	} catch (error) {
+		// Check if the error is an APIError
+		if (error instanceof OpenAI.APIError) {
+			const { name, status, headers, message } = error;
+			return json({ name, status, headers, message }, { status: 500 });
+		} else {
+			return json(
+				{ error: `An error occurred while processing your request: ${error}` },
+				{ status: 500 }
+			);
+		}
 	}
-}
+};

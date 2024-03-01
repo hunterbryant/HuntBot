@@ -1,16 +1,10 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide } from 'svelte/transition';
-	import { getContext } from 'svelte';
 
 	export let value: string;
 
-	interface ScrollContext {
-		scrollToBottom: () => void;
-	}
-
-	// Access the chat box's scroll function
-	const { scrollToBottom } = getContext<ScrollContext>('scroll');
+	$: updatedVal = value;
 </script>
 
 <div
@@ -19,7 +13,7 @@
 >
 	<Huntbotlogo />
 
-	{#if value == ''}
+	{#if updatedVal === ' '}
 		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
 				class="inline-block h-5 w-5 animate-spin text-slate-400"
@@ -40,9 +34,6 @@
 		<p
 			class="mr-6 mt-3 grow whitespace-pre-line font-normal text-stone-600 dark:text-stone-400"
 			in:slide|global={{ duration: 400 }}
-			on:introend={() => {
-				scrollToBottom();
-			}}
 		>
 			{@html value}
 		</p>

@@ -9,7 +9,7 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen } from '$lib/nav/navstore';
-	import { botEngaged, messages } from '$lib/ChatBox/MessageStore';
+	import { botEngaged, chat, minimized } from '$lib/ChatBox/MessageStore';
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
@@ -22,11 +22,8 @@
 
 	export let data;
 
-	let minimized = true;
 	let greeting = 'Any questions?';
 	let hitButton = false;
-	let greetingResponse =
-		"I'm a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗";
 	let menuActive = false;
 	let mobileBreakpoint = false;
 	let innerWidth: number;
@@ -49,7 +46,7 @@
 			hitButton = true;
 			greeting = "Hi 👋, I'm HuntBot";
 		} else {
-			minimized = false;
+			minimized.set(false);
 		}
 		window.scrollTo({
 			top: scrollDistance,
@@ -62,22 +59,14 @@
 		if (!$botEngaged && hitButton) {
 			setTimeout(() => {
 				// Insert blank value for loading state
-				messages.update((m) => [...m, { type: 'bot', message: '' }]);
 
 				botEngaged.set(true);
-				minimized = false;
+				minimized.set(false);
 				chatOpen.set(true);
-
-				setTimeout(() => {
-					messages.update((m) => {
-						m[m.length - 1] = { type: 'bot', message: greetingResponse };
-						return m;
-					});
-				}, 600);
 			}, 100);
 		}
 		if ($chatOpen) {
-			minimized = false;
+			minimized.set(false);
 		}
 	};
 
@@ -212,7 +201,7 @@
 					in:receive|global={{ key: 'huntbot' }}
 					out:send|global={{ key: 'huntbot' }}
 					on:introstart={() => {
-						minimized = true;
+						minimized.set(true);
 					}}
 				>
 					<h3
@@ -240,20 +229,20 @@
 					in:receive|global={{ key: 'huntbot' }}
 					out:send|global={{ key: 'huntbot' }}
 					on:introstart={() => {
-						minimized = true;
+						minimized.set(true);
 					}}
 					on:introend={() => {
 						animationFinished();
 					}}
 					on:outrostart={() => {
-						minimized = true;
+						minimized.set(true);
 					}}
 					on:outroend={() => {
-						minimized = true;
+						minimized.set(true);
 					}}
 					class="pointer-events-auto absolute bottom-0 z-50 -mx-2 w-full flex-initial sm:mx-0"
 				>
-					<ChatBox bind:minimized bind:greeting />
+					<ChatBox bind:greeting />
 				</div>
 			{/if}
 		</div>
@@ -266,20 +255,20 @@
 		in:receive|global={{ key: 'huntbot' }}
 		out:send|global={{ key: 'huntbot' }}
 		on:introstart={() => {
-			minimized = true;
+			minimized.set(true);
 		}}
 		on:introend={() => {
 			animationFinished();
 		}}
 		on:outrostart={() => {
-			minimized = true;
+			minimized.set(true);
 		}}
 		on:outroend={() => {
-			minimized = true;
+			minimized.set(true);
 		}}
 		class="fixed bottom-0 z-50 -mx-0 w-full flex-initial sm:mx-0"
 	>
-		<ChatBox bind:minimized bind:greeting />
+		<ChatBox bind:greeting />
 	</div>
 {/if}
 
