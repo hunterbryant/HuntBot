@@ -46,3 +46,13 @@ export enum SupportedRoutes {
 	tcCouloir = '/projects/terminal-cancer',
 	wcts = '/projects/we-came-to-sauna'
 }
+
+export enum UserRole {
+	USER = 'user',
+	ADMIN = 'admin'
+}
+
+export type User = {
+	authenticated: boolean;
+	role: UserRole;
+};
