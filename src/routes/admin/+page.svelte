@@ -1,4 +1,19 @@
 <script lang="ts">
+	import { crawlDocument } from '$lib/utilities/setupContext';
+	import { urls } from '$lib/utilities/urls';
+
+	const triggerURLEmbedding = async () => {
+		console.log('Beginning url embedding...');
+		urls.forEach((url, i) => {
+			crawlDocument(url.url, 'recursive', 512, 56).then(() => {
+				console.log(`Crawled ${i} of ${urls.length}: ${url.url}`);
+			});
+		});
+	};
+
+	const triggerNotionEmbedding = async () => {
+		console.log('Beginning Notion embedding...');
+	};
 </script>
 
 <svelte:head>
@@ -22,10 +37,30 @@
 				Admin Controls
 			</h2>
 		</div>
+
 		<div
 			class="col-start-1 col-end-6 flex flex-col gap-4 text-stone-800 sm:col-start-4 sm:col-end-7 dark:text-stone-200"
 		>
-			<p>Embedding Processing Triggers</p>
+			<p class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
+				Embedding Processing Triggers
+			</p>
+
+			<span class="flex h-12 items-center justify-between gap-4 align-middle">
+				Jank manual site crawling
+				<button
+					on:click={triggerURLEmbedding}
+					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 dark:border-stone-700 dark:hover:bg-stone-700"
+					>Index</button
+				>
+			</span>
+			<span class="flex h-12 items-center justify-between gap-4 align-middle">
+				Notion DB indexing
+				<button
+					on:click={triggerNotionEmbedding}
+					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 dark:border-stone-700 dark:hover:bg-stone-700"
+					>Index</button
+				>
+			</span>
 		</div>
 	</div>
 </div>
