@@ -1,3 +1,4 @@
+//Handle uploading of Notion DB documents to Pinecone
 export async function GET(event) {
 	console.log('Server Notion embed API endpoint hit');
 
