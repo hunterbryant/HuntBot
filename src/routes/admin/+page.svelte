@@ -1,18 +1,18 @@
 <script lang="ts">
-	import { crawlDocument } from '$lib/utilities/setupContext';
-	import { urls } from '$lib/utilities/urls';
-
 	const triggerURLEmbedding = async () => {
 		console.log('Beginning url embedding...');
-		urls.forEach((url, i) => {
-			crawlDocument(url.url, 'recursive', 512, 56).then(() => {
-				console.log(`Crawled ${i} of ${urls.length}: ${url.url}`);
-			});
+
+		await fetch('/api/embed/urls', {
+			method: 'GET'
 		});
 	};
 
 	const triggerNotionEmbedding = async () => {
 		console.log('Beginning Notion embedding...');
+
+		await fetch('/api/embed/notion', {
+			method: 'GET'
+		});
 	};
 </script>
 

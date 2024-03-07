@@ -39,8 +39,6 @@ export const actions = {
 			return fail(401, { incorrect: true });
 		}
 
-		console.log(user);
-
 		const authToken = jwt.sign(user, env.JWT_KEY as string, { expiresIn: '1h' });
 		cookies.set('auth', authToken, {
 			path: '/',

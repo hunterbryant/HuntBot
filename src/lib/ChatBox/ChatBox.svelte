@@ -10,9 +10,6 @@
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
 	import { chat, botEngaged, minimized } from './MessageStore';
-	import { onMount } from 'svelte';
-	import { crawlDocument } from '$lib/utilities/setupContext';
-	import { urls } from '$lib/utilities/urls';
 
 	const { messages } = chat();
 
