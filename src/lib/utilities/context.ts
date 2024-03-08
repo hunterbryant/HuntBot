@@ -13,7 +13,7 @@ export type Metadata = {
 export const getContext = async (
 	message: string,
 	namespace: string,
-	maxTokens = 3000,
+	maxTokens = 10000,
 	minScore = 0.5,
 	getOnlyText = true
 ): Promise<string | ScoredVector[]> => {
@@ -28,7 +28,7 @@ export const getContext = async (
 
 
 	// Retrieve the matches for the embeddings from the specified namespace
-	const matches = await getMatchesFromEmbeddings(embedding, 5, namespace);
+	const matches = await getMatchesFromEmbeddings(embedding, 10, namespace);
 
 	// Filter out the matches that have a score lower than the minimum score
 	const qualifyingDocs = matches.filter((m) => m.score && m.score > minScore);
