@@ -3,7 +3,6 @@ import { SupportedRoutes } from '$lib/types';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
-import type { Message } from 'ai/svelte';
 import OpenAI from 'openai';
 import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 
@@ -40,7 +39,6 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Get the last message
 		const lastMessage = messages[messages.length - 1];
-
 
 		// Get the context from the last message
 		const context = await getContext(lastMessage.content, '');

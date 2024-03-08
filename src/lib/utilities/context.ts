@@ -1,7 +1,7 @@
+import { env } from '$env/dynamic/private';
+import { OpenAIEmbeddings } from '@langchain/openai';
 import type { ScoredVector } from '@pinecone-database/pinecone/dist/pinecone-generated-ts-fetch';
 import { getMatchesFromEmbeddings } from './pinecone';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { env } from '$env/dynamic/private';
 
 export type Metadata = {
 	url: string;
@@ -13,19 +13,18 @@ export type Metadata = {
 export const getContext = async (
 	message: string,
 	namespace: string,
-	maxTokens = 10000,
+	maxTokens = 20000,
 	minScore = 0.5,
 	getOnlyText = true
 ): Promise<string | ScoredVector[]> => {
 	// Get the embeddings of the input message
 
 	const embeddings = new OpenAIEmbeddings({
-		modelName: "text-embedding-ada-002",
+		modelName: 'text-embedding-ada-002',
 		openAIApiKey: env.OPENAI_API_KEY
-	  });
+	});
 
 	const embedding = await embeddings.embedQuery(message);
-
 
 	// Retrieve the matches for the embeddings from the specified namespace
 	const matches = await getMatchesFromEmbeddings(embedding, 10, namespace);
@@ -38,9 +37,11 @@ export const getContext = async (
 		return qualifyingDocs;
 	}
 
-	const docs = matches ? qualifyingDocs.map((match) => {
-		return (match.metadata as Metadata).text;
-	}) : [];
+	const docs = matches
+		? qualifyingDocs.map((match) => {
+				return (match.metadata as Metadata).text;
+			})
+		: [];
 
 	// Join all the chunks of text together, truncate to the maximum number of tokens, and return the result
 	return docs.join('\n').substring(0, maxTokens);

@@ -3,10 +3,10 @@ import { Pinecone } from '@pinecone-database/pinecone';
 
 import { NotionAPILoader } from 'langchain/document_loaders/web/notionapi';
 
-import { PineconeStore } from '@langchain/pinecone';
 import { OpenAIEmbeddings } from '@langchain/openai';
-import { MarkdownTextSplitter } from 'langchain/text_splitter';
+import { PineconeStore } from '@langchain/pinecone';
 import { json } from '@sveltejs/kit';
+import { MarkdownTextSplitter } from 'langchain/text_splitter';
 
 //Handle uploading of Notion DB documents to Pinecone
 export async function GET() {
@@ -28,10 +28,10 @@ export async function GET() {
 		clientOptions: {
 			auth: env.NOTION_INTEGRATION_TOKEN
 		},
-		// Big db 
-		id: '637fbb5a0236401fa1ee8e5e05775b5e',
-		// Portolfio 
-		// id: '879d16ea6bdd45b3ad83bc0157cfb254',
+		// Big db
+		// id: '637fbb5a0236401fa1ee8e5e05775b5e',
+		// Portolfio
+		id: '879d16ea6bdd45b3ad83bc0157cfb254',
 		// Life Folder
 		// id: "5d153d9c4e59474295b6ea5f9184413e",
 		type: 'database',
@@ -53,19 +53,22 @@ export async function GET() {
 	// A database row contents is likely to be less than 1000 characters so it's not split into multiple documents
 	const dbDocs = await dbLoader.loadAndSplit(splitter);
 
-	await PineconeStore.fromDocuments(dbDocs, new OpenAIEmbeddings({
-		modelName: "text-embedding-ada-002",
-		openAIApiKey: env.OPENAI_API_KEY
-	}), {
-		pineconeIndex,
-		maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
-	}).then(() => console.log('Embeddings loaded')).catch((error) => {
-		console.log(error);
-		return json(
-			{ error: `Failed to load embeddings: ${error}` },
-			{ status: 500 }
-		);
-	});
+	await PineconeStore.fromDocuments(
+		dbDocs,
+		new OpenAIEmbeddings({
+			modelName: 'text-embedding-ada-002',
+			openAIApiKey: env.OPENAI_API_KEY
+		}),
+		{
+			pineconeIndex,
+			maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
+		}
+	)
+		.then(() => console.log('Embeddings loaded'))
+		.catch((error) => {
+			console.log(error);
+			return json({ error: `Failed to load embeddings: ${error}` }, { status: 500 });
+		});
 
 	return json('Embedded Notion docs', { status: 200 });
 }
