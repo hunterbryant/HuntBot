@@ -41,7 +41,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Get the last message
 		const lastMessage = messages[messages.length - 1];
 
-		console.log(lastMessage.content);
 
 		// Get the context from the last message
 		const context = await getContext(lastMessage.content, '');
