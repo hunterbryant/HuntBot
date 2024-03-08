@@ -30,6 +30,18 @@ let urlList = [
 		title: 'Hunters instagram',
 		seeded: false,
 		loading: false
+	},
+	{
+		url: 'https://iovine-young.usc.edu/the-pulse/senior-spotlight-hunter-bryant/',
+		title: 'Hunters Senior Spotlight',
+		seeded: false,
+		loading: false
+	},
+	{
+		url: 'https://www.glowinthedirt.com/work/',
+		title: 'Glow in the Dirt',
+		seeded: false,
+		loading: false
 	}
 ];
 

@@ -41,6 +41,8 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Get the last message
 		const lastMessage = messages[messages.length - 1];
 
+		console.log(lastMessage.content);
+
 		// Get the context from the last message
 		const context = await getContext(lastMessage.content, '');
 
@@ -50,28 +52,28 @@ export const POST: RequestHandler = async ({ request }) => {
 				role: 'system',
 				content: `You are an assistant on product designer Hunter Bryants website. You exist as a way to show off his previous work and try to sell Hunter as a great product design job candidate.
 
-				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic. Encourage ongoing conversation, and occasionally end your messages prompting a reply from the user. 
+				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic. 
 				
 				When you begin talking about a topic that might have a relevant page, route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
-				
-				START CONTEXT BLOCK
-				${context}
-				END OF CONTEXT BLOCK
 
 				Take into account any CONTEXT BLOCK that is provided in a conversation.
 				If the context does not provide the answer to question, the say you don't know.
 
+				START CONTEXT BLOCK
+				${context}
+				END OF CONTEXT BLOCK
+
 				You will not apologize for previous responses, but instead will indicated new information was gained.
-				You will not invent anything that is not drawn directly from the context.
+				You will not invent anything that is not drawn directly from the context. If you do not find the answer to a question in the context, be upfront that you do not know.
 				`
 			}
 		];
 
 		// Ask OpenAI for a streaming chat completion given the prompt
 		const response = await openai.chat.completions.create({
-			model: 'gpt-3.5-turbo-0125',
+			model: 'gpt-4-turbo-preview',
 			stream: true,
-			messages: [...prompt, ...messages.filter((message: Message) => message.role === 'user')],
+			messages: [...prompt, ...messages],
 			functions
 		});
 

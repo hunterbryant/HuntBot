@@ -6,9 +6,10 @@ import { NotionAPILoader } from 'langchain/document_loaders/web/notionapi';
 import { PineconeStore } from '@langchain/pinecone';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
+import { json } from '@sveltejs/kit';
 
 //Handle uploading of Notion DB documents to Pinecone
-export async function GET(event) {
+export async function GET() {
 	console.log('Server Notion embed API endpoint hit');
 
 	// Instantiate a new Pinecone client, which will automatically read the
@@ -27,8 +28,12 @@ export async function GET(event) {
 		clientOptions: {
 			auth: env.NOTION_INTEGRATION_TOKEN
 		},
-		// id: '637fbb5a0236401fa1ee8e5e05775b5e',
-		id: '879d16ea6bdd45b3ad83bc0157cfb254',
+		// Big db 
+		id: '637fbb5a0236401fa1ee8e5e05775b5e',
+		// Portolfio 
+		// id: '879d16ea6bdd45b3ad83bc0157cfb254',
+		// Life Folder
+		// id: "5d153d9c4e59474295b6ea5f9184413e",
 		type: 'database',
 		onDocumentLoaded: (current, total, currentTitle) => {
 			console.log(`Loaded Page: ${currentTitle} (${current}/${total})`);
@@ -49,11 +54,12 @@ export async function GET(event) {
 	const dbDocs = await dbLoader.loadAndSplit(splitter);
 
 	await PineconeStore.fromDocuments(dbDocs, new OpenAIEmbeddings({
+		modelName: "text-embedding-ada-002",
 		openAIApiKey: env.OPENAI_API_KEY
 	}), {
 		pineconeIndex,
 		maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
-	}).then(() => console.log('Embeddings loaded')).catch((err) => {
+	}).then(() => console.log('Embeddings loaded')).catch((error) => {
 		console.log(error);
 		return json(
 			{ error: `Failed to load embeddings: ${error}` },
