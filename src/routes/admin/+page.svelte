@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { dev } from '$app/environment';
+
 	const triggerURLEmbedding = async () => {
 		console.log('Beginning url embedding...');
 
@@ -7,10 +9,18 @@
 		});
 	};
 
-	const triggerNotionEmbedding = async () => {
-		console.log('Beginning Notion embedding...');
+	const triggerNotionURLEmbedding = async () => {
+		console.log('Beginning Notion API URL embedding...');
 
-		await fetch('/api/embed/notion', {
+		await fetch('/api/embed/notion-url', {
+			method: 'GET'
+		});
+	};
+
+	const triggerNotionFileEmbedding = async () => {
+		console.log('Beginning Notion file embedding...');
+
+		await fetch('/api/embed/notion-file', {
 			method: 'GET'
 		});
 	};
@@ -54,10 +64,19 @@
 				>
 			</span>
 			<span class="flex h-12 items-center justify-between gap-4 align-middle">
-				Notion DB indexing
+				Notion API URL indexing
 				<button
-					on:click={triggerNotionEmbedding}
+					on:click={triggerNotionURLEmbedding}
 					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 dark:border-stone-700 dark:hover:bg-stone-700"
+					>Index</button
+				>
+			</span>
+			<span class="flex h-12 items-center justify-between gap-4 align-middle">
+				Notion File indexing
+				<button
+					on:click={triggerNotionFileEmbedding}
+					disabled={!dev}
+					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:text-stone-300 disabled:hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-stone-900"
 					>Index</button
 				>
 			</span>

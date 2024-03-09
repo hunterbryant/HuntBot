@@ -12,10 +12,6 @@ import { MarkdownTextSplitter } from 'langchain/text_splitter';
 export async function GET() {
 	console.log('Server Notion embed API endpoint hit');
 
-	// Instantiate a new Pinecone client, which will automatically read the
-	// env vars: PINECONE_API_KEY and PINECONE_ENVIRONMENT which come from
-	// the Pinecone dashboard at https://app.pinecone.io
-
 	// Obtain a client for Pinecone
 	const pinecone = new Pinecone({
 		apiKey: env.PINECONE_API_KEY
