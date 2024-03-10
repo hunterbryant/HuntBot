@@ -24,6 +24,14 @@
 			method: 'GET'
 		});
 	};
+
+	const triggerTextEmbedding = async () => {
+		console.log('Beginning text embedding...');
+
+		await fetch('/api/embed/texts', {
+			method: 'GET'
+		});
+	};
 </script>
 
 <svelte:head>
@@ -75,6 +83,15 @@
 				Notion File indexing
 				<button
 					on:click={triggerNotionFileEmbedding}
+					disabled={!dev}
+					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:text-stone-300 disabled:hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-stone-900"
+					>Index</button
+				>
+			</span>
+			<span class="flex h-12 items-center justify-between gap-4 align-middle">
+				Text Export indexing
+				<button
+					on:click={triggerTextEmbedding}
 					disabled={!dev}
 					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:text-stone-300 disabled:hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-stone-900"
 					>Index</button

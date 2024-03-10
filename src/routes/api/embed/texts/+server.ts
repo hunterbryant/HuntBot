@@ -3,12 +3,14 @@ import { OpenAIEmbeddings } from '@langchain/openai';
 import { PineconeStore } from '@langchain/pinecone';
 import { Pinecone } from '@pinecone-database/pinecone';
 import { json } from '@sveltejs/kit';
-import { NotionLoader } from 'langchain/document_loaders/fs/notion';
-import { MarkdownTextSplitter } from 'langchain/text_splitter';
+import { CSVLoader } from 'langchain/document_loaders/fs/csv';
+import { DirectoryLoader } from 'langchain/document_loaders/fs/directory';
+import { TextLoader } from 'langchain/document_loaders/fs/text';
+import { TokenTextSplitter } from 'langchain/text_splitter';
 
 //Handle uploading of Notion DB documents to Pinecone
 export async function GET() {
-	console.log('Server Notion file endpoint hit');
+	console.log('Server text embed endpoint hit');
 
 	// Obtain a client for Pinecone
 	const pinecone = new Pinecone({
@@ -17,13 +19,17 @@ export async function GET() {
 
 	const pineconeIndex = pinecone.Index(env.PINECONE_INDEX);
 
-	const directoryPath = 'local_files/notion_export';
-	const loader = new NotionLoader(directoryPath);
+	const directoryPath = 'local_files/email';
 
-	// Chunking options
-	const splitter = new MarkdownTextSplitter({
+	const loader = new DirectoryLoader(directoryPath, {
+		'.txt': (path) => new TextLoader(path),
+		'.csv': (path) => new CSVLoader(path, 'text')
+	});
+
+	const splitter = new TokenTextSplitter({
+		encodingName: 'gpt2',
 		chunkSize: 1000,
-		chunkOverlap: 200
+		chunkOverlap: 250
 	});
 
 	const docs = await loader.loadAndSplit(splitter);

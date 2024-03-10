@@ -25,6 +25,7 @@ export interface BotAction {
 export enum SupportedRoutes {
 	gathers = '/case-studies/gathers',
 	karooTwo = '/case-studies/karoo2',
+	KarooTwentyFour = '/case-studies/karoo-24',
 	dashboard = '/case-studies/hammerhead-dashboard',
 	home = '/',
 	dovetail = '/case-studies/dovetail',
@@ -32,18 +33,21 @@ export enum SupportedRoutes {
 	controlCenter = '/case-studies/control-center',
 	goodIdea = '/case-studies/good-idea',
 	alphaFlow = '/case-studies/alpha-flow',
+	compaionApp = '/case-studies/karoo-companion-app',
+	workoutEcosystem = '/case-studies/workout-ecosystem',
+	karooProfiles = '/case-studies/karoo-profiles',
 	info = '/information',
 	caseStudies = '/case-studies',
 	projects = '/projects',
 	isobFilm = '/projects/isob-film',
 	inSearchOfBirch = '/projects/in-search-of-birch',
-	gitd = '/projects/glow-in-the-dirt',
+	glowInTheDirt = '/projects/glow-in-the-dirt',
 	lyngen = '/projects/lyngen',
 	thePlug = '/projects/the-plug',
 	fender = '/projects/fender',
 	karooOne = '/projects/karoo-1',
-	tcCouloir = '/projects/terminal-cancer',
-	wcts = '/projects/we-came-to-sauna'
+	terminalCancerCouloir = '/projects/terminal-cancer',
+	weCameToSauna = '/projects/we-came-to-sauna'
 }
 
 export enum UserRole {

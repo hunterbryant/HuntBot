@@ -40,6 +40,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Get the last message
 		const lastMessage = messages[messages.length - 1];
 
+		// TODO: more context history
+		// const lastMessages = messages.slice(-3);
+		// const combinedMessageContext = lastMessages.map((message) => message.content).join('\n');
+
+		// console.log('Combined message context:', combinedMessageContext);
+
 		// Get the context from the last message
 		const context = await getContext(lastMessage.content, '');
 
