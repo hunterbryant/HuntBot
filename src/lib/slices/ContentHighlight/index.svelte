@@ -9,7 +9,7 @@
 		ProjectDocument,
 		ProjectDocumentData
 	} from '../../../prismicio-types';
-	// import { Application } from '@splinetool/runtime';
+	import { Application } from '@splinetool/runtime';
 	import { onMount } from 'svelte';
 
 	//Silences runtime svelte unused prop warnings
@@ -59,10 +59,10 @@
 	}
 
 	onMount(() => {
-		// if (slice.variation == '3DModel' && slice.primary.model) {
-		// 	const app = new Application(interactiveCanvas);
-		// 	app.load(slice.primary.model);
-		// }
+		if (slice.variation == '3DModel' && slice.primary.model) {
+			const app = new Application(interactiveCanvas);
+			app.load(slice.primary.model);
+		}
 	});
 </script>
 

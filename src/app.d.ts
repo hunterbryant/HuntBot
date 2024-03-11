@@ -1,18 +1,11 @@
 // See https://kit.svelte.dev/docs/types#app
 // for information about these interfaces
-type User = {
-	authenticated: boolean;
-};
 
-declare global {
-	namespace App {
-		// interface Error {}
-		interface Locals {
-			user: jwt.JwtPayload | null;
-		}
-		// interface PageData {}
-		// interface Platform {}
+declare namespace App {
+	// interface Error {}
+	interface Locals {
+		user: jwt.JwtPayload | null;
 	}
+	// interface PageData {}
+	// interface Platform {}
 }
-
-export { User };
