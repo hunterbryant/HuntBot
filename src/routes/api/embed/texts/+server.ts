@@ -19,7 +19,7 @@ export async function GET() {
 
 	const pineconeIndex = pinecone.Index(env.PINECONE_INDEX);
 
-	const directoryPath = 'local_files/email';
+	const directoryPath = 'local_files/texts';
 
 	const loader = new DirectoryLoader(directoryPath, {
 		'.txt': (path) => new TextLoader(path),
@@ -28,7 +28,7 @@ export async function GET() {
 
 	const splitter = new TokenTextSplitter({
 		encodingName: 'gpt2',
-		chunkSize: 1000,
+		chunkSize: 500,
 		chunkOverlap: 250
 	});
 

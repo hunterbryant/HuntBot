@@ -63,6 +63,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					DON'T add context that hasn't previously been provided.
 					DON'T make anything up in the context, only add if it's directly relevant.
 					DON'T add context if it's not relevant to the most recent question.
+					DON'T assume the previous assistant reponses are accurate.
 					Your response must not refer to previous messages.`
 			}
 		];
