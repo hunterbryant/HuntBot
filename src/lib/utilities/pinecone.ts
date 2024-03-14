@@ -1,5 +1,8 @@
 import { env } from '$env/dynamic/private';
+import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
+import { PineconeStore } from '@langchain/pinecone';
 import { Pinecone, type ScoredPineconeRecord } from '@pinecone-database/pinecone';
+import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';
 
 export type Metadata = {
 	url: string;
@@ -50,6 +53,8 @@ const getMatchesFromEmbeddings = async (
 		console.log('Error querying embeddings: ', e);
 		throw new Error(`Error querying embeddings: ${e}`);
 	}
+
+
 };
 
 export { getMatchesFromEmbeddings };
