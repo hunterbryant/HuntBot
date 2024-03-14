@@ -6,10 +6,8 @@ import { PineconeStore } from '@langchain/pinecone';
 import { Pinecone } from '@pinecone-database/pinecone';
 import { json } from '@sveltejs/kit';
 import { compile } from 'html-to-text';
-import { RecursiveUrlLoader } from "langchain/document_loaders/web/recursive_url";
+import { RecursiveUrlLoader } from 'langchain/document_loaders/web/recursive_url';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
-
-
 
 export async function GET(event) {
 	console.log('Server url list embed API endpoint hit');
@@ -20,8 +18,8 @@ export async function GET(event) {
 	const loader = new RecursiveUrlLoader(entryURL, {
 		extractor: compiledConvert,
 		maxDepth: 3,
-		excludeDirs: [],
-	  });
+		excludeDirs: []
+	});
 
 	// Chunking options
 	const splitter = new MarkdownTextSplitter({
@@ -39,19 +37,22 @@ export async function GET(event) {
 
 	const pineconeIndex = pinecone.Index(env.PINECONE_INDEX);
 
-	await PineconeStore.fromDocuments(docs, new OpenAIEmbeddings({
-		modelName: "text-embedding-ada-002",
-		openAIApiKey: env.OPENAI_API_KEY
-	}), {
-		pineconeIndex,
-		maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
-	}).then(() => console.log('Embeddings loaded')).catch((error) => {
-		console.log(error);
-		return json(
-			{ error: `Failed to load embeddings: ${error}` },
-			{ status: 500 }
-		);
-	});
+	await PineconeStore.fromDocuments(
+		docs,
+		new OpenAIEmbeddings({
+			modelName: 'text-embedding-3-small',
+			openAIApiKey: env.OPENAI_API_KEY
+		}),
+		{
+			pineconeIndex,
+			maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
+		}
+	)
+		.then(() => console.log('Embeddings loaded'))
+		.catch((error) => {
+			console.log(error);
+			return json({ error: `Failed to load embeddings: ${error}` }, { status: 500 });
+		});
 
 	return json('Embedded recursive urls', { status: 200 });
 }

@@ -52,7 +52,7 @@ export async function GET() {
 	await PineconeStore.fromDocuments(
 		dbDocs,
 		new OpenAIEmbeddings({
-			modelName: 'text-embedding-ada-002',
+			modelName: 'text-embedding-3-small',
 			openAIApiKey: env.OPENAI_API_KEY
 		}),
 		{
