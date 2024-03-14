@@ -21,7 +21,8 @@ export const getContext = async (
 
 	const embeddings = new OpenAIEmbeddings({
 		modelName: 'text-embedding-3-small',
-		openAIApiKey: env.OPENAI_API_KEY
+		openAIApiKey: env.OPENAI_API_KEY,
+		dimensions: 512
 	});
 
 	const embedding = await embeddings.embedQuery(message);

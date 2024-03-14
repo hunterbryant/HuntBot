@@ -53,7 +53,8 @@ export async function GET() {
 		dbDocs,
 		new OpenAIEmbeddings({
 			modelName: 'text-embedding-3-small',
-			openAIApiKey: env.OPENAI_API_KEY
+			openAIApiKey: env.OPENAI_API_KEY,
+			dimensions: 512
 		}),
 		{
 			pineconeIndex,
