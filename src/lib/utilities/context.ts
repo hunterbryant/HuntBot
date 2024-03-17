@@ -15,9 +15,7 @@ export type Metadata = {
 export const getContext = async (
 	message: string,
 	namespace: string,
-	maxTokens = 20000,
-	minScore = 0.5,
-	getOnlyText = true
+	maxTokens = 20000
 ): Promise<string | ScoredVector[]> => {
 	// Get the embeddings of the input message
 

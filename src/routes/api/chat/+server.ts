@@ -3,6 +3,7 @@ import { SupportedRoutes } from '$lib/types';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
+import { Client, RunTree } from 'langsmith';
 import OpenAI from 'openai';
 import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 
@@ -40,10 +41,22 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Get the last message
 		const lastMessage = messages[messages.length - 1];
 
-		// More context history for use in the embedding
-		// Uses the last 3 messages minus the initial prompt as it's memory window to provide specifics to the users message
-		const removedPrompt = messages.slice(1);
-		const lastMessages = removedPrompt.slice(-3);
+		const langsmithClient = new Client({
+			apiKey: env.LANGCHAIN_API_KEY
+		});
+
+		// Setup Langsmith tracing pipeline
+		const pipeline = new RunTree({
+			name: 'Chat Pipeline',
+			run_type: 'chain',
+			inputs: { lastMessage },
+			client: langsmithClient
+		});
+
+		// // More context history for use in the embedding
+		// // Uses the last 3 messages minus the initial prompt as it's memory window to provide specifics to the users message
+		// const removedPrompt = messages.slice(1);
+		// const lastMessages = removedPrompt.slice(-3);
 
 		// const prePrompt = [
 		// 	{
@@ -104,6 +117,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		];
 
+		// Create a child run for Langsmith
+		const childRun = await pipeline.createChild({
+			name: 'OpenAI Call',
+			run_type: 'llm',
+			inputs: { messages },
+			client: langsmithClient
+		});
+
 		// Ask OpenAI for a streaming chat completion given the prompt
 		const response = await openai.chat.completions.create({
 			model: 'gpt-3.5-turbo',
@@ -113,7 +134,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		// Convert the response into a friendly text-stream
-		const stream = OpenAIStream(response);
+		const stream = OpenAIStream(response, {
+			onCompletion: async (completeResponse) => {
+				// End the runs and log them
+				childRun.end({ outputs: { answer: completeResponse } });
+				await childRun.postRun();
+				pipeline.end({ outputs: { answer: completeResponse } });
+				await pipeline.postRun();
+			}
+		});
 		// Respond with the stream
 		return new StreamingTextResponse(stream);
 	} catch (error) {
