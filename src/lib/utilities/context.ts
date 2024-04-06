@@ -55,8 +55,7 @@ export const getContext = async (
 	const retriever = MultiQueryRetriever.fromLLM({
 		llm: model,
 		retriever: vectorStore.asRetriever(),
-		verbose: false,
-		runName: runID
+		verbose: false
 	});
 
 	const retrievedDocs = await retriever.getRelevantDocuments(message, {
@@ -66,8 +65,6 @@ export const getContext = async (
 	// Log to Langsmith on completion
 	childRun.end({ outputs: { answer: retrievedDocs } });
 	await childRun.postRun();
-
-	console.log(JSON.stringify(retrievedDocs));
 
 	return JSON.stringify(retrievedDocs).substring(0, maxTokens);
 };
