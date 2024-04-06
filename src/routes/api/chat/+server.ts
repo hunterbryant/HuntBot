@@ -3,8 +3,10 @@ import { SupportedRoutes } from '$lib/types';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
+import { Client, RunTree } from 'langsmith';
 import OpenAI from 'openai';
 import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
+import { v4 as uuidv4 } from 'uuid';
 
 // Initialize OpenAI API client
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -38,46 +40,24 @@ export const POST: RequestHandler = async ({ request }) => {
 		const { messages } = await request.json();
 
 		// Get the last message
-		// const lastMessage = messages[messages.length - 1];
+		const lastMessage = messages[messages.length - 1];
 
-		// More context history for use in the embedding
-		// Uses the last 3 messages minus the initial prompt as it's memory window to provide specifics to the users message
-		const removedPrompt = messages.slice(1);
-		const lastMessages = removedPrompt.slice(-3);
-
-		const prePrompt = [
-			{
-				role: 'system',
-				content: `Your job is to reformat the users last message in a way that includes full context to the question. The reponse should rewritee their question where is could be read without the rest of the message history and include needed details.
-					
-					For example, if the user asks: Where does he live?, the user is probably refering to *he* as someone that was brought up in past messages. So, for example, your feedback should be a version of the question with all the relevant detail. So, in this case it could be: Where does Hunter live?, or if it was refering to someone named James: Where does James live? The reason you are adding in detail is because your response will be used to find relevant data from a vector database, so context is key. 
-
-					MESSAGE HISTORY:
-					User: When did Hunter go to Croatia?
-					Assistant: He went to Croatia in September 2023.
-					User: What did he do after his trip?
-					Your Response: Where did Hunter go after his vacation to Croatia in September 2023?
-					
-					Your job ISN'T to respond to the users message, 
-					Your job is to REWRITE THEIR QUESTION WITH SPECIFICS where there may have been ambiguity. 
-					DON'T add context that hasn't previously been provided.
-					DON'T make anything up in the context, only add if it's directly relevant.
-					DON'T add context if it's not relevant to the most recent question.
-					DON'T assume the previous assistant reponses are accurate.
-					Your response must not refer to previous messages.`
-			}
-		];
-
-		// Ask OpenAI for a streaming chat completion given the prompt
-		const preResponse = await openai.chat.completions.create({
-			model: 'gpt-3.5-turbo',
-			messages: [...prePrompt, ...lastMessages]
+		const langsmithClient = new Client({
+			apiKey: env.LANGCHAIN_API_KEY
 		});
 
-		console.log(preResponse.choices[0]);
+		// Setup Langsmith tracing pipeline
+		const runID = uuidv4();
+		const pipeline = new RunTree({
+			name: 'Chat Pipeline',
+			run_type: 'chain',
+			inputs: { lastMessage },
+			client: langsmithClient,
+			extra: { metadata: { conversation_id: runID } }
+		});
 
 		// Get the context from the reformatted response with specifics
-		const context = await getContext(preResponse.choices[0].message.content as string, '');
+		const context = await getContext(lastMessage.content, runID, pipeline);
 
 		// Completion prompt
 		const prompt = [
@@ -103,6 +83,14 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		];
 
+		// Create a child run for Langsmith
+		const childRun = await pipeline.createChild({
+			name: 'OpenAI Call',
+			run_type: 'llm',
+			inputs: { ...[...prompt, ...messages] },
+			client: langsmithClient
+		});
+
 		// Ask OpenAI for a streaming chat completion given the prompt
 		const response = await openai.chat.completions.create({
 			model: 'gpt-3.5-turbo',
@@ -112,7 +100,15 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		// Convert the response into a friendly text-stream
-		const stream = OpenAIStream(response);
+		const stream = OpenAIStream(response, {
+			onCompletion: async (completeResponse) => {
+				// Log to Langsmith on completion
+				childRun.end({ outputs: { answer: completeResponse } });
+				await childRun.postRun();
+				pipeline.end({ outputs: { answer: completeResponse } });
+				await pipeline.postRun();
+			}
+		});
 		// Respond with the stream
 		return new StreamingTextResponse(stream);
 	} catch (error) {
