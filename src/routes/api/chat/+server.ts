@@ -57,7 +57,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		// Get the context from the reformatted response with specifics
-		const context = await getContext(lastMessage.content, runID);
+		const context = await getContext(lastMessage.content, runID, pipeline);
 
 		// Completion prompt
 		const prompt = [

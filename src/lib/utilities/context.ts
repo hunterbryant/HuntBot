@@ -4,6 +4,7 @@ import { PineconeStore } from '@langchain/pinecone';
 import { Pinecone } from '@pinecone-database/pinecone';
 import type { ScoredVector } from '@pinecone-database/pinecone/dist/pinecone-generated-ts-fetch';
 import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';
+import { Client } from 'langsmith';
 
 export type Metadata = {
 	url: string;
@@ -15,6 +16,7 @@ export type Metadata = {
 export const getContext = async (
 	message: string,
 	runID: string,
+	pipeline: any,
 	maxTokens = 20000
 ): Promise<string | ScoredVector[]> => {
 	process.env.LANGCHAIN_TRACING_V2 = 'true';
@@ -38,15 +40,34 @@ export const getContext = async (
 		openAIApiKey: env.OPENAI_API_KEY
 	});
 
+	const langsmithClient = new Client({
+		apiKey: env.LANGCHAIN_API_KEY
+	});
+
+	// Create a child run for Langsmith
+	const childRun = await pipeline.createChild({
+		name: 'MultiQueryRetriever',
+		run_type: 'retriever',
+		inputs: { ...[message] },
+		client: langsmithClient
+	});
+
 	const retriever = MultiQueryRetriever.fromLLM({
 		llm: model,
 		retriever: vectorStore.asRetriever(),
-		verbose: false
+		verbose: false,
+		runName: runID
 	});
 
 	const retrievedDocs = await retriever.getRelevantDocuments(message, {
 		metadata: { conversation_id: runID }
 	});
 
-	return retrievedDocs.join('\n').substring(0, maxTokens);
+	// Log to Langsmith on completion
+	childRun.end({ outputs: { answer: retrievedDocs } });
+	await childRun.postRun();
+
+	console.log(JSON.stringify(retrievedDocs));
+
+	return JSON.stringify(retrievedDocs).substring(0, maxTokens);
 };
