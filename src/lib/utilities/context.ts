@@ -19,9 +19,6 @@ export const getContext = async (
 	pipeline: any,
 	maxTokens = 20000
 ): Promise<string | ScoredVector[]> => {
-	process.env.LANGCHAIN_TRACING_V2 = 'true';
-	process.env.LANGCHAIN_API_KEY = env.LANGCHAIN_API_KEY;
-
 	// Obtain a client for Pinecone
 	const pinecone = new Pinecone({
 		apiKey: env.PINECONE_API_KEY
