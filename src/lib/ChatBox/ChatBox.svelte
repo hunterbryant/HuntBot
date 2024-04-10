@@ -10,8 +10,9 @@
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
 	import { chat, botEngaged, minimized } from './MessageStore';
+	import LoadingStream from './LoadingStream.svelte';
 
-	const { messages } = chat();
+	const { messages, isLoading, handleSubmit, input } = chat();
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -117,17 +118,30 @@
 					>
 						{#if message.role === 'user'}
 							<UserMessage value={message.content} />
-						{:else if message.role === 'assistant' && message.content}
+						{:else if message.role === 'assistant'}
 							<BotMessage value={message.content} />
 						{:else if message.role === 'function'}
 							<ActionMessage value={message} />
 						{/if}
 					</div>
 				{/each}
+				{#if $isLoading && $messages[$messages.length - 1].role !== 'assistant'}
+					<div
+						in:slide|global={{ duration: 400 }}
+						on:introend={() => {
+							scrollToBottom();
+							setTimeout(() => {
+								scrollToBottom();
+							}, 400);
+						}}
+					>
+						<LoadingStream />
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
 	{#if $botEngaged}
-		<TextInput />
+		<TextInput {isLoading} {handleSubmit} {input} />
 	{/if}
 </div>
