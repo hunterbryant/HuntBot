@@ -5,7 +5,7 @@
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { chat, minimized } from './MessageStore';
 
-	const { input, handleSubmit, isLoading } = chat();
+	export let { input, handleSubmit, isLoading } = chat();
 
 	let inputElement: HTMLInputElement;
 	let placeholder = 'Message HuntBot';
