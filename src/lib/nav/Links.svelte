@@ -2,7 +2,7 @@
 </script>
 
 <nav
-	class="text-stone-900 bg-stone-100 pointer-events-auto flex flex-col gap-0 pb-7 text-xs font-medium uppercase tracking-wider hover:*:bg-stone-200 dark:text-stone-100 dark:bg-stone-900 dark:hover:*:bg-stone-800 *:flex *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:px-2 sm:-ml-4 sm:-mr-4 sm:pl-4 sm:pr-4"
+	class="pointer-events-auto flex flex-col gap-0 bg-stone-100 pb-7 text-xs font-medium uppercase tracking-wider text-stone-900 *:flex *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:bg-stone-200 hover:*:px-2 sm:-ml-4 sm:-mr-4 sm:pl-4 sm:pr-4 dark:bg-stone-900 dark:text-stone-100 dark:hover:*:bg-stone-800"
 >
 	<a href="/information" data-sveltekit-noscroll>Information</a>
 	<a href="/case-studies" data-sveltekit-noscroll>Case Studies</a>
@@ -11,7 +11,7 @@
 	<!-- <a href="/other">Writing & Other Projects</a> -->
 </nav>
 <nav
-	class="text-stone-900 bg-stone-100 pointer-events-auto flex flex-col gap-0 text-xs font-medium uppercase tracking-wider hover:*:bg-stone-200 dark:text-stone-100 dark:bg-stone-900 dark:hover:*:bg-stone-800 *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:px-2 sm:-mb-4 sm:-ml-4 sm:-mr-4 sm:pl-4 sm:pr-4"
+	class="pointer-events-auto flex flex-col gap-0 bg-stone-100 text-xs font-medium uppercase tracking-wider text-stone-900 *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:bg-stone-200 hover:*:px-2 sm:-mb-4 sm:-ml-4 sm:-mr-4 sm:pl-4 sm:pr-4 dark:bg-stone-900 dark:text-stone-100 dark:hover:*:bg-stone-800"
 >
 	<a class="inline-flex justify-between" href="https://www.linkedin.com/in/hunterbryant1/"
 		>Linkedin

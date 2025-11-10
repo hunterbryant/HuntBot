@@ -205,7 +205,7 @@
 					}}
 				>
 					<h3
-						class="text-5xl font-bold tracking-tighter text-stone-800 xl:text-6xl dark:text-stone-200"
+						class="text-5xl font-medium tracking-tighter text-stone-800 xl:text-5xl dark:text-stone-200"
 					>
 						How?
 					</h3>

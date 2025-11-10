@@ -55,11 +55,11 @@
 			<!-- Todo: animate title right after scroll -->
 			<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
 				<h1
-					class="absolute -top-[3.09rem] my-auto text-5xl font-bold tracking-tighter text-stone-900 sm:relative sm:top-0 sm:z-40 xl:text-6xl dark:text-stone-100 dark:mix-blend-exclusion"
+					class="absolute -top-[3.09rem] my-auto text-5xl font-medium tracking-tighter text-stone-900 sm:relative sm:top-0 sm:z-40 xl:text-5xl dark:text-stone-100 dark:mix-blend-exclusion"
 					bind:this={element}
 				>
-					I’ll design you a product your users <span class="font-serif italic">actually</span>
-					want.
+					Let's build the product your users <span class="font-serif italic">actually</span>
+					want 🎯
 					<!-- I’m the designer that will build you a product your users really want. -->
 				</h1>
 			</div>
