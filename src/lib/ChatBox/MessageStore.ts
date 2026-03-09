@@ -6,7 +6,7 @@ import { useChat, type Message } from 'ai/svelte';
 import { get, writable } from 'svelte/store';
 
 const greetingResponse: string =
-	'I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗';
+	"I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗";
 
 const initMessage: Message = {
 	id: 'initialmessage',
