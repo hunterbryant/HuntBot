@@ -64,8 +64,6 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 	} else if (functionCall.name === 'route_to_page') {
 		if (functionCall.arguments) {
 			const parsedFunctionCallArguments = JSON.parse(functionCall.arguments);
-			// You now have access to the parsed arguments here (assuming the JSON was valid)
-			// If JSON is invalid, return an appropriate message to the model so that it may retry?
 
 			const functionMessage: FunctionMessage = {
 				id: nanoid(),
@@ -82,6 +80,20 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 					setMessagesGlobal([...chatMessages, { ...functionMessage, data: FunctionState.success }]);
 				}, 1000);
 			}, 400);
+
+			// Return the function result so the SDK fires a follow-up LLM request,
+			// letting the bot describe the page it just routed to.
+			return {
+				messages: [
+					...chatMessages,
+					{
+						id: nanoid(),
+						role: 'function' as const,
+						name: functionCall.name,
+						content: JSON.stringify({ routed_to: parsedFunctionCallArguments.page })
+					}
+				]
+			};
 		}
 	} else {
 		console.log('Unexpected function call: ', functionCall.name);
