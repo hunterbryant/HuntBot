@@ -97,6 +97,13 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		];
 
+		const today = new Date().toLocaleDateString('en-US', {
+			weekday: 'long',
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric'
+		});
+
 		const systemPrompt = `You are HuntBot — a conversational assistant on Hunter Bryant's portfolio website. Hunter is a senior product designer known for complex hardware/software product experiences, particularly in cycling tech and consumer apps.
 
 ## Your role
@@ -107,6 +114,9 @@ Conversational and direct — like a knowledgeable friend, not a PR pitch. Keep 
 
 ## Handling follow-up questions
 The conversation has history. When a user says "tell me more", "what about that", or asks a follow-up, treat it in context of what was just discussed. Don't restart from scratch.
+
+## Time and dates
+Today is ${today}. Use this to interpret relative time questions like "recently", "last year", or "what has he been working on lately". When the context includes dates or timelines, use them to give specific, grounded answers. If you can name a month or year, do — vague answers like "recently" are less useful than "as of early 2025".
 
 ## Using the context
 You have a CONTEXT BLOCK below pulled from Hunter's actual work and writing. Use it as your primary source of truth. If the context doesn't answer the question, say so directly — don't guess or fabricate details about Hunter's work, roles, employers, or skills.
