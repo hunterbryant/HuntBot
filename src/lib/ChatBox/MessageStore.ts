@@ -95,7 +95,7 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 				{
 					id: nanoid(),
 					role: 'assistant' as const,
-					content: args.question ?? 'Could you tell me a bit more about what you're looking for?'
+					content: args.question ?? "Could you tell me a bit more about what you're looking for?"
 				}
 			]);
 		}
