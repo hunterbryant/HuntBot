@@ -41,11 +41,16 @@ async function getAvailableRoutes(): Promise<string[]> {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		// Add the user message to the chat thread
 		const { messages } = await request.json();
 
-		// Get the last message
 		const lastMessage = messages[messages.length - 1];
+
+		// Extract prior user messages (excluding the current one) to improve retrieval
+		// on follow-up questions like "tell me more" or "what about X?"
+		const priorUserMessages: string[] = messages
+			.slice(0, -1)
+			.filter((m: { role: string }) => m.role === 'user')
+			.map((m: { content: string }) => m.content);
 
 		const langsmithClient = new Client({
 			apiKey: env.LANGCHAIN_API_KEY
@@ -63,7 +68,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Get context and available routes in parallel
 		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessage.content, runID, pipeline),
+			getContext(lastMessage.content, runID, pipeline, priorUserMessages),
 			getAvailableRoutes()
 		]);
 
@@ -71,19 +76,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		const functions: ChatCompletionCreateParams.Function[] = [
 			{
 				name: 'minimize_chat',
-				description: 'Minimize the chat interface in which this thread is taking place.'
+				description:
+					'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.'
 			},
 			{
 				name: 'route_to_page',
 				description:
-					'Route the user to a local route on Hunters website. Only route to one at a time.',
+					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. Only route to one page per response, and only to URLs in the approved list.",
 				parameters: {
 					type: 'object',
 					properties: {
 						page: {
 							type: 'string',
 							enum: availableRoutes,
-							description: 'The local route to use.'
+							description: 'The local route path to navigate to.'
 						}
 					},
 					required: ['page']
@@ -91,31 +97,35 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 		];
 
-		// Completion prompt
+		const systemPrompt = `You are HuntBot — a conversational assistant on Hunter Bryant's portfolio website. Hunter is a senior product designer known for complex hardware/software product experiences, particularly in cycling tech and consumer apps.
+
+## Your role
+Help visitors discover Hunter's work, answer questions about his background and design philosophy, and guide them to relevant pages. You're essentially the smartest person at the party who happens to know everything about Hunter's career.
+
+## Tone
+Conversational and direct — like a knowledgeable friend, not a PR pitch. Keep responses to 1–2 sentences unless a topic genuinely needs more depth. No marketing speak, no filler phrases. Plain text only — no markdown, no bullet points, no links in your replies.
+
+## Handling follow-up questions
+The conversation has history. When a user says "tell me more", "what about that", or asks a follow-up, treat it in context of what was just discussed. Don't restart from scratch.
+
+## Using the context
+You have a CONTEXT BLOCK below pulled from Hunter's actual work and writing. Use it as your primary source of truth. If the context doesn't answer the question, say so directly — don't guess or fabricate details about Hunter's work, roles, employers, or skills.
+
+## Navigation
+When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one sentence about what they'll find. Only route to URLs from the approved list below. If a project isn't listed, discuss it without routing. Never route more than once per response.
+
+Approved routes:
+${availableRoutes.join('\n')}
+
+---
+
+CONTEXT:
+${context}`;
+
 		const prompt = [
 			{
 				role: 'system',
-				content: `You are an assistant on product designer Hunter Bryants website. You exist as a way to show off his previous work and try to sell Hunter as a great product design job candidate.
-
-				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic.
-
-				When you begin talking about a topic that might have a relevant page, route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
-
-				IMPORTANT: You may only route to pages that exist on the site. The complete list of available routes is:
-				${availableRoutes.join('\n')}
-				If a project or page is not in that list, do NOT call route_to_page for it. Simply discuss it without routing.
-
-				Take into account any CONTEXT BLOCK that is provided in a conversation.
-				If the context does not provide the answer to question, the say you don't know.
-
-				START CONTEXT BLOCK
-				${context}
-				END OF CONTEXT BLOCK
-
-				You will not apologize for previous responses, but instead will indicated new information was gained.
-				You will NOT invent anything that is not drawn directly from the context. If you do not find the answer to a question in the context, be upfront that you do not know.
-				You will NOT reply with any profanity.
-				`
+				content: systemPrompt
 			}
 		];
 
