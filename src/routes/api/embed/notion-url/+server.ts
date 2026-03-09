@@ -1,12 +1,12 @@
 import { env } from '$env/dynamic/private';
-import { Client } from '@notionhq/client';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
+import { Client } from '@notionhq/client';
+import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import { Document } from 'langchain/document';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
-import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
-const DATABASE_ID = '879d16ea6bdd45b3ad83bc0157cfb254';
+const DATABASE_ID = '637fbb5a0236401fa1ee8e5e05775b5e';
 
 function getPlainText(richTextArray: Array<{ plain_text: string }>): string {
 	return richTextArray.map((t) => t.plain_text).join('');
@@ -27,9 +27,7 @@ function extractPageProperties(page: Record<string, unknown>): string {
 		} else if (type === 'select' && prop.select) {
 			value = (prop.select as { name: string }).name;
 		} else if (type === 'multi_select') {
-			value = ((prop.multi_select as Array<{ name: string }>) || [])
-				.map((s) => s.name)
-				.join(', ');
+			value = ((prop.multi_select as Array<{ name: string }>) || []).map((s) => s.name).join(', ');
 		} else if (type === 'number' && prop.number != null) {
 			value = String(prop.number);
 		} else if (type === 'date' && prop.date) {
