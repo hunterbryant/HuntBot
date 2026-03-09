@@ -41,7 +41,7 @@ async function getAvailableRoutes(): Promise<string[]> {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { messages } = await request.json();
+		const { messages, currentPage = '/' } = await request.json();
 
 		const lastMessage = messages[messages.length - 1];
 
@@ -94,6 +94,42 @@ export const POST: RequestHandler = async ({ request }) => {
 					},
 					required: ['page']
 				}
+			},
+			{
+				name: 'ask_clarifying_question',
+				description:
+					"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
+				parameters: {
+					type: 'object',
+					properties: {
+						question: {
+							type: 'string',
+							description: 'The specific clarifying question to ask the user.'
+						}
+					},
+					required: ['question']
+				}
+			},
+			{
+				name: 'capture_lead_intent',
+				description:
+					"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
+				parameters: {
+					type: 'object',
+					properties: {
+						intent_type: {
+							type: 'string',
+							enum: ['hiring', 'collaboration', 'general'],
+							description: 'The type of interest the visitor has signalled.'
+						},
+						message: {
+							type: 'string',
+							description:
+								'A short, warm acknowledgement of their interest (1 sentence, plain text).'
+						}
+					},
+					required: ['intent_type', 'message']
+				}
 			}
 		];
 
@@ -117,6 +153,14 @@ The conversation has history. When a user says "tell me more", "what about that"
 
 ## Time and dates
 Today is ${today}. Use this to interpret relative time questions like "recently", "last year", or "what has he been working on lately". When the context includes dates or timelines, use them to give specific, grounded answers. If you can name a month or year, do — vague answers like "recently" are less useful than "as of early 2025".
+
+## Current page
+The visitor is currently on: ${currentPage}
+Use this as a hint about what they're already looking at. If they're on a specific case study or project page, you can skip the intro and engage directly with that work. If they're on the home page or a list page, treat them as still browsing.
+
+## Tools
+- Use ask_clarifying_question when a query is too broad to answer specifically — never give a generic sweep of everything when one focused question would lead to a better answer.
+- Use capture_lead_intent immediately when a visitor signals hiring or project interest — don't wait for them to ask how to reach Hunter.
 
 ## Using the context
 You have a CONTEXT BLOCK below pulled from Hunter's actual work and writing. Use it as your primary source of truth. If the context doesn't answer the question, say so directly — don't guess or fabricate details about Hunter's work, roles, employers, or skills.

@@ -86,6 +86,35 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 				]
 			};
 		}
+	} else if (functionCall.name === 'ask_clarifying_question') {
+		if (functionCall.arguments) {
+			const args = JSON.parse(functionCall.arguments);
+			// Render the clarifying question as a normal bot message, not an action bubble
+			setMessagesGlobal([
+				...chatMessages,
+				{
+					id: nanoid(),
+					role: 'assistant' as const,
+					content: args.question ?? 'Could you tell me a bit more about what you're looking for?'
+				}
+			]);
+		}
+	} else if (functionCall.name === 'capture_lead_intent') {
+		if (functionCall.arguments) {
+			const args = JSON.parse(functionCall.arguments);
+			return {
+				messages: [
+					...chatMessages,
+					{
+						id: nanoid(),
+						role: 'function' as const,
+						name: functionCall.name,
+						content: args.message ?? "Sounds like you're interested in working with Hunter.",
+						data: FunctionState.success
+					} as FunctionMessage
+				]
+			};
+		}
 	} else {
 		console.log('Unexpected function call: ', functionCall.name);
 	}
