@@ -68,7 +68,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Get context and available routes in parallel
 		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessage.content, runID, pipeline, priorUserMessages),
+			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage),
 			getAvailableRoutes()
 		]);
 

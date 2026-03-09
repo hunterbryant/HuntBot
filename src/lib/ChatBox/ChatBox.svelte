@@ -10,7 +10,7 @@
 	import { page } from '$app/stores';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
-	import { chat, botEngaged, minimized, suggestedResponses, submitSuggestion } from './MessageStore';
+	import { chat, botEngaged, minimized } from './MessageStore';
 	import LoadingStream from './LoadingStream.svelte';
 
 	const { messages, isLoading, handleSubmit, input } = chat();
@@ -140,21 +140,6 @@
 					</div>
 				{/if}
 			</div>
-		</div>
-	{/if}
-	{#if $botEngaged && $suggestedResponses.length > 0 && !$isLoading && !$minimized}
-		<div
-			transition:slide|global={{ duration: 200 }}
-			class="flex flex-wrap gap-1.5 border-t border-stone-100 px-3 py-2 dark:border-stone-900"
-		>
-			{#each $suggestedResponses as suggestion}
-				<button
-					on:click={() => submitSuggestion(suggestion, $page.url.pathname)}
-					class="rounded-full border border-stone-300 bg-stone-50 px-3 py-1.5 text-xs text-stone-600 transition hover:bg-stone-100 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400 dark:hover:bg-stone-800"
-				>
-					{suggestion}
-				</button>
-			{/each}
 		</div>
 	{/if}
 	{#if $botEngaged}

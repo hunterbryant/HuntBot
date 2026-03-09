@@ -15,6 +15,9 @@ export type Metadata = {
 const convertHtml = compile({ wordwrap: 130 });
 const SITE_ORIGIN = 'https://www.hunterbryant.io';
 
+// Pages that are listing/nav pages — not specific enough to force-fetch
+const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']);
+
 // For matched site pages, fetch the full page text at query time rather than
 // relying on whatever chunk happened to score highest. This ensures the LLM
 // sees the complete case study / project page, not just a 1000-char fragment.
@@ -42,13 +45,25 @@ function deduplicateDocs(docs: Document[]): Document[] {
 	});
 }
 
-// Build an enriched retrieval query that incorporates recent conversation history.
-// This helps MultiQueryRetriever handle follow-up questions like "tell me more about that"
-// by giving it the conversational context it needs to generate useful query variants.
-function buildRetrievalQuery(message: string, conversationHistory: string[]): string {
-	if (!conversationHistory.length) return message;
-	const historySnippet = conversationHistory.slice(-3).join(' | ');
-	return `${historySnippet} | ${message}`;
+// Build an enriched retrieval query that incorporates recent conversation history
+// and the current page slug. This helps MultiQueryRetriever handle follow-up
+// questions like "tell me more about this page" by grounding the query.
+function buildRetrievalQuery(
+	message: string,
+	conversationHistory: string[],
+	currentPage: string
+): string {
+	const parts: string[] = [];
+	if (conversationHistory.length) {
+		parts.push(conversationHistory.slice(-3).join(' | '));
+	}
+	parts.push(message);
+	// Include the page slug so retrieval finds the right content for vague follow-ups
+	if (currentPage && !BROWSE_PAGES.has(currentPage)) {
+		const slug = currentPage.split('/').pop();
+		if (slug) parts.push(slug);
+	}
+	return parts.join(' | ');
 }
 
 // The function `getContext` is used to retrieve the context of a given message
@@ -56,7 +71,8 @@ export const getContext = async (
 	message: string,
 	runID: string,
 	pipeline: any,
-	conversationHistory: string[] = []
+	conversationHistory: string[] = [],
+	currentPage: string = '/'
 ): Promise<string> => {
 	const vectorStore = await QdrantVectorStore.fromExistingCollection(
 		new OpenAIEmbeddings({
@@ -79,7 +95,7 @@ export const getContext = async (
 		apiKey: env.LANGCHAIN_API_KEY
 	});
 
-	const retrievalQuery = buildRetrievalQuery(message, conversationHistory);
+	const retrievalQuery = buildRetrievalQuery(message, conversationHistory, currentPage);
 
 	// Create a child run for Langsmith
 	const childRun = await pipeline.createChild({
@@ -116,6 +132,12 @@ export const getContext = async (
 		} else {
 			fallbackDocs.push(doc);
 		}
+	}
+
+	// If the user is on a specific page, always include it — don't rely on retrieval alone.
+	// This ensures "tell me more about this page" always has the right content.
+	if (currentPage && !BROWSE_PAGES.has(currentPage)) {
+		siteUrls.add(`${SITE_ORIGIN}${currentPage}`);
 	}
 
 	// Fetch full page text for each matched site URL in parallel.
