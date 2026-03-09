@@ -124,6 +124,25 @@ function blockToMarkdown(block: BlockObjectResponse): string {
 	}
 }
 
+async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
+	for (let attempt = 0; attempt <= retries; attempt++) {
+		try {
+			return await fn();
+		} catch (err) {
+			const msg = String(err);
+			const is429 = msg.includes('429') || msg.includes('rate') || msg.includes('quota');
+			if (is429 && attempt < retries) {
+				const delay = 2000 * Math.pow(2, attempt); // 2s, 4s, 8s
+				console.warn(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
+				await new Promise((r) => setTimeout(r, delay));
+				continue;
+			}
+			throw err;
+		}
+	}
+	throw new Error('Unreachable');
+}
+
 export async function GET() {
 	console.log('Server Notion embed API endpoint hit');
 
@@ -207,16 +226,18 @@ export async function GET() {
 							]);
 
 							if (chunks.length > 0) {
-								if (!vectorStore) {
-									// First write — fromDocuments creates the Qdrant collection automatically
-									vectorStore = await QdrantVectorStore.fromDocuments(
-										chunks,
-										embeddings,
-										qdrantConfig
-									);
-								} else {
-									await vectorStore.addDocuments(chunks);
-								}
+								await withRetry(async () => {
+									if (!vectorStore) {
+										// First write — fromDocuments creates the Qdrant collection automatically
+										vectorStore = await QdrantVectorStore.fromDocuments(
+											chunks,
+											embeddings,
+											qdrantConfig
+										);
+									} else {
+										await vectorStore.addDocuments(chunks);
+									}
+								});
 								totalChunks += chunks.length;
 							}
 						}
@@ -232,7 +253,7 @@ export async function GET() {
 					} catch (err) {
 						// Rethrow fatal errors that will affect all pages
 						const msg = String(err);
-						if (msg.includes('429') || msg.includes('quota') || msg.includes('Qdrant') || msg.includes('QdrantClient')) {
+						if (msg.includes('QdrantClientConfigError') || msg.includes('QdrantClient')) {
 							throw err;
 						}
 						skipped++;
