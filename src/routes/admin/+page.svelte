@@ -1,6 +1,12 @@
 <script lang="ts">
 	import { dev } from '$app/environment';
 
+	let notionStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
+	let notionProgress = 0;
+	let notionTotal = 0;
+	let notionMessage = '';
+	let notionCurrentPage = '';
+
 	const triggerURLEmbedding = async () => {
 		console.log('Beginning url embedding...');
 
@@ -10,11 +16,66 @@
 	};
 
 	const triggerNotionURLEmbedding = async () => {
-		console.log('Beginning Notion API URL embedding...');
+		notionStatus = 'running';
+		notionProgress = 0;
+		notionTotal = 0;
+		notionMessage = 'Connecting to Notion...';
+		notionCurrentPage = '';
 
-		await fetch('/api/embed/notion-url', {
-			method: 'GET'
-		});
+		const response = await fetch('/api/embed/notion-url');
+		const reader = response.body?.getReader();
+		if (!reader) {
+			notionStatus = 'error';
+			notionMessage = 'Failed to connect';
+			return;
+		}
+
+		const decoder = new TextDecoder();
+		let buffer = '';
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+
+			const lines = buffer.split('\n');
+			buffer = lines.pop() || '';
+
+			let eventType = '';
+			for (const line of lines) {
+				if (line.startsWith('event: ')) {
+					eventType = line.slice(7);
+				} else if (line.startsWith('data: ') && eventType) {
+					try {
+						const data = JSON.parse(line.slice(6));
+
+						if (eventType === 'status') {
+							notionMessage = data.message;
+							if (data.total) notionTotal = data.total;
+						} else if (eventType === 'progress') {
+							notionProgress = data.current;
+							notionTotal = data.total;
+							notionCurrentPage = data.title;
+						} else if (eventType === 'done') {
+							notionStatus = 'done';
+							notionMessage = data.message;
+							notionProgress = notionTotal;
+						} else if (eventType === 'error') {
+							notionStatus = 'error';
+							notionMessage = data.message;
+						}
+					} catch {
+						// skip malformed JSON
+					}
+					eventType = '';
+				}
+			}
+		}
+
+		if (notionStatus === 'running') {
+			notionStatus = 'done';
+		}
 	};
 
 	const triggerNotionFileEmbedding = async () => {
@@ -32,6 +93,8 @@
 			method: 'GET'
 		});
 	};
+
+	$: notionPercent = notionTotal > 0 ? Math.round((notionProgress / notionTotal) * 100) : 0;
 </script>
 
 <svelte:head>
@@ -71,14 +134,48 @@
 					>Index</button
 				>
 			</span>
-			<span class="flex h-12 items-center justify-between gap-4 align-middle">
-				Notion API URL indexing
-				<button
-					on:click={triggerNotionURLEmbedding}
-					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 dark:border-stone-700 dark:hover:bg-stone-700"
-					>Index</button
-				>
-			</span>
+
+			<!-- Notion URL indexing with progress -->
+			<div class="flex flex-col gap-2">
+				<span class="flex h-12 items-center justify-between gap-4 align-middle">
+					Notion API URL indexing
+					<button
+						on:click={triggerNotionURLEmbedding}
+						disabled={notionStatus === 'running'}
+						class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
+						>{notionStatus === 'running' ? 'Indexing...' : 'Index'}</button
+					>
+				</span>
+
+				{#if notionStatus !== 'idle'}
+					<div class="flex flex-col gap-1.5">
+						<!-- Progress bar -->
+						<div class="h-2 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
+							<div
+								class="h-full rounded-full transition-all duration-300 ease-out {notionStatus === 'error' ? 'bg-red-500' : notionStatus === 'done' ? 'bg-green-500' : 'bg-blue-600'}"
+								style="width: {notionStatus === 'running' && notionTotal === 0 ? '5' : notionPercent}%"
+							/>
+						</div>
+
+						<!-- Status text -->
+						<div class="flex items-center justify-between">
+							<p class="truncate text-xs text-stone-400 dark:text-stone-500">
+								{#if notionStatus === 'running' && notionTotal > 0}
+									{notionCurrentPage}
+								{:else}
+									{notionMessage}
+								{/if}
+							</p>
+							{#if notionTotal > 0}
+								<p class="shrink-0 text-xs text-stone-400 dark:text-stone-500">
+									{notionProgress}/{notionTotal}
+								</p>
+							{/if}
+						</div>
+					</div>
+				{/if}
+			</div>
+
 			<span class="flex h-12 items-center justify-between gap-4 align-middle">
 				Notion File indexing
 				<button

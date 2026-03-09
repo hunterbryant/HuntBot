@@ -2,7 +2,6 @@ import { env } from '$env/dynamic/private';
 import { Client } from '@notionhq/client';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
-import { json } from '@sveltejs/kit';
 import { Document } from 'langchain/document';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
 import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
@@ -72,7 +71,6 @@ async function getBlockChildren(notion: Client, blockId: string): Promise<string
 			const text = blockToMarkdown(b);
 			if (text) lines.push(text);
 
-			// Recurse into children
 			if (b.has_children) {
 				const childText = await getBlockChildren(notion, b.id);
 				if (childText) lines.push(childText);
@@ -136,95 +134,141 @@ function blockToMarkdown(block: BlockObjectResponse): string {
 export async function GET() {
 	console.log('Server Notion embed API endpoint hit');
 
-	const notion = new Client({ auth: env.NOTION_INTEGRATION_TOKEN });
-
-	// 1. Query all pages in the database
-	const pages: Record<string, unknown>[] = [];
-	let cursor: string | undefined;
-
-	do {
-		const response = await notion.databases.query({
-			database_id: DATABASE_ID,
-			start_cursor: cursor,
-			page_size: 100
-		});
-
-		pages.push(...(response.results as Record<string, unknown>[]));
-		cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
-	} while (cursor);
-
-	console.log(`Found ${pages.length} pages in Notion database`);
-
-	// 2. Load each page's content
-	const documents: Document[] = [];
-	let loaded = 0;
-
-	for (const page of pages) {
-		try {
-			const properties = extractPageProperties(page);
-			const content = await getBlockChildren(notion, page.id as string);
-
-			const pageTitle =
-				properties
-					.split('\n')
-					.find((l) => l.startsWith('Name:') || l.startsWith('Title:'))
-					?.split(': ')
-					.slice(1)
-					.join(': ') || 'Untitled';
-
-			const fullContent = properties ? `${properties}\n\n${content}` : content;
-
-			if (fullContent.trim()) {
-				documents.push(
-					new Document({
-						pageContent: fullContent,
-						metadata: {
-							source: 'notion',
-							notionId: page.id as string,
-							title: pageTitle
-						}
-					})
-				);
+	const encoder = new TextEncoder();
+	const stream = new ReadableStream({
+		async start(controller) {
+			function send(event: string, data: Record<string, unknown>) {
+				controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
 			}
 
-			loaded++;
-			console.log(`Loaded Page: ${pageTitle} (${loaded}/${pages.length})`);
-		} catch (err) {
-			console.warn(`Skipping page ${page.id}: ${err}`);
-			loaded++;
+			try {
+				const notion = new Client({ auth: env.NOTION_INTEGRATION_TOKEN });
+
+				// 1. Query all pages
+				send('status', { stage: 'querying', message: 'Querying Notion database...' });
+
+				const pages: Record<string, unknown>[] = [];
+				let cursor: string | undefined;
+
+				do {
+					const response = await notion.databases.query({
+						database_id: DATABASE_ID,
+						start_cursor: cursor,
+						page_size: 100
+					});
+
+					pages.push(...(response.results as Record<string, unknown>[]));
+					cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+				} while (cursor);
+
+				const total = pages.length;
+				send('status', { stage: 'loading', message: `Found ${total} pages`, total });
+
+				// 2. Load each page's content
+				const documents: Document[] = [];
+				let loaded = 0;
+				let skipped = 0;
+
+				for (const page of pages) {
+					try {
+						const properties = extractPageProperties(page);
+						const content = await getBlockChildren(notion, page.id as string);
+
+						const pageTitle =
+							properties
+								.split('\n')
+								.find((l) => l.startsWith('Name:') || l.startsWith('Title:'))
+								?.split(': ')
+								.slice(1)
+								.join(': ') || 'Untitled';
+
+						const fullContent = properties ? `${properties}\n\n${content}` : content;
+
+						if (fullContent.trim()) {
+							documents.push(
+								new Document({
+									pageContent: fullContent,
+									metadata: {
+										source: 'notion',
+										notionId: page.id as string,
+										title: pageTitle
+									}
+								})
+							);
+						}
+
+						loaded++;
+						send('progress', {
+							stage: 'loading',
+							current: loaded + skipped,
+							total,
+							title: pageTitle
+						});
+					} catch (err) {
+						skipped++;
+						console.warn(`Skipping page ${page.id}: ${err}`);
+						send('progress', {
+							stage: 'loading',
+							current: loaded + skipped,
+							total,
+							title: `Skipped: ${page.id}`,
+							skipped: true
+						});
+					}
+				}
+
+				// 3. Split into chunks
+				send('status', {
+					stage: 'splitting',
+					message: `Splitting ${documents.length} documents into chunks...`
+				});
+
+				const splitter = new MarkdownTextSplitter({
+					chunkSize: 1000,
+					chunkOverlap: 200
+				});
+
+				const splitDocs = await splitter.splitDocuments(documents);
+
+				send('status', {
+					stage: 'embedding',
+					message: `Embedding ${splitDocs.length} chunks into Qdrant...`
+				});
+
+				// 4. Embed and store in Qdrant
+				await QdrantVectorStore.fromDocuments(
+					splitDocs,
+					new OpenAIEmbeddings({
+						modelName: 'text-embedding-3-small',
+						openAIApiKey: env.OPENAI_API_KEY,
+						dimensions: 512
+					}),
+					{
+						url: env.QDRANT_URL,
+						apiKey: env.QDRANT_API_KEY,
+						collectionName: env.QDRANT_COLLECTION
+					}
+				);
+
+				send('done', {
+					message: `Embedded ${documents.length} pages (${splitDocs.length} chunks)`,
+					pages: documents.length,
+					chunks: splitDocs.length,
+					skipped
+				});
+			} catch (err) {
+				send('error', { message: String(err) });
+			} finally {
+				controller.close();
+			}
 		}
-	}
-
-	console.log(`Successfully loaded ${documents.length} documents`);
-
-	// 3. Split into chunks
-	const splitter = new MarkdownTextSplitter({
-		chunkSize: 1000,
-		chunkOverlap: 200
 	});
 
-	const splitDocs = await splitter.splitDocuments(documents);
-	console.log(`Split into ${splitDocs.length} chunks`);
-
-	// 4. Embed and store in Qdrant
-	await QdrantVectorStore.fromDocuments(
-		splitDocs,
-		new OpenAIEmbeddings({
-			modelName: 'text-embedding-3-small',
-			openAIApiKey: env.OPENAI_API_KEY,
-			dimensions: 512
-		}),
-		{
-			url: env.QDRANT_URL,
-			apiKey: env.QDRANT_API_KEY,
-			collectionName: env.QDRANT_COLLECTION
+	return new Response(stream, {
+		headers: {
+			'Content-Type': 'text/event-stream',
+			'Cache-Control': 'no-cache',
+			Connection: 'keep-alive'
 		}
-	);
-
-	console.log('Embeddings loaded to Qdrant');
-
-	return json(
-		{ message: `Embedded ${documents.length} Notion pages (${splitDocs.length} chunks)` },
-		{ status: 200 }
-	);
+	});
 }
