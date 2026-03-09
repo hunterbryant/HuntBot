@@ -6,6 +6,7 @@
 	let notionTotal = 0;
 	let notionMessage = '';
 	let notionCurrentPage = '';
+	let notionChunks = 0;
 
 	const triggerURLEmbedding = async () => {
 		console.log('Beginning url embedding...');
@@ -21,6 +22,7 @@
 		notionTotal = 0;
 		notionMessage = 'Connecting to Notion...';
 		notionCurrentPage = '';
+		notionChunks = 0;
 
 		const response = await fetch('/api/embed/notion-url');
 		const reader = response.body?.getReader();
@@ -57,6 +59,7 @@
 							notionProgress = data.current;
 							notionTotal = data.total;
 							notionCurrentPage = data.title;
+							if (data.chunks) notionChunks = data.chunks;
 						} else if (eventType === 'done') {
 							notionStatus = 'done';
 							notionMessage = data.message;
@@ -168,7 +171,7 @@
 							</p>
 							{#if notionTotal > 0}
 								<p class="shrink-0 text-xs text-stone-400 dark:text-stone-500">
-									{notionProgress}/{notionTotal}
+									{notionProgress}/{notionTotal} pages · {notionChunks} chunks
 								</p>
 							{/if}
 						</div>

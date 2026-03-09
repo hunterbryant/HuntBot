@@ -45,9 +45,7 @@ function extractPageProperties(page: Record<string, unknown>): string {
 			value = (prop.status as { name: string }).name;
 		}
 
-		if (value) {
-			lines.push(`${key}: ${value}`);
-		}
+		if (value) lines.push(`${key}: ${value}`);
 	}
 
 	return lines.join('\n');
@@ -107,9 +105,7 @@ function blockToMarkdown(block: BlockObjectResponse): string {
 			return `- [${checked}] ${text}`;
 		}
 		case 'toggle':
-			return `> ${text}`;
 		case 'quote':
-			return `> ${text}`;
 		case 'callout':
 			return `> ${text}`;
 		case 'code':
@@ -117,7 +113,6 @@ function blockToMarkdown(block: BlockObjectResponse): string {
 		case 'divider':
 			return '---';
 		case 'bookmark':
-			return (data.url as string) || '';
 		case 'link_preview':
 			return (data.url as string) || '';
 		case 'table_row': {
@@ -154,7 +149,6 @@ export async function GET() {
 						start_cursor: cursor,
 						page_size: 100
 					});
-
 					pages.push(...(response.results as Record<string, unknown>[]));
 					cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
 				} while (cursor);
@@ -162,10 +156,26 @@ export async function GET() {
 				const total = pages.length;
 				send('status', { stage: 'loading', message: `Found ${total} pages`, total });
 
-				// 2. Load each page's content
-				const documents: Document[] = [];
+				// 2. Shared embeddings, splitter, Qdrant config
+				const embeddings = new OpenAIEmbeddings({
+					modelName: 'text-embedding-3-small',
+					openAIApiKey: env.OPENAI_API_KEY,
+					dimensions: 512
+				});
+
+				const splitter = new MarkdownTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
+
+				const qdrantConfig = {
+					url: env.QDRANT_URL,
+					apiKey: env.QDRANT_API_KEY,
+					collectionName: env.QDRANT_COLLECTION
+				};
+
+				// 3. Fetch each page and upload to Qdrant immediately — no buffering until the end
+				let vectorStore: QdrantVectorStore | null = null;
 				let loaded = 0;
 				let skipped = 0;
+				let totalChunks = 0;
 
 				for (const page of pages) {
 					try {
@@ -183,16 +193,26 @@ export async function GET() {
 						const fullContent = properties ? `${properties}\n\n${content}` : content;
 
 						if (fullContent.trim()) {
-							documents.push(
+							const chunks = await splitter.splitDocuments([
 								new Document({
 									pageContent: fullContent,
-									metadata: {
-										source: 'notion',
-										notionId: page.id as string,
-										title: pageTitle
-									}
+									metadata: { source: 'notion', notionId: page.id as string, title: pageTitle }
 								})
-							);
+							]);
+
+							if (chunks.length > 0) {
+								if (!vectorStore) {
+									// First write — fromDocuments creates the Qdrant collection automatically
+									vectorStore = await QdrantVectorStore.fromDocuments(
+										chunks,
+										embeddings,
+										qdrantConfig
+									);
+								} else {
+									await vectorStore.addDocuments(chunks);
+								}
+								totalChunks += chunks.length;
+							}
 						}
 
 						loaded++;
@@ -200,7 +220,8 @@ export async function GET() {
 							stage: 'loading',
 							current: loaded + skipped,
 							total,
-							title: pageTitle
+							title: pageTitle,
+							chunks: totalChunks
 						});
 					} catch (err) {
 						skipped++;
@@ -210,48 +231,16 @@ export async function GET() {
 							current: loaded + skipped,
 							total,
 							title: `Skipped: ${page.id}`,
-							skipped: true
+							skipped: true,
+							chunks: totalChunks
 						});
 					}
 				}
 
-				// 3. Split into chunks
-				send('status', {
-					stage: 'splitting',
-					message: `Splitting ${documents.length} documents into chunks...`
-				});
-
-				const splitter = new MarkdownTextSplitter({
-					chunkSize: 1000,
-					chunkOverlap: 200
-				});
-
-				const splitDocs = await splitter.splitDocuments(documents);
-
-				send('status', {
-					stage: 'embedding',
-					message: `Embedding ${splitDocs.length} chunks into Qdrant...`
-				});
-
-				// 4. Embed and store in Qdrant
-				await QdrantVectorStore.fromDocuments(
-					splitDocs,
-					new OpenAIEmbeddings({
-						modelName: 'text-embedding-3-small',
-						openAIApiKey: env.OPENAI_API_KEY,
-						dimensions: 512
-					}),
-					{
-						url: env.QDRANT_URL,
-						apiKey: env.QDRANT_API_KEY,
-						collectionName: env.QDRANT_COLLECTION
-					}
-				);
-
 				send('done', {
-					message: `Embedded ${documents.length} pages (${splitDocs.length} chunks)`,
-					pages: documents.length,
-					chunks: splitDocs.length,
+					message: `Embedded ${loaded} pages (${totalChunks} chunks)`,
+					pages: loaded,
+					chunks: totalChunks,
 					skipped
 				});
 			} catch (err) {
