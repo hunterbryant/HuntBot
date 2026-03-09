@@ -230,6 +230,11 @@ export async function GET() {
 							chunks: totalChunks
 						});
 					} catch (err) {
+						// Rethrow fatal errors that will affect all pages
+						const msg = String(err);
+						if (msg.includes('429') || msg.includes('quota') || msg.includes('Qdrant') || msg.includes('QdrantClient')) {
+							throw err;
+						}
 						skipped++;
 						console.warn(`Skipping page ${page.id}: ${err}`);
 						send('progress', {
