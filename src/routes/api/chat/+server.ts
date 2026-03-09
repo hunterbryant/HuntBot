@@ -41,7 +41,22 @@ async function getAvailableRoutes(): Promise<string[]> {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { messages, currentPage = '/' } = await request.json();
+		const body = await request.json();
+		const { messages } = body;
+
+		// Derive current page from the Referer header — the browser sets this automatically
+		// to the actual URL of the page that made the request, which is more reliable than
+		// passing it through the client-side body (which can be stale or default to '/').
+		// Fall back to the body value if Referer is absent (e.g. curl, test clients).
+		let currentPage: string = body.currentPage || '/';
+		const referer = request.headers.get('referer');
+		if (referer) {
+			try {
+				currentPage = new URL(referer).pathname;
+			} catch {
+				// keep body value
+			}
+		}
 
 		const lastMessage = messages[messages.length - 1];
 
