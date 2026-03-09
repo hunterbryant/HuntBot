@@ -65,24 +65,14 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		if (functionCall.arguments) {
 			const parsedFunctionCallArguments = JSON.parse(functionCall.arguments);
 
-			const functionMessage: FunctionMessage = {
-				id: nanoid(),
-				content: `Routing you to ${parsedFunctionCallArguments.page}`,
-				role: 'function',
-				name: functionCall.name,
-				data: FunctionState.loading
-			};
-
-			setMessagesGlobal([...chatMessages, functionMessage]);
+			// Navigate after a short delay
 			setTimeout(() => {
 				goto(`${parsedFunctionCallArguments.page}`);
-				setTimeout(() => {
-					setMessagesGlobal([...chatMessages, { ...functionMessage, data: FunctionState.success }]);
-				}, 1000);
 			}, 400);
 
-			// Return the function result so the SDK fires a follow-up LLM request,
-			// letting the bot describe the page it just routed to.
+			// Return the function result directly — no separate setMessagesGlobal calls.
+			// The data field drives the ActionMessage UI (success check), the content
+			// is what the LLM receives as the function result to inform its follow-up.
 			return {
 				messages: [
 					...chatMessages,
@@ -90,8 +80,9 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 						id: nanoid(),
 						role: 'function' as const,
 						name: functionCall.name,
-						content: JSON.stringify({ routed_to: parsedFunctionCallArguments.page })
-					}
+						content: `Routed to ${parsedFunctionCallArguments.page}`,
+						data: FunctionState.success
+					} as FunctionMessage
 				]
 			};
 		}
