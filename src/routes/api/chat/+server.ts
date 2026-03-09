@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/private';
-import { SupportedRoutes } from '$lib/types';
+import { createClient } from '$lib/prismicio';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
@@ -11,28 +11,33 @@ import { v4 as uuidv4 } from 'uuid';
 // Initialize OpenAI API client
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
-// Function definition:
-const functions: ChatCompletionCreateParams.Function[] = [
-	{
-		name: 'minimize_chat',
-		description: 'Minimize the chat interface in which this thread is taking place.'
-	},
-	{
-		name: 'route_to_page',
-		description: 'Route the user to a local route on Hunters website. Only route to one at a time.',
-		parameters: {
-			type: 'object',
-			properties: {
-				page: {
-					type: 'string',
-					enum: Object.values(SupportedRoutes),
-					description: 'The local route to use.'
-				}
-			},
-			required: ['page']
-		}
+// Cache available routes from Prismic to avoid querying on every request
+let routeCache: { routes: string[]; expires: number } | null = null;
+
+async function getAvailableRoutes(): Promise<string[]> {
+	if (routeCache && routeCache.expires > Date.now()) {
+		return routeCache.routes;
 	}
-];
+
+	const client = createClient();
+	const [caseStudies, projects] = await Promise.all([
+		client.getAllByType('case_study', { fetch: ['case_study.protected'] }),
+		client.getAllByType('project', { fetch: ['project.uid'] })
+	]);
+
+	const routes: string[] = [
+		'/',
+		'/information',
+		'/case-studies',
+		'/projects',
+		...caseStudies.filter((doc) => !doc.data.protected).map((doc) => `/case-studies/${doc.uid}`),
+		...projects.map((doc) => `/projects/${doc.uid}`)
+	];
+
+	// Cache for 5 minutes
+	routeCache = { routes, expires: Date.now() + 5 * 60 * 1000 };
+	return routes;
+}
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -56,8 +61,35 @@ export const POST: RequestHandler = async ({ request }) => {
 			extra: { metadata: { conversation_id: runID } }
 		});
 
-		// Get the context from the reformatted response with specifics
-		const context = await getContext(lastMessage.content, runID, pipeline);
+		// Get context and available routes in parallel
+		const [context, availableRoutes] = await Promise.all([
+			getContext(lastMessage.content, runID, pipeline),
+			getAvailableRoutes()
+		]);
+
+		// Build function definitions with live routes from Prismic
+		const functions: ChatCompletionCreateParams.Function[] = [
+			{
+				name: 'minimize_chat',
+				description: 'Minimize the chat interface in which this thread is taking place.'
+			},
+			{
+				name: 'route_to_page',
+				description:
+					'Route the user to a local route on Hunters website. Only route to one at a time.',
+				parameters: {
+					type: 'object',
+					properties: {
+						page: {
+							type: 'string',
+							enum: availableRoutes,
+							description: 'The local route to use.'
+						}
+					},
+					required: ['page']
+				}
+			}
+		];
 
 		// Completion prompt
 		const prompt = [
@@ -65,8 +97,8 @@ export const POST: RequestHandler = async ({ request }) => {
 				role: 'system',
 				content: `You are an assistant on product designer Hunter Bryants website. You exist as a way to show off his previous work and try to sell Hunter as a great product design job candidate.
 
-				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic. 
-				
+				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic.
+
 				When you begin talking about a topic that might have a relevant page, route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
 
 				Take into account any CONTEXT BLOCK that is provided in a conversation.
