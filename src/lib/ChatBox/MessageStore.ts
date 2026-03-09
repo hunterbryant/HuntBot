@@ -3,10 +3,10 @@ import { FunctionState, type FunctionMessage } from '$lib/types';
 import type { FunctionCallHandler } from 'ai';
 import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
-import { writable } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 
 const greetingResponse: string =
-	'I know, I know, another chatbot. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
+	'I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗';
 
 const initMessage: Message = {
 	id: 'initialmessage',
@@ -15,25 +15,63 @@ const initMessage: Message = {
 };
 
 let setMessagesGlobal: (messages: Message[]) => void;
+let appendGlobal: (message: { role: 'user'; content: string }, options?: { body?: Record<string, unknown> }) => Promise<string | null | undefined>;
 
 export const botEngaged = writable(false);
 export const minimized = writable(true);
+export const suggestedResponses = writable<string[]>([]);
+
+async function fetchSuggestions(messages: Message[]): Promise<string[]> {
+	try {
+		const res = await fetch('/api/suggestions', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				messages: messages
+					.filter((m) => m.role === 'user' || m.role === 'assistant')
+					.slice(-6)
+					.map((m) => ({ role: m.role, content: m.content }))
+			})
+		});
+		if (!res.ok) return [];
+		const { suggestions } = await res.json();
+		return Array.isArray(suggestions) ? suggestions : [];
+	} catch {
+		return [];
+	}
+}
 
 export const chat = () => {
-	const { setMessages, ...chatProps } = useChat({
+	const { setMessages, append, messages, ...chatProps } = useChat({
 		initialMessages: [initMessage],
 		id: 'uniquechatid',
-		experimental_onFunctionCall: functionCallHandler
+		experimental_onFunctionCall: functionCallHandler,
+		onFinish: (message) => {
+			if (message.role === 'assistant' && message.content.trim()) {
+				suggestedResponses.set([]);
+				const currentMessages = get(messages);
+				fetchSuggestions(currentMessages).then((s) => suggestedResponses.set(s));
+			}
+		}
 	});
 
-	// Capture setMessages in a wider scope to be accessible by functionCallHandler
+	// Capture setMessages and append in a wider scope to be accessible by functionCallHandler
 	setMessagesGlobal = setMessages;
+	appendGlobal = append;
 
 	setTimeout(() => {
 		setMessagesGlobal([{ ...initMessage, content: greetingResponse }]);
 	}, 2000);
 
-	return { setMessages, ...chatProps };
+	return { setMessages, append, messages, ...chatProps };
+};
+
+export const submitSuggestion = (text: string, currentPage: string) => {
+	if (appendGlobal) {
+		suggestedResponses.set([]);
+		minimized.set(false);
+		appendGlobal({ role: 'user', content: text }, { body: { currentPage } });
+	}
 };
 
 const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCall) => {
@@ -102,18 +140,24 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 	} else if (functionCall.name === 'capture_lead_intent') {
 		if (functionCall.arguments) {
 			const args = JSON.parse(functionCall.arguments);
-			return {
-				messages: [
-					...chatMessages,
-					{
-						id: nanoid(),
-						role: 'function' as const,
-						name: functionCall.name,
-						content: args.message ?? "Sounds like you're interested in working with Hunter.",
-						data: FunctionState.success
-					} as FunctionMessage
-				]
-			};
+			// Render the warm message as a normal bot message, then show the contact card
+			// separately. Using setMessagesGlobal (no return) prevents a redundant LLM follow-up.
+			const warmMessage = args.message ?? "Sounds like you're interested in working with Hunter.";
+			setMessagesGlobal([
+				...chatMessages,
+				{
+					id: nanoid(),
+					role: 'assistant' as const,
+					content: warmMessage
+				},
+				{
+					id: nanoid(),
+					role: 'function' as const,
+					name: functionCall.name,
+					content: '',
+					data: FunctionState.success
+				} as FunctionMessage
+			]);
 		}
 	} else {
 		console.log('Unexpected function call: ', functionCall.name);

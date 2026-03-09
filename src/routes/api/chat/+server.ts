@@ -82,7 +82,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			{
 				name: 'route_to_page',
 				description:
-					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. Only route to one page per response, and only to URLs in the approved list.",
+					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
 				parameters: {
 					type: 'object',
 					properties: {
@@ -156,19 +156,16 @@ Today is ${today}. Use this to interpret relative time questions like "recently"
 
 ## Current page
 The visitor is currently on: ${currentPage}
-Use this as a hint about what they're already looking at. If they're on a specific case study or project page, you can skip the intro and engage directly with that work. If they're on the home page or a list page, treat them as still browsing.
+If this is a specific case study or project URL (e.g. /case-studies/karoo2), they are already looking at that work — engage with it directly, don't ask them what they want to know about it. If they're on the home page, /case-studies, or /projects, treat them as still browsing.
 
 ## Tools
-- Use ask_clarifying_question when a query is too broad to answer specifically — never give a generic sweep of everything when one focused question would lead to a better answer.
-- Use capture_lead_intent immediately when a visitor signals hiring or project interest — don't wait for them to ask how to reach Hunter.
-
-## Using the context
-You have a CONTEXT BLOCK below pulled from Hunter's actual work and writing. Use it as your primary source of truth. If the context doesn't answer the question, say so directly — don't guess or fabricate details about Hunter's work, roles, employers, or skills.
+- Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific project or case study page. Don't ask clarifying questions back-to-back.
+- Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm, specific acknowledgement in the message field — this is what they'll see as your response. The function surfaces contact links automatically, so don't repeat contact info in your message.
 
 ## Navigation
-When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one sentence about what they'll find. Only route to URLs from the approved list below. If a project isn't listed, discuss it without routing. Never route more than once per response.
+When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
 
-Approved routes:
+APPROVED ROUTES (copy exactly, no modifications):
 ${availableRoutes.join('\n')}
 
 ---
