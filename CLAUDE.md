@@ -17,9 +17,9 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 | Styling | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants) |
 | CMS | Prismic (Slice Machine) |
 | LLM | OpenAI `gpt-3.5-turbo` via the `openai` npm package |
-| Vector DB | Pinecone (serverless, free tier) |
+| Vector DB | Qdrant Cloud (free tier, 1GB) |
 | Embeddings | OpenAI `text-embedding-3-small`, 512 dimensions |
-| RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/pinecone`) |
+| RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`) |
 | Streaming | Vercel AI SDK (`ai` package) — `OpenAIStream` + `StreamingTextResponse` |
 | Observability | LangSmith (`langsmith`) for tracing RAG pipeline runs |
 | Analytics | Vercel Analytics + Speed Insights |
@@ -74,8 +74,7 @@ HuntBot/
 │   │   │   ├── Recognition/
 │   │   │   └── TextBlock/
 │   │   ├── utilities/
-│   │   │   ├── context.ts            # RAG retrieval — MultiQueryRetriever via LangChain
-│   │   │   ├── pinecone.ts           # Low-level Pinecone vector query helper
+│   │   │   ├── context.ts            # RAG retrieval — MultiQueryRetriever via LangChain + Qdrant
 │   │   │   ├── transition.ts         # Svelte crossfade transition helpers (send/receive)
 │   │   │   └── urls.ts               # URL list for embedding
 │   │   └── assets/                   # SVGs, fonts, images as Svelte components or raw files
@@ -87,7 +86,7 @@ HuntBot/
 │       ├── admin/                    # Admin panel for triggering embedding jobs
 │       ├── api/
 │       │   ├── chat/+server.ts       # POST — main chat endpoint (RAG + streaming)
-│       │   └── embed/                # GET endpoints to trigger Pinecone embedding jobs
+│       │   └── embed/                # GET endpoints to trigger Qdrant embedding jobs
 │       │       ├── urls/             # Recursively crawls hunterbryant.io
 │       │       ├── notion-url/       # Embeds content from Notion via API
 │       │       ├── notion-file/      # Embeds exported Notion markdown files
@@ -151,8 +150,9 @@ LANGCHAIN_API_KEY=       # LangSmith API key for RAG pipeline tracing
 JWT_KEY=                 # Secret key for signing/verifying JWT auth cookies
 AUTH_PASSWORD=           # Password for site visitors to access protected case studies
 ADMIN_PASSWORD=          # Password for /admin page access
-PINECONE_API_KEY=        # Pinecone vector DB API key
-PINECONE_INDEX=          # Name of the Pinecone index to use
+QDRANT_URL=              # Qdrant Cloud cluster URL (e.g., https://xxx.cloud.qdrant.io:6333)
+QDRANT_API_KEY=          # Qdrant Cloud API key
+QDRANT_COLLECTION=       # Name of the Qdrant collection to use (e.g., huntbot)
 NOTION_INTEGRATION_TOKEN= # Notion integration token for content embedding
 ```
 
@@ -168,7 +168,7 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 2. Server uses `getContext()` (`src/lib/utilities/context.ts`) to retrieve relevant docs:
    - Uses **MultiQueryRetriever** (LangChain) — generates multiple reformulations of the user's question to improve recall
    - Embeds queries using `text-embedding-3-small` (512 dims)
-   - Queries Pinecone for top-k nearest neighbors
+   - Queries Qdrant for top-k nearest neighbors
 3. Retrieved context is injected into the system prompt alongside the full message history
 4. OpenAI `gpt-3.5-turbo` is called with streaming enabled
 5. Vercel AI SDK streams the response back to the client via `StreamingTextResponse`
@@ -196,7 +196,7 @@ All valid route destinations are defined in `src/lib/types.ts` as the `Supported
 
 ## Embedding / Knowledge Base
 
-The Pinecone vector index is the knowledge base for HuntBot. It is populated by hitting admin endpoints (protected, requires admin auth).
+The Qdrant vector collection is the knowledge base for HuntBot. It is populated by hitting admin endpoints (protected, requires admin auth).
 
 ### Embedding sources
 
@@ -211,7 +211,7 @@ All embedders use:
 - Model: `text-embedding-3-small`
 - Dimensions: `512`
 - Chunk size: `1000` characters, overlap: `200`
-- LangChain `PineconeStore.fromDocuments()` with `maxConcurrency: 5`
+- LangChain `QdrantVectorStore.fromDocuments()`
 
 ---
 
