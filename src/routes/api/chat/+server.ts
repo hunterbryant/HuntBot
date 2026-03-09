@@ -93,7 +93,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Ask OpenAI for a streaming chat completion given the prompt
 		const response = await openai.chat.completions.create({
-			model: 'gpt-3.5-turbo',
+			model: 'gpt-4o-mini',
 			stream: true,
 			messages: [...prompt, ...messages],
 			functions
