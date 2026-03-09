@@ -2,8 +2,7 @@
 // import { urls } from '$lib/utilities/urls';
 import { env } from '$env/dynamic/private';
 import { OpenAIEmbeddings } from '@langchain/openai';
-import { PineconeStore } from '@langchain/pinecone';
-import { Pinecone } from '@pinecone-database/pinecone';
+import { QdrantVectorStore } from '@langchain/qdrant';
 import { json } from '@sveltejs/kit';
 import { compile } from 'html-to-text';
 import { RecursiveUrlLoader } from 'langchain/document_loaders/web/recursive_url';
@@ -30,14 +29,7 @@ export async function GET(event) {
 	// A database row contents is likely to be less than 1000 characters so it's not split into multiple documents
 	const docs = await loader.loadAndSplit(splitter);
 
-	// Obtain a client for Pinecone
-	const pinecone = new Pinecone({
-		apiKey: env.PINECONE_API_KEY
-	});
-
-	const pineconeIndex = pinecone.Index(env.PINECONE_INDEX);
-
-	await PineconeStore.fromDocuments(
+	await QdrantVectorStore.fromDocuments(
 		docs,
 		new OpenAIEmbeddings({
 			modelName: 'text-embedding-3-small',
@@ -45,8 +37,9 @@ export async function GET(event) {
 			dimensions: 512
 		}),
 		{
-			pineconeIndex,
-			maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
+			url: env.QDRANT_URL,
+			apiKey: env.QDRANT_API_KEY,
+			collectionName: env.QDRANT_COLLECTION
 		}
 	)
 		.then(() => console.log('Embeddings loaded'))

@@ -1,8 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
-import { PineconeStore } from '@langchain/pinecone';
-import { Pinecone } from '@pinecone-database/pinecone';
-import type { ScoredVector } from '@pinecone-database/pinecone/dist/pinecone-generated-ts-fetch';
+import { QdrantVectorStore } from '@langchain/qdrant';
 import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';
 import { Client } from 'langsmith';
 
@@ -18,19 +16,18 @@ export const getContext = async (
 	runID: string,
 	pipeline: any,
 	maxTokens = 20000
-): Promise<string | ScoredVector[]> => {
-	// Obtain a client for Pinecone
-	const pinecone = new Pinecone({
-		apiKey: env.PINECONE_API_KEY
-	});
-	const pineconeIndex = pinecone.Index(env.PINECONE_INDEX);
-	const vectorStore = await PineconeStore.fromExistingIndex(
+): Promise<string> => {
+	const vectorStore = await QdrantVectorStore.fromExistingCollection(
 		new OpenAIEmbeddings({
 			modelName: 'text-embedding-3-small',
 			openAIApiKey: env.OPENAI_API_KEY,
 			dimensions: 512
 		}),
-		{ pineconeIndex }
+		{
+			url: env.QDRANT_URL,
+			apiKey: env.QDRANT_API_KEY,
+			collectionName: env.QDRANT_COLLECTION
+		}
 	);
 
 	const model = new ChatOpenAI({

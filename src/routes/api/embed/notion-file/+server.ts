@@ -1,21 +1,13 @@
 import { env } from '$env/dynamic/private';
 import { OpenAIEmbeddings } from '@langchain/openai';
-import { PineconeStore } from '@langchain/pinecone';
-import { Pinecone } from '@pinecone-database/pinecone';
+import { QdrantVectorStore } from '@langchain/qdrant';
 import { json } from '@sveltejs/kit';
 import { NotionLoader } from 'langchain/document_loaders/fs/notion';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
 
-//Handle uploading of Notion DB documents to Pinecone
+//Handle uploading of Notion DB documents to Qdrant
 export async function GET() {
 	console.log('Server Notion file endpoint hit');
-
-	// Obtain a client for Pinecone
-	const pinecone = new Pinecone({
-		apiKey: env.PINECONE_API_KEY
-	});
-
-	const pineconeIndex = pinecone.Index(env.PINECONE_INDEX);
 
 	const directoryPath = 'local_files/notion_export';
 	const loader = new NotionLoader(directoryPath);
@@ -28,7 +20,7 @@ export async function GET() {
 
 	const docs = await loader.loadAndSplit(splitter);
 
-	await PineconeStore.fromDocuments(
+	await QdrantVectorStore.fromDocuments(
 		docs,
 		new OpenAIEmbeddings({
 			modelName: 'text-embedding-3-small',
@@ -36,8 +28,9 @@ export async function GET() {
 			dimensions: 512
 		}),
 		{
-			pineconeIndex,
-			maxConcurrency: 5 // Maximum number of batch requests to allow at once. Each batch is 1000 vectors.
+			url: env.QDRANT_URL,
+			apiKey: env.QDRANT_API_KEY,
+			collectionName: env.QDRANT_COLLECTION
 		}
 	)
 		.then(() => console.log('Embeddings loaded'))
