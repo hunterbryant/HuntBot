@@ -1,48 +1,214 @@
 import { env } from '$env/dynamic/private';
-
-import { NotionAPILoader } from 'langchain/document_loaders/web/notionapi';
-
+import { Client } from '@notionhq/client';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
 import { json } from '@sveltejs/kit';
+import { Document } from 'langchain/document';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
+import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 
-//Handle uploading of Notion DB documents to Qdrant
+const DATABASE_ID = '879d16ea6bdd45b3ad83bc0157cfb254';
+
+function getPlainText(richTextArray: Array<{ plain_text: string }>): string {
+	return richTextArray.map((t) => t.plain_text).join('');
+}
+
+function extractPageProperties(page: Record<string, unknown>): string {
+	const properties = page.properties as Record<string, Record<string, unknown>>;
+	const lines: string[] = [];
+
+	for (const [key, prop] of Object.entries(properties)) {
+		const type = prop.type as string;
+		let value = '';
+
+		if (type === 'title') {
+			value = getPlainText((prop.title as Array<{ plain_text: string }>) || []);
+		} else if (type === 'rich_text') {
+			value = getPlainText((prop.rich_text as Array<{ plain_text: string }>) || []);
+		} else if (type === 'select' && prop.select) {
+			value = (prop.select as { name: string }).name;
+		} else if (type === 'multi_select') {
+			value = ((prop.multi_select as Array<{ name: string }>) || [])
+				.map((s) => s.name)
+				.join(', ');
+		} else if (type === 'number' && prop.number != null) {
+			value = String(prop.number);
+		} else if (type === 'date' && prop.date) {
+			const d = prop.date as { start: string; end?: string };
+			value = d.end ? `${d.start} → ${d.end}` : d.start;
+		} else if (type === 'url' && prop.url) {
+			value = prop.url as string;
+		} else if (type === 'checkbox') {
+			value = prop.checkbox ? 'Yes' : 'No';
+		} else if (type === 'email' && prop.email) {
+			value = prop.email as string;
+		} else if (type === 'phone_number' && prop.phone_number) {
+			value = prop.phone_number as string;
+		} else if (type === 'status' && prop.status) {
+			value = (prop.status as { name: string }).name;
+		}
+
+		if (value) {
+			lines.push(`${key}: ${value}`);
+		}
+	}
+
+	return lines.join('\n');
+}
+
+async function getBlockChildren(notion: Client, blockId: string): Promise<string> {
+	const lines: string[] = [];
+	let cursor: string | undefined;
+
+	do {
+		const response = await notion.blocks.children.list({
+			block_id: blockId,
+			start_cursor: cursor,
+			page_size: 100
+		});
+
+		for (const block of response.results) {
+			const b = block as BlockObjectResponse;
+			const text = blockToMarkdown(b);
+			if (text) lines.push(text);
+
+			// Recurse into children
+			if (b.has_children) {
+				const childText = await getBlockChildren(notion, b.id);
+				if (childText) lines.push(childText);
+			}
+		}
+
+		cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+	} while (cursor);
+
+	return lines.join('\n');
+}
+
+function blockToMarkdown(block: BlockObjectResponse): string {
+	const type = block.type;
+	const data = block[type as keyof typeof block] as Record<string, unknown> | undefined;
+	if (!data) return '';
+
+	const richText = data.rich_text as Array<{ plain_text: string }> | undefined;
+	const text = richText ? getPlainText(richText) : '';
+
+	switch (type) {
+		case 'paragraph':
+			return text;
+		case 'heading_1':
+			return `# ${text}`;
+		case 'heading_2':
+			return `## ${text}`;
+		case 'heading_3':
+			return `### ${text}`;
+		case 'bulleted_list_item':
+			return `- ${text}`;
+		case 'numbered_list_item':
+			return `1. ${text}`;
+		case 'to_do': {
+			const checked = (data.checked as boolean) ? 'x' : ' ';
+			return `- [${checked}] ${text}`;
+		}
+		case 'toggle':
+			return `> ${text}`;
+		case 'quote':
+			return `> ${text}`;
+		case 'callout':
+			return `> ${text}`;
+		case 'code':
+			return `\`\`\`\n${text}\n\`\`\``;
+		case 'divider':
+			return '---';
+		case 'bookmark':
+			return (data.url as string) || '';
+		case 'link_preview':
+			return (data.url as string) || '';
+		case 'table_row': {
+			const cells = data.cells as Array<Array<{ plain_text: string }>>;
+			return '| ' + cells.map((cell) => getPlainText(cell)).join(' | ') + ' |';
+		}
+		default:
+			return text;
+	}
+}
+
 export async function GET() {
 	console.log('Server Notion embed API endpoint hit');
 
-	// Loading a page (including child pages all as separate documents)
-	const dbLoader = new NotionAPILoader({
-		clientOptions: {
-			auth: env.NOTION_INTEGRATION_TOKEN
-		},
-		// Big db
-		// id: '637fbb5a0236401fa1ee8e5e05775b5e',
-		// Portolfio
-		id: '879d16ea6bdd45b3ad83bc0157cfb254',
-		// Life Folder
-		// id: "5d153d9c4e59474295b6ea5f9184413e",
-		type: 'database',
-		onDocumentLoaded: (current, total, currentTitle) => {
-			console.log(`Loaded Page: ${currentTitle} (${current}/${total})`);
-		},
-		callerOptions: {
-			maxConcurrency: 64 // Default value
-		},
-		propertiesAsHeader: true // Prepends a front matter header of the page properties to the page contents
-	});
+	const notion = new Client({ auth: env.NOTION_INTEGRATION_TOKEN });
 
-	// Chunking options
+	// 1. Query all pages in the database
+	const pages: Record<string, unknown>[] = [];
+	let cursor: string | undefined;
+
+	do {
+		const response = await notion.databases.query({
+			database_id: DATABASE_ID,
+			start_cursor: cursor,
+			page_size: 100
+		});
+
+		pages.push(...(response.results as Record<string, unknown>[]));
+		cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+	} while (cursor);
+
+	console.log(`Found ${pages.length} pages in Notion database`);
+
+	// 2. Load each page's content
+	const documents: Document[] = [];
+	let loaded = 0;
+
+	for (const page of pages) {
+		try {
+			const properties = extractPageProperties(page);
+			const content = await getBlockChildren(notion, page.id as string);
+
+			const pageTitle =
+				properties
+					.split('\n')
+					.find((l) => l.startsWith('Name:') || l.startsWith('Title:'))
+					?.split(': ')
+					.slice(1)
+					.join(': ') || 'Untitled';
+
+			const fullContent = properties ? `${properties}\n\n${content}` : content;
+
+			if (fullContent.trim()) {
+				documents.push(
+					new Document({
+						pageContent: fullContent,
+						metadata: {
+							source: 'notion',
+							notionId: page.id as string,
+							title: pageTitle
+						}
+					})
+				);
+			}
+
+			loaded++;
+			console.log(`Loaded Page: ${pageTitle} (${loaded}/${pages.length})`);
+		} catch (err) {
+			console.warn(`Skipping page ${page.id}: ${err}`);
+			loaded++;
+		}
+	}
+
+	console.log(`Successfully loaded ${documents.length} documents`);
+
+	// 3. Split into chunks
 	const splitter = new MarkdownTextSplitter({
 		chunkSize: 1000,
 		chunkOverlap: 200
 	});
 
-	// A database row contents is likely to be less than 1000 characters so it's not split into multiple documents
-	const dbDocs = await dbLoader.loadAndSplit(splitter);
+	const splitDocs = await splitter.splitDocuments(documents);
+	console.log(`Split into ${splitDocs.length} chunks`);
 
+	// 4. Embed and store in Qdrant
 	await QdrantVectorStore.fromDocuments(
-		dbDocs,
+		splitDocs,
 		new OpenAIEmbeddings({
 			modelName: 'text-embedding-3-small',
 			openAIApiKey: env.OPENAI_API_KEY,
@@ -53,12 +219,12 @@ export async function GET() {
 			apiKey: env.QDRANT_API_KEY,
 			collectionName: env.QDRANT_COLLECTION
 		}
-	)
-		.then(() => console.log('Embeddings loaded'))
-		.catch((error) => {
-			console.log(error);
-			return json({ error: `Failed to load embeddings: ${error}` }, { status: 500 });
-		});
+	);
 
-	return json('Embedded Notion docs', { status: 200 });
+	console.log('Embeddings loaded to Qdrant');
+
+	return json(
+		{ message: `Embedded ${documents.length} Notion pages (${splitDocs.length} chunks)` },
+		{ status: 200 }
+	);
 }
