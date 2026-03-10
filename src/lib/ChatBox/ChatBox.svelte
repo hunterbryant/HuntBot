@@ -5,13 +5,13 @@
 	import GreetingMessage from './GreetingMessage.svelte';
 	import ChatSuggestions from './ChatSuggestions.svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { derived } from 'svelte/store';
 	import { afterNavigate } from '$app/navigation';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
-	import { navEngaged, chatOpen } from '$lib/nav/navstore';
+	import { navEngaged, chatOpen, mobile } from '$lib/nav/navstore';
 	import { page } from '$app/stores';
-	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
 	import {
 		chat,
@@ -19,8 +19,12 @@
 		minimized,
 		suggestions,
 		scrollSuggestions,
+		hoverSuggestions,
+		loadingContextSuggestions,
+		cancelContextFetches,
 		fetchSuggestions,
 		fetchScrollSuggestions,
+		fetchHoverSuggestions,
 		triggerProactiveOpener
 	} from './MessageStore';
 	import LoadingStream from './LoadingStream.svelte';
@@ -61,6 +65,60 @@
 		}, 400);
 	});
 
+	// Scroll down when new suggestion chips appear so they don't push content out of view
+	$: if (!$minimized && ($suggestions.length > 0 || $hoverSuggestions.length > 0)) {
+		setTimeout(() => scrollToBottom(), 200);
+	}
+
+	// Gate: hold back all pre-conversation suggestions until the greeting has been read
+	let readyForSuggestions = false;
+	let greetingReadTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$: {
+		const greetingLoaded =
+			$botEngaged &&
+			!$minimized &&
+			$messages.some((m) => m.role === 'assistant' && m.content.trim().length > 1);
+		const hasUser = $messages.some((m) => m.role === 'user');
+
+		if (hasUser) {
+			readyForSuggestions = true;
+		} else if (greetingLoaded && !readyForSuggestions) {
+			if (!greetingReadTimer) {
+				greetingReadTimer = setTimeout(() => {
+					readyForSuggestions = true;
+					fetchSuggestions($messages, $page.url.pathname);
+				}, 3000);
+			}
+		} else if (!greetingLoaded) {
+			if (greetingReadTimer) {
+				clearTimeout(greetingReadTimer);
+				greetingReadTimer = null;
+			}
+			readyForSuggestions = false;
+		}
+	}
+
+	// Active suggestions to display.
+	// Pre-conversation: hover > scroll > default.
+	// Once a conversation is underway, post-response suggestions ($sugg) take
+	// priority so they aren't displaced by stale hover/scroll context fetches.
+	const activeSuggestions = derived(
+		[messages, hoverSuggestions, scrollSuggestions, suggestions],
+		([$msgs, $hover, $scroll, $sugg]) => {
+			const hasUser = $msgs.some((m) => m.role === 'user');
+			if (!readyForSuggestions && !hasUser) return [];
+			if (hasUser) {
+				if ($sugg.length > 0) return $sugg;
+				if ($hover.length > 0) return $hover;
+				return [];
+			}
+			if ($hover.length > 0) return $hover;
+			if ($scroll.length > 0) return $scroll;
+			return $sugg;
+		}
+	);
+
 	$: if (!$navEngaged) {
 		minimized.set(true);
 	}
@@ -76,15 +134,6 @@
 			}
 		}
 		prevLoading = $isLoading ?? false;
-	}
-
-	// Show starter suggestions once the intro message is visible and no conversation yet
-	$: if ($botEngaged && !$minimized && !$isLoading) {
-		const hasUserMessages = $messages.some((m) => m.role === 'user');
-		const hasBotMessages = $messages.some((m) => m.role === 'assistant');
-		if (!hasUserMessages && hasBotMessages && $suggestions.length === 0) {
-			fetchSuggestions($messages, $page.url.pathname);
-		}
 	}
 
 	// Clear suggestions when user starts typing
@@ -106,6 +155,8 @@
 			lastProactivePage = path;
 			if (proactiveTimer) clearTimeout(proactiveTimer);
 			proactiveTimer = setTimeout(() => {
+				// Re-check at fire time — the user may have sent a message during the delay
+				if ($messages.some((m) => m.role === 'user')) return;
 				triggerProactiveOpener($messages, path);
 			}, 2500);
 		} else if (!isProjectPage && lastProactivePage) {
@@ -115,18 +166,25 @@
 		}
 	}
 
-	// --- Scroll-aware suggestions via IntersectionObserver ---
-	// Only fires when user genuinely pauses on a section (3s dwell), max 5 fetches per page.
-	// Works for both heading-rich pages and slice-based pages (case studies list, info, etc.)
-	// by observing h1–h4 headings and the first heading within Prismic slice containers.
+	// --- Scroll-aware suggestions via IntersectionObserver + scroll-depth fallback ---
+	// Primary: observes h1–h4 headings and first heading within Prismic slice containers.
+	// Fallback: on heading-sparse pages (e.g. one big TextBlock), fires at scroll-depth
+	// milestones (25%, 50%, 75%) so long-form content still gets fresh suggestions.
+	// Both share the same fetch budget (max 5 per page, 3s dwell before firing).
 
 	const DWELL_MS = 3000;
 	const MAX_FETCHES = 5;
+	const MIN_OBSERVABLE = 3;
+	const DEPTH_MILESTONES = [25, 50, 75];
 
 	let dwellTimer: ReturnType<typeof setTimeout> | null = null;
 	let sectionObserver: IntersectionObserver | null = null;
 	let fetchedHeadings = new Set<string>();
 	let fetchCount = 0;
+
+	let scrollFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+	let scrollFallbackHandler: (() => void) | null = null;
+	let milestonesFired = new Set<number>();
 
 	function getScrollDepth(): number {
 		const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
@@ -139,20 +197,15 @@
 		return true;
 	}
 
-	// Collect observable elements: standard headings + first heading within each Prismic slice.
-	// This handles slice-based pages (case study list, info) where the layout is visual rather
-	// than a classic heading hierarchy.
 	function getObservableElements(): Element[] {
 		const seen = new Set<Element>();
 		const results: Element[] = [];
 
-		// Standard headings
 		document.querySelectorAll('h1, h2, h3, h4').forEach((el) => {
 			seen.add(el);
 			results.push(el);
 		});
 
-		// First heading within each Prismic slice container (fallback for slice-only pages)
 		document.querySelectorAll('[data-slice-type]').forEach((slice) => {
 			const heading = slice.querySelector('h1, h2, h3, h4, h5');
 			if (heading && !seen.has(heading)) {
@@ -164,8 +217,36 @@
 		return results;
 	}
 
+	function setupScrollDepthFallback(pathname: string) {
+		if (scrollFallbackHandler) window.removeEventListener('scroll', scrollFallbackHandler);
+
+		scrollFallbackHandler = () => {
+			if (scrollFallbackTimer) clearTimeout(scrollFallbackTimer);
+			scrollFallbackTimer = setTimeout(() => {
+				const depth = getScrollDepth();
+				for (const milestone of DEPTH_MILESTONES) {
+					if (depth >= milestone && !milestonesFired.has(milestone) && canFetchScroll()) {
+						milestonesFired.add(milestone);
+						fetchCount++;
+						fetchScrollSuggestions(pathname, depth, null);
+						break;
+					}
+				}
+			}, DWELL_MS);
+		};
+
+		window.addEventListener('scroll', scrollFallbackHandler, { passive: true });
+	}
+
 	function setupHeadingObserver(pathname: string) {
 		if (sectionObserver) sectionObserver.disconnect();
+
+		const observables = getObservableElements();
+
+		// Heading-sparse page — use scroll-depth milestones instead
+		if (observables.length < MIN_OBSERVABLE) {
+			setupScrollDepthFallback(pathname);
+		}
 
 		sectionObserver = new IntersectionObserver(
 			(entries) => {
@@ -174,7 +255,6 @@
 					if (!heading) continue;
 
 					if (entry.isIntersecting && !fetchedHeadings.has(heading)) {
-						// Heading entered viewport — start dwell timer
 						if (dwellTimer) clearTimeout(dwellTimer);
 						dwellTimer = setTimeout(() => {
 							if (!canFetchScroll()) return;
@@ -183,7 +263,6 @@
 							fetchScrollSuggestions(pathname, getScrollDepth(), heading);
 						}, DWELL_MS);
 					} else if (!entry.isIntersecting && dwellTimer) {
-						// Heading left viewport before dwell — cancel (next heading starts a new timer)
 						clearTimeout(dwellTimer);
 						dwellTimer = null;
 					}
@@ -192,43 +271,198 @@
 			{ threshold: 0.5 }
 		);
 
-		getObservableElements().forEach((el) => sectionObserver!.observe(el));
+		observables.forEach((el) => sectionObserver!.observe(el));
 	}
 
 	function resetScrollState() {
 		if (sectionObserver) sectionObserver.disconnect();
 		if (dwellTimer) clearTimeout(dwellTimer);
 		dwellTimer = null;
+		if (scrollFallbackTimer) clearTimeout(scrollFallbackTimer);
+		scrollFallbackTimer = null;
+		if (scrollFallbackHandler) {
+			window.removeEventListener('scroll', scrollFallbackHandler);
+			scrollFallbackHandler = null;
+		}
 		fetchedHeadings.clear();
+		milestonesFired.clear();
 		fetchCount = 0;
 		scrollSuggestions.set([]);
+		teardownHoverObserver();
+	}
+
+	// --- Hover-aware suggestions (desktop only) ---
+	// When the visitor dwells on a content block for 2s, fetch suggestions
+	// specific to that passage. Clears after 15s of no hover activity.
+
+	const HOVER_DWELL_MS = 2000;
+	const HOVER_DECAY_MS = 15000;
+	const HOVER_COOLDOWN_MS = 3000;
+	const MAX_HOVER_FETCHES = 3;
+
+	let hoverDwellTimer: ReturnType<typeof setTimeout> | null = null;
+	let hoverDecayTimer: ReturnType<typeof setTimeout> | null = null;
+	let hoverFetchCount = 0;
+	let lastHoverFetchTime = 0;
+	let hoveredFingerprints = new Set<string>();
+	let hoverCleanups: (() => void)[] = [];
+
+	function flashContextOverlay(el: Element) {
+		const htmlEl = el as HTMLElement;
+
+		const isDark =
+			document.documentElement.classList.contains('dark') ||
+			window.matchMedia('(prefers-color-scheme: dark)').matches;
+		const highlight = isDark ? '#292524' : '#57534e';
+		const textColor = getComputedStyle(htmlEl).color;
+
+		const styledProps = [
+			'background-image',
+			'background-size',
+			'background-position',
+			'background-clip',
+			'-webkit-background-clip',
+			'-webkit-text-fill-color',
+			'color',
+			'transition'
+		];
+		const saved = new Map<string, string>();
+		styledProps.forEach((p) => saved.set(p, htmlEl.style.getPropertyValue(p)));
+
+		htmlEl.style.setProperty(
+			'background-image',
+			`linear-gradient(90deg, ${textColor} 0%, ${textColor} 35%, ${highlight} 50%, ${textColor} 65%, ${textColor} 100%)`
+		);
+		htmlEl.style.setProperty('background-size', '300% 100%');
+		htmlEl.style.setProperty('background-position', '100% 0');
+		htmlEl.style.setProperty('-webkit-background-clip', 'text');
+		htmlEl.style.setProperty('background-clip', 'text');
+		htmlEl.style.setProperty('-webkit-text-fill-color', 'transparent');
+		htmlEl.style.setProperty('color', 'transparent');
+
+		void htmlEl.offsetHeight;
+
+		htmlEl.style.setProperty('transition', 'background-position 1400ms ease-in-out');
+		htmlEl.style.setProperty('background-position', '0% 0');
+
+		let cleaned = false;
+		const cleanup = () => {
+			if (cleaned) return;
+			cleaned = true;
+			htmlEl.removeEventListener('transitionend', cleanup);
+			styledProps.forEach((p) => {
+				const orig = saved.get(p)!;
+				if (orig) htmlEl.style.setProperty(p, orig);
+				else htmlEl.style.removeProperty(p);
+			});
+		};
+
+		htmlEl.addEventListener('transitionend', cleanup, { once: true });
+		setTimeout(cleanup, 1600);
+	}
+
+	function extractHoverContext(el: Element): string {
+		const own = el.textContent?.trim() ?? '';
+		const prev = el.previousElementSibling?.textContent?.trim() ?? '';
+		const next = el.nextElementSibling?.textContent?.trim() ?? '';
+		const parts = [prev, own, next].filter(Boolean);
+		return parts.join(' ').slice(0, 500);
+	}
+
+	function fingerprint(text: string): string {
+		return text.slice(0, 80);
+	}
+
+	function setupHoverObserver(pathname: string) {
+		teardownHoverObserver();
+
+		if ($mobile) return;
+
+		const targets = document.querySelectorAll(
+			'[data-slice-type] p, [data-slice-type] blockquote, [data-slice-type] figcaption'
+		);
+
+		targets.forEach((el) => {
+			const onEnter = () => {
+				if (hoverDecayTimer) {
+					clearTimeout(hoverDecayTimer);
+					hoverDecayTimer = null;
+				}
+				if (hoverDwellTimer) clearTimeout(hoverDwellTimer);
+
+				hoverDwellTimer = setTimeout(() => {
+					if (hoverFetchCount >= MAX_HOVER_FETCHES) return;
+					if (Date.now() - lastHoverFetchTime < HOVER_COOLDOWN_MS) return;
+					const context = extractHoverContext(el);
+					const fp = fingerprint(context);
+					if (hoveredFingerprints.has(fp)) return;
+					hoveredFingerprints.add(fp);
+					hoverFetchCount++;
+					lastHoverFetchTime = Date.now();
+					flashContextOverlay(el);
+					fetchHoverSuggestions(pathname, context);
+				}, HOVER_DWELL_MS);
+			};
+
+			const onLeave = () => {
+				if (hoverDwellTimer) {
+					clearTimeout(hoverDwellTimer);
+					hoverDwellTimer = null;
+				}
+				if (hoverDecayTimer) clearTimeout(hoverDecayTimer);
+				hoverDecayTimer = setTimeout(() => {
+					hoverSuggestions.set([]);
+				}, HOVER_DECAY_MS);
+			};
+
+			el.addEventListener('mouseenter', onEnter);
+			el.addEventListener('mouseleave', onLeave);
+			hoverCleanups.push(() => {
+				el.removeEventListener('mouseenter', onEnter);
+				el.removeEventListener('mouseleave', onLeave);
+			});
+		});
+	}
+
+	function teardownHoverObserver() {
+		hoverCleanups.forEach((fn) => fn());
+		hoverCleanups = [];
+		if (hoverDwellTimer) clearTimeout(hoverDwellTimer);
+		hoverDwellTimer = null;
+		if (hoverDecayTimer) clearTimeout(hoverDecayTimer);
+		hoverDecayTimer = null;
+		hoverFetchCount = 0;
+		hoveredFingerprints.clear();
+		hoverSuggestions.set([]);
 	}
 
 	onMount(() => {
-		// One immediate fetch at the current position (no heading context yet — page-level only)
 		if (canFetchScroll()) {
 			fetchCount++;
 			fetchScrollSuggestions($page.url.pathname, getScrollDepth(), null);
 		}
 		setupHeadingObserver($page.url.pathname);
+		setupHoverObserver($page.url.pathname);
 	});
 
 	onDestroy(() => {
 		resetScrollState();
 	});
 
-	// Reset and re-setup after SvelteKit navigation (afterNavigate fires only on real navigations,
-	// unlike a $: reactive block which also fires on initial component creation)
 	afterNavigate(({ to }) => {
 		const path = to?.url.pathname ?? $page.url.pathname;
 		resetScrollState();
-		// Delay to let the page transition finish injecting the new DOM before querying headings
-		setTimeout(() => setupHeadingObserver(path), 300);
+		setTimeout(() => {
+			setupHeadingObserver(path);
+			setupHoverObserver(path);
+		}, 300);
 	});
 
 	async function selectSuggestion(suggestion: string) {
+		cancelContextFetches();
 		suggestions.set([]);
 		scrollSuggestions.set([]);
+		hoverSuggestions.set([]);
 		minimized.set(false);
 		// Server derives currentPage from the Referer header automatically
 		await append({ role: 'user', content: suggestion });
@@ -239,6 +473,12 @@
 			role: 'user',
 			content: "That response wasn't quite right — can you give a more specific or direct answer?"
 		});
+	}
+
+	// When context is being fetched and the chat hasn't opened yet, transition to the
+	// minimized placeholder state so the user sees context is being generated.
+	$: if ($loadingContextSuggestions && !$botEngaged) {
+		botEngaged.set(true);
 	}
 </script>
 
@@ -281,20 +521,7 @@
 				</div>
 			{/if}
 			<!-- Render the chat messages -->
-			<div class="first:pt-4 last:pb-6">
-				<div
-					class="mx-2 -mt-2 mb-2 rounded border border-yellow-400 bg-yellow-200 px-3 py-2 text-xs dark:border-yellow-600 dark:bg-yellow-800"
-				>
-					<h6
-						class="mb-2 mt-1 flex items-center gap-x-2 font-bold uppercase tracking-wider text-yellow-800 dark:text-yellow-200"
-					>
-						<Beaker /> In Development
-					</h6>
-					<p class=" mb-1 text-sm leading-tight text-yellow-700 dark:text-yellow-300">
-						HuntBot is being rewritten for speed, accuracy, and functionality. Take anything he says
-						with a grain of salt.
-					</p>
-				</div>
+			<div class="first:pt-4 {$activeSuggestions.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
 				{#each $messages as message, i}
 					<div
 						in:slide|global={{ duration: 400 }}
@@ -305,17 +532,17 @@
 							}, 400);
 						}}
 					>
-						{#if message.role === 'user'}
-							<UserMessage value={message.content} />
-						{:else if message.role === 'assistant'}
-							<BotMessage
-								value={message.content}
-								isLast={i === $messages.length - 1 && !$isLoading}
-								onRetry={retryLastResponse}
-							/>
-						{:else if message.role === 'function'}
-							<ActionMessage value={message} />
-						{/if}
+					{#if message.role === 'user'}
+						<UserMessage value={message.content} />
+					{:else if message.role === 'assistant' && message.content.trim()}
+						<BotMessage
+							value={message.content}
+							isLast={i === $messages.length - 1 && !$isLoading}
+							onRetry={retryLastResponse}
+						/>
+					{:else if message.role === 'function'}
+						<ActionMessage value={message} />
+					{/if}
 					</div>
 				{/each}
 				{#if $isLoading && $messages[$messages.length - 1].role !== 'assistant'}
@@ -335,12 +562,9 @@
 		</div>
 	{/if}
 	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
-		{@const hasUserMessages = $messages.some((m) => m.role === 'user')}
-		{@const displaySuggestions =
-			!hasUserMessages && $scrollSuggestions.length > 0 ? $scrollSuggestions : $suggestions}
-		<ChatSuggestions suggestions={displaySuggestions} onSelect={selectSuggestion} />
+		<ChatSuggestions suggestions={$activeSuggestions} onSelect={selectSuggestion} />
 	{/if}
 	{#if $botEngaged}
-		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} />
+		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} onPlaceholderSelect={selectSuggestion} />
 	{/if}
 </div>

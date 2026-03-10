@@ -6,7 +6,8 @@ const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { messages, currentPage, scrollDepth, sectionHeading } = await request.json();
+		const { messages, currentPage, scrollDepth, sectionHeading, hoveredContent } =
+			await request.json();
 
 		const hasUserMessages = messages.some((m: { role: string }) => m.role === 'user');
 
@@ -25,8 +26,22 @@ export const POST: RequestHandler = async ({ request }) => {
 						.join(' ')
 				: '';
 
-		const systemPrompt = hasUserMessages
-			? `Generate 3 short follow-up question suggestions (under 8 words each) for a visitor chatting with HuntBot on Hunter Bryant's portfolio site.
+		let systemPrompt: string;
+
+		if (hoveredContent) {
+			systemPrompt = `The visitor is reading a page on Hunter Bryant's site and hovering over this section:
+
+"${hoveredContent}"
+
+Current page: ${currentPage}
+
+Generate 3 short questions (under 8 words each) that someone reading this passage would naturally wonder about. Be specific to the content — not generic. Match the subject matter: if it's about travel, ask about the trip; if it's about design work, ask about the design.
+
+Return ONLY a JSON array of strings, nothing else.
+
+Example: ["What was the weather like up there?", "How long did that descent take?"]`;
+		} else if (hasUserMessages) {
+			systemPrompt = `Generate 3 short follow-up question suggestions (under 8 words each) for a visitor chatting with HuntBot on Hunter Bryant's portfolio site.
 
 Current page: ${currentPage}
 
@@ -35,19 +50,21 @@ Rules:
 - No generic filler — each suggestion should feel useful
 - Return ONLY a JSON array of strings, nothing else
 
-Example: ["What was the biggest design challenge?", "Can I see the final product?"]`
-			: `Generate 3 short starter question suggestions (under 8 words each) for a new visitor on Hunter Bryant's portfolio site.
+Example: ["What was the biggest design challenge?", "Can I see the final product?"]`;
+		} else {
+			systemPrompt = `Generate 3 short starter question suggestions (under 8 words each) for a new visitor on Hunter Bryant's portfolio site.
 
 Current page: ${currentPage}${scrollContext ? '\n' + scrollContext : ''}
 
-Hunter is a senior product designer known for hardware/software products, cycling tech, and consumer apps.
+Hunter is a product designer, but his site also includes personal writing, travel stories, and side projects. Not everything is design work.
 
 Rules:
-- Tailor to the current page and visible section context
+- Tailor to the current page and visible section context — if it's a travel blog, ask about the trip, not "the design process"
 - Make them feel like genuine curiosity, not marketing prompts
 - Return ONLY a JSON array of strings, nothing else
 
-Example: ["What kind of projects does Hunter take on?", "Tell me about his design process"]`;
+Example: ["What kind of projects does Hunter take on?", "What was this trip like?"]`;
+		}
 
 		const conversationContext = hasUserMessages
 			? messages
