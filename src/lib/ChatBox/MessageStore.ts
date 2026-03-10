@@ -5,6 +5,52 @@ import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
+export const suggestions = writable<string[]>([]);
+
+export async function triggerProactiveOpener(
+	currentMessages: Message[],
+	currentPage: string
+): Promise<void> {
+	try {
+		const response = await fetch('/api/chat/proactive', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ currentPage })
+		});
+		if (response.ok) {
+			const data = await response.json();
+			if (data.message && setMessagesGlobal) {
+				setMessagesGlobal([
+					...currentMessages,
+					{
+						id: 'proactive-' + Date.now(),
+						role: 'assistant' as const,
+						content: data.message
+					}
+				]);
+			}
+		}
+	} catch {
+		// Silently fail — proactive opener is best-effort
+	}
+}
+
+export async function fetchSuggestions(messages: Message[], currentPage: string): Promise<void> {
+	try {
+		const response = await fetch('/api/chat/suggestions', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ messages, currentPage })
+		});
+		if (response.ok) {
+			const data = await response.json();
+			suggestions.set(data.suggestions ?? []);
+		}
+	} catch {
+		suggestions.set([]);
+	}
+}
+
 const greetingResponse: string =
 	"I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗";
 
@@ -82,10 +128,6 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 			setTimeout(() => {
 				goto(`${parsedFunctionCallArguments.page}`);
 			}, 400);
-
-			// Return the same messages so the SDK makes a follow-up LLM call,
-			// allowing the bot to say something after navigating.
-			return { messages: updatedMessages };
 		}
 	} else if (functionCall.name === 'ask_clarifying_question') {
 		if (functionCall.arguments) {

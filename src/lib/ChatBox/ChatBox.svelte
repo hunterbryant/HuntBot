@@ -3,6 +3,7 @@
 	import UserMessage from './UserMessage.svelte';
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
+	import ChatSuggestions from './ChatSuggestions.svelte';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
@@ -10,16 +11,23 @@
 	import { page } from '$app/stores';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
-	import { chat, botEngaged, minimized } from './MessageStore';
+	import {
+		chat,
+		botEngaged,
+		minimized,
+		suggestions,
+		fetchSuggestions,
+		triggerProactiveOpener
+	} from './MessageStore';
 	import LoadingStream from './LoadingStream.svelte';
 
-	const { messages, isLoading, handleSubmit, input } = chat();
+	const { messages, isLoading, handleSubmit, input, append } = chat();
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
 	let scrolledToBottom = false;
 
-	export let greeting: string = "Hi 👋, I'm HuntBot";
+	export let greeting: string = "Hi, I'm HuntBot";
 
 	// Check if scrolled to the bottom
 	function checkScrolledDown() {
@@ -51,6 +59,70 @@
 
 	$: if (!$navEngaged) {
 		minimized.set(true);
+	}
+
+	// Track loading transitions to fetch suggestions after each bot response,
+	// but only once a real conversation is underway (user has sent at least one message)
+	let prevLoading = false;
+	$: {
+		if (prevLoading && !$isLoading) {
+			const hasUserMessages = $messages.some((m) => m.role === 'user');
+			if (hasUserMessages) {
+				fetchSuggestions($messages, $page.url.pathname);
+			}
+		}
+		prevLoading = $isLoading ?? false;
+	}
+
+	// Show starter suggestions once the intro message is visible and no conversation yet
+	$: if ($botEngaged && !$minimized && !$isLoading) {
+		const hasUserMessages = $messages.some((m) => m.role === 'user');
+		const hasBotMessages = $messages.some((m) => m.role === 'assistant');
+		if (!hasUserMessages && hasBotMessages && $suggestions.length === 0) {
+			fetchSuggestions($messages, $page.url.pathname);
+		}
+	}
+
+	// Clear suggestions when user starts typing
+	$: if ($input && $input.trim() !== '') {
+		suggestions.set([]);
+	}
+
+	// Proactive page-aware opener: fire when user navigates to a project/case study
+	// and hasn't started a conversation yet
+	let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastProactivePage = '';
+
+	$: {
+		const path = $page.url.pathname;
+		const isProjectPage = /^\/(case-studies|projects)\/.+/.test(path);
+		const hasUserMessages = $messages.some((m) => m.role === 'user');
+
+		if (isProjectPage && path !== lastProactivePage && !hasUserMessages && !$minimized) {
+			lastProactivePage = path;
+			if (proactiveTimer) clearTimeout(proactiveTimer);
+			proactiveTimer = setTimeout(() => {
+				triggerProactiveOpener($messages, path);
+			}, 2500);
+		} else if (!isProjectPage && lastProactivePage) {
+			// Reset when navigating away so it can fire again on the next project page
+			lastProactivePage = '';
+			if (proactiveTimer) clearTimeout(proactiveTimer);
+		}
+	}
+
+	async function selectSuggestion(suggestion: string) {
+		suggestions.set([]);
+		minimized.set(false);
+		// Server derives currentPage from the Referer header automatically
+		await append({ role: 'user', content: suggestion });
+	}
+
+	function retryLastResponse() {
+		append({
+			role: 'user',
+			content: "That response wasn't quite right — can you give a more specific or direct answer?"
+		});
 	}
 </script>
 
@@ -107,7 +179,7 @@
 						with a grain of salt.
 					</p>
 				</div>
-				{#each $messages as message}
+				{#each $messages as message, i}
 					<div
 						in:slide|global={{ duration: 400 }}
 						on:introend={() => {
@@ -120,7 +192,11 @@
 						{#if message.role === 'user'}
 							<UserMessage value={message.content} />
 						{:else if message.role === 'assistant'}
-							<BotMessage value={message.content} />
+							<BotMessage
+								value={message.content}
+								isLast={i === $messages.length - 1 && !$isLoading}
+								onRetry={retryLastResponse}
+							/>
 						{:else if message.role === 'function'}
 							<ActionMessage value={message} />
 						{/if}
@@ -141,6 +217,9 @@
 				{/if}
 			</div>
 		</div>
+	{/if}
+	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
+		<ChatSuggestions suggestions={$suggestions} onSelect={selectSuggestion} />
 	{/if}
 	{#if $botEngaged}
 		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} />
