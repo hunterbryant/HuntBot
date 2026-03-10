@@ -61,21 +61,17 @@
 		minimized.set(true);
 	}
 
-	// Track loading transitions to fetch suggestions after each bot response
+	// Track loading transitions to fetch suggestions after each bot response,
+	// but only once a real conversation is underway (user has sent at least one message)
 	let prevLoading = false;
 	$: {
 		if (prevLoading && !$isLoading) {
-			fetchSuggestions($messages, $page.url.pathname);
+			const hasUserMessages = $messages.some((m) => m.role === 'user');
+			if (hasUserMessages) {
+				fetchSuggestions($messages, $page.url.pathname);
+			}
 		}
 		prevLoading = $isLoading ?? false;
-	}
-
-	// Fetch starter suggestions when chat opens with no user messages yet
-	$: if ($botEngaged && !$minimized && !$isLoading) {
-		const hasUserMessages = $messages.some((m) => m.role === 'user');
-		if (!hasUserMessages && $suggestions.length === 0) {
-			fetchSuggestions($messages, $page.url.pathname);
-		}
 	}
 
 	// Clear suggestions when user starts typing

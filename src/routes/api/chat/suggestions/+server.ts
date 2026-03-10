@@ -11,7 +11,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const hasUserMessages = messages.some((m: { role: string }) => m.role === 'user');
 
 		const systemPrompt = hasUserMessages
-			? `Generate 3–4 short follow-up question suggestions (under 8 words each) for a visitor chatting with HuntBot on Hunter Bryant's portfolio site.
+			? `Generate 3 short follow-up question suggestions (under 8 words each) for a visitor chatting with HuntBot on Hunter Bryant's portfolio site.
 
 Current page: ${currentPage}
 
@@ -21,7 +21,7 @@ Rules:
 - Return ONLY a JSON array of strings, nothing else
 
 Example: ["What was the biggest design challenge?", "Can I see the final product?"]`
-			: `Generate 3–4 short starter question suggestions (under 8 words each) for a new visitor on Hunter Bryant's portfolio site.
+			: `Generate 3 short starter question suggestions (under 8 words each) for a new visitor on Hunter Bryant's portfolio site.
 
 Current page: ${currentPage}
 
@@ -68,7 +68,7 @@ Example: ["What kind of projects does Hunter take on?", "Tell me about his desig
 
 		suggestions = suggestions
 			.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-			.slice(0, 4);
+			.slice(0, 3);
 
 		return json({ suggestions });
 	} catch {
