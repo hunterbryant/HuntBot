@@ -59,7 +59,7 @@
 					bind:this={element}
 				>
 					Let's build the product your users <span class="font-serif italic">actually</span>
-					want 🎯
+					want
 					<!-- I’m the designer that will build you a product your users really want. -->
 				</h1>
 			</div>

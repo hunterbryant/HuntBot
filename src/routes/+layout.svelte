@@ -44,7 +44,7 @@
 		const scrollDistance = mobileBreakpoint ? window.innerHeight / 2 : window.innerHeight / 2 - 64;
 		if (!$botEngaged) {
 			hitButton = true;
-			greeting = "Hi 👋, I'm HuntBot";
+			greeting = "Hi, I'm HuntBot";
 		} else {
 			minimized.set(false);
 		}
