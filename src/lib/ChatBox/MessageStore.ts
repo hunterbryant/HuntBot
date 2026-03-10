@@ -65,26 +65,27 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		if (functionCall.arguments) {
 			const parsedFunctionCallArguments = JSON.parse(functionCall.arguments);
 
-			// Navigate after a short delay
+			const updatedMessages = [
+				...chatMessages,
+				{
+					id: nanoid(),
+					role: 'function' as const,
+					name: functionCall.name,
+					content: `Routed to ${parsedFunctionCallArguments.page}`,
+					data: FunctionState.success
+				} as FunctionMessage
+			];
+
+			// Update the store immediately so ActionMessage renders before navigation
+			setMessagesGlobal(updatedMessages);
+
 			setTimeout(() => {
 				goto(`${parsedFunctionCallArguments.page}`);
 			}, 400);
 
-			// Return the function result directly — no separate setMessagesGlobal calls.
-			// The data field drives the ActionMessage UI (success check), the content
-			// is what the LLM receives as the function result to inform its follow-up.
-			return {
-				messages: [
-					...chatMessages,
-					{
-						id: nanoid(),
-						role: 'function' as const,
-						name: functionCall.name,
-						content: `Routed to ${parsedFunctionCallArguments.page}`,
-						data: FunctionState.success
-					} as FunctionMessage
-				]
-			};
+			// Return the same messages so the SDK makes a follow-up LLM call,
+			// allowing the bot to say something after navigating.
+			return { messages: updatedMessages };
 		}
 	} else if (functionCall.name === 'ask_clarifying_question') {
 		if (functionCall.arguments) {
