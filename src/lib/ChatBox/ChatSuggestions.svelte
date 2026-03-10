@@ -7,13 +7,13 @@
 
 {#if suggestions.length > 0}
 	<div
-		class="no-scrollbar flex gap-2 overflow-x-auto px-2 pb-2 pt-1"
+		class="no-scrollbar flex min-h-[44px] items-center gap-[2px] overflow-x-auto overflow-y-hidden px-2"
 		transition:fade|global={{ duration: 150 }}
 	>
 		{#each suggestions as suggestion (suggestion)}
 			<button
 				on:click={() => onSelect(suggestion)}
-				class="shrink-0 rounded-full border border-stone-300 bg-stone-50 px-3 py-1.5 text-xs text-stone-600 transition hover:border-stone-400 hover:bg-stone-100 active:bg-stone-200 dark:border-stone-700 dark:bg-stone-900 dark:text-stone-400 dark:hover:border-stone-600 dark:hover:bg-stone-800 dark:active:bg-stone-700"
+				class="shrink-0 rounded bg-stone-200 p-1 pb-[2px] text-xs uppercase tracking-wider text-stone-900 transition hover:bg-stone-300 active:bg-stone-400 dark:bg-stone-800 dark:text-stone-100 dark:hover:bg-stone-700 dark:active:bg-stone-600"
 			>
 				{suggestion}
 			</button>
