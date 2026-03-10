@@ -5,6 +5,7 @@
 	import GreetingMessage from './GreetingMessage.svelte';
 	import ChatSuggestions from './ChatSuggestions.svelte';
 	import { onMount, onDestroy } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
@@ -135,7 +136,6 @@
 
 	function canFetchScroll(): boolean {
 		if (fetchCount >= MAX_FETCHES) return false;
-		if ($messages.some((m) => m.role === 'user')) return false;
 		return true;
 	}
 
@@ -217,15 +217,14 @@
 		resetScrollState();
 	});
 
-	// Reset and re-setup when page changes
-	$: {
-		const path = $page.url.pathname;
+	// Reset and re-setup after SvelteKit navigation (afterNavigate fires only on real navigations,
+	// unlike a $: reactive block which also fires on initial component creation)
+	afterNavigate(({ to }) => {
+		const path = to?.url.pathname ?? $page.url.pathname;
 		resetScrollState();
-		if (typeof window !== 'undefined') {
-			// Delay to let SvelteKit's page transition inject the new DOM before querying headings
-			setTimeout(() => setupHeadingObserver(path), 300);
-		}
-	}
+		// Delay to let the page transition finish injecting the new DOM before querying headings
+		setTimeout(() => setupHeadingObserver(path), 300);
+	});
 
 	async function selectSuggestion(suggestion: string) {
 		suggestions.set([]);
