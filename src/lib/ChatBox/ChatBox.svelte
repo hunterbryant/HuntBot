@@ -4,6 +4,7 @@
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
 	import ChatSuggestions from './ChatSuggestions.svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
@@ -16,7 +17,9 @@
 		botEngaged,
 		minimized,
 		suggestions,
+		scrollSuggestions,
 		fetchSuggestions,
+		fetchScrollSuggestions,
 		triggerProactiveOpener
 	} from './MessageStore';
 	import LoadingStream from './LoadingStream.svelte';
@@ -111,8 +114,122 @@
 		}
 	}
 
+	// --- Scroll-aware suggestions via IntersectionObserver ---
+	// Only fires when user genuinely pauses on a section (3s dwell), max 5 fetches per page.
+	// Works for both heading-rich pages and slice-based pages (case studies list, info, etc.)
+	// by observing h1–h4 headings and the first heading within Prismic slice containers.
+
+	const DWELL_MS = 3000;
+	const MAX_FETCHES = 5;
+
+	let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+	let sectionObserver: IntersectionObserver | null = null;
+	let fetchedHeadings = new Set<string>();
+	let fetchCount = 0;
+
+	function getScrollDepth(): number {
+		const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+		const docHeight = document.documentElement.scrollHeight - viewportHeight;
+		return docHeight > 0 ? Math.round((window.scrollY / docHeight) * 100) : 0;
+	}
+
+	function canFetchScroll(): boolean {
+		if (fetchCount >= MAX_FETCHES) return false;
+		if ($messages.some((m) => m.role === 'user')) return false;
+		return true;
+	}
+
+	// Collect observable elements: standard headings + first heading within each Prismic slice.
+	// This handles slice-based pages (case study list, info) where the layout is visual rather
+	// than a classic heading hierarchy.
+	function getObservableElements(): Element[] {
+		const seen = new Set<Element>();
+		const results: Element[] = [];
+
+		// Standard headings
+		document.querySelectorAll('h1, h2, h3, h4').forEach((el) => {
+			seen.add(el);
+			results.push(el);
+		});
+
+		// First heading within each Prismic slice container (fallback for slice-only pages)
+		document.querySelectorAll('[data-slice-type]').forEach((slice) => {
+			const heading = slice.querySelector('h1, h2, h3, h4, h5');
+			if (heading && !seen.has(heading)) {
+				seen.add(heading);
+				results.push(heading);
+			}
+		});
+
+		return results;
+	}
+
+	function setupHeadingObserver(pathname: string) {
+		if (sectionObserver) sectionObserver.disconnect();
+
+		sectionObserver = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					const heading = entry.target.textContent?.trim() ?? null;
+					if (!heading) continue;
+
+					if (entry.isIntersecting && !fetchedHeadings.has(heading)) {
+						// Heading entered viewport — start dwell timer
+						if (dwellTimer) clearTimeout(dwellTimer);
+						dwellTimer = setTimeout(() => {
+							if (!canFetchScroll()) return;
+							fetchedHeadings.add(heading);
+							fetchCount++;
+							fetchScrollSuggestions(pathname, getScrollDepth(), heading);
+						}, DWELL_MS);
+					} else if (!entry.isIntersecting && dwellTimer) {
+						// Heading left viewport before dwell — cancel (next heading starts a new timer)
+						clearTimeout(dwellTimer);
+						dwellTimer = null;
+					}
+				}
+			},
+			{ threshold: 0.5 }
+		);
+
+		getObservableElements().forEach((el) => sectionObserver!.observe(el));
+	}
+
+	function resetScrollState() {
+		if (sectionObserver) sectionObserver.disconnect();
+		if (dwellTimer) clearTimeout(dwellTimer);
+		dwellTimer = null;
+		fetchedHeadings.clear();
+		fetchCount = 0;
+		scrollSuggestions.set([]);
+	}
+
+	onMount(() => {
+		// One immediate fetch at the current position (no heading context yet — page-level only)
+		if (canFetchScroll()) {
+			fetchCount++;
+			fetchScrollSuggestions($page.url.pathname, getScrollDepth(), null);
+		}
+		setupHeadingObserver($page.url.pathname);
+	});
+
+	onDestroy(() => {
+		resetScrollState();
+	});
+
+	// Reset and re-setup when page changes
+	$: {
+		const path = $page.url.pathname;
+		resetScrollState();
+		if (typeof window !== 'undefined') {
+			// Delay to let SvelteKit's page transition inject the new DOM before querying headings
+			setTimeout(() => setupHeadingObserver(path), 300);
+		}
+	}
+
 	async function selectSuggestion(suggestion: string) {
 		suggestions.set([]);
+		scrollSuggestions.set([]);
 		minimized.set(false);
 		// Server derives currentPage from the Referer header automatically
 		await append({ role: 'user', content: suggestion });
@@ -219,7 +336,10 @@
 		</div>
 	{/if}
 	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
-		<ChatSuggestions suggestions={$suggestions} onSelect={selectSuggestion} />
+		{@const hasUserMessages = $messages.some((m) => m.role === 'user')}
+		{@const displaySuggestions =
+			!hasUserMessages && $scrollSuggestions.length > 0 ? $scrollSuggestions : $suggestions}
+		<ChatSuggestions suggestions={displaySuggestions} onSelect={selectSuggestion} />
 	{/if}
 	{#if $botEngaged}
 		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} />

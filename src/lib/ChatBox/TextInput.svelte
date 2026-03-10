@@ -1,19 +1,39 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen, mobile } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { chat, minimized } from './MessageStore';
+	import { chat, minimized, scrollSuggestions } from './MessageStore';
 
 	export let { input, handleSubmit, isLoading } = chat();
 	export let currentPage: string = '/';
 
 	let inputElement: HTMLInputElement;
-	let placeholder = 'Message HuntBot';
+	let suggestionIndex = 0;
+	let cycleTimer: ReturnType<typeof setInterval> | null = null;
 
-	$: if ($minimized) {
-		placeholder = 'If you need me... ask away!';
-	}
+	// Reset cycling index whenever a fresh set of scroll suggestions arrives
+	$: $scrollSuggestions, (suggestionIndex = 0);
+
+	// Cycle through scroll suggestions every 6s so all three get a turn in the placeholder
+	onMount(() => {
+		cycleTimer = setInterval(() => {
+			if ($scrollSuggestions.length > 0) {
+				suggestionIndex = (suggestionIndex + 1) % $scrollSuggestions.length;
+			}
+		}, 6000);
+	});
+
+	onDestroy(() => {
+		if (cycleTimer) clearInterval(cycleTimer);
+	});
+
+	$: placeholder = $minimized
+		? $scrollSuggestions.length > 0
+			? $scrollSuggestions[suggestionIndex % Math.max($scrollSuggestions.length, 1)]
+			: 'If you need me... ask away!'
+		: 'Message HuntBot';
 
 	async function handleLocalSubmit(event: SubmitEvent) {
 		// Clear the message after sending

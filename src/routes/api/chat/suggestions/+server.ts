@@ -6,9 +6,24 @@ const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { messages, currentPage } = await request.json();
+		const { messages, currentPage, scrollDepth, sectionHeading } = await request.json();
 
 		const hasUserMessages = messages.some((m: { role: string }) => m.role === 'user');
+
+		const scrollContext =
+			!hasUserMessages
+				? [
+						typeof scrollDepth === 'number'
+							? `Scroll depth: ${scrollDepth}% through the page.`
+							: '',
+						sectionHeading ? `Visible section: "${sectionHeading}"` : '',
+						typeof scrollDepth === 'number' && scrollDepth > 60
+							? "The visitor has scrolled deeply — they're engaged."
+							: ''
+					]
+						.filter(Boolean)
+						.join(' ')
+				: '';
 
 		const systemPrompt = hasUserMessages
 			? `Generate 3 short follow-up question suggestions (under 8 words each) for a visitor chatting with HuntBot on Hunter Bryant's portfolio site.
@@ -23,12 +38,12 @@ Rules:
 Example: ["What was the biggest design challenge?", "Can I see the final product?"]`
 			: `Generate 3 short starter question suggestions (under 8 words each) for a new visitor on Hunter Bryant's portfolio site.
 
-Current page: ${currentPage}
+Current page: ${currentPage}${scrollContext ? '\n' + scrollContext : ''}
 
 Hunter is a senior product designer known for hardware/software products, cycling tech, and consumer apps.
 
 Rules:
-- Tailor to the current page context if not the home page
+- Tailor to the current page and visible section context
 - Make them feel like genuine curiosity, not marketing prompts
 - Return ONLY a JSON array of strings, nothing else
 

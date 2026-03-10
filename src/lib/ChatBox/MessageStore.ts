@@ -6,6 +6,7 @@ import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
 export const suggestions = writable<string[]>([]);
+export const scrollSuggestions = writable<string[]>([]);
 
 export async function triggerProactiveOpener(
 	currentMessages: Message[],
@@ -32,6 +33,26 @@ export async function triggerProactiveOpener(
 		}
 	} catch {
 		// Silently fail — proactive opener is best-effort
+	}
+}
+
+export async function fetchScrollSuggestions(
+	currentPage: string,
+	scrollDepth: number,
+	sectionHeading: string | null
+): Promise<void> {
+	try {
+		const response = await fetch('/api/chat/suggestions', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ messages: [], currentPage, scrollDepth, sectionHeading })
+		});
+		if (response.ok) {
+			const data = await response.json();
+			scrollSuggestions.set(data.suggestions ?? []);
+		}
+	} catch {
+		// Silently fail — scroll suggestions are best-effort; keep last good set
 	}
 }
 
