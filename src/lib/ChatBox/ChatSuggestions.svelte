@@ -7,7 +7,7 @@
 
 {#if suggestions.length > 0}
 	<div
-		class="no-scrollbar flex min-h-[44px] items-center gap-1.5 overflow-x-auto overflow-y-hidden px-2 pb-2"
+		class="no-scrollbar flex min-h-[44px] items-center gap-1.5 overflow-x-auto overflow-y-hidden px-2 py-2"
 		transition:fade|global={{ duration: 150 }}
 	>
 		{#each suggestions as suggestion (suggestion)}
