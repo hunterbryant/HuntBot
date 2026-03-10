@@ -5,6 +5,24 @@ import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
+export const suggestions = writable<string[]>([]);
+
+export async function fetchSuggestions(messages: Message[], currentPage: string): Promise<void> {
+	try {
+		const response = await fetch('/api/chat/suggestions', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ messages, currentPage })
+		});
+		if (response.ok) {
+			const data = await response.json();
+			suggestions.set(data.suggestions ?? []);
+		}
+	} catch {
+		suggestions.set([]);
+	}
+}
+
 const greetingResponse: string =
 	"I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗";
 

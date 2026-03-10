@@ -3,6 +3,7 @@
 	import UserMessage from './UserMessage.svelte';
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
+	import ChatSuggestions from './ChatSuggestions.svelte';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
@@ -10,10 +11,10 @@
 	import { page } from '$app/stores';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
-	import { chat, botEngaged, minimized } from './MessageStore';
+	import { chat, botEngaged, minimized, suggestions, fetchSuggestions } from './MessageStore';
 	import LoadingStream from './LoadingStream.svelte';
 
-	const { messages, isLoading, handleSubmit, input } = chat();
+	const { messages, isLoading, handleSubmit, input, append } = chat();
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -51,6 +52,35 @@
 
 	$: if (!$navEngaged) {
 		minimized.set(true);
+	}
+
+	// Track loading transitions to fetch suggestions after each bot response
+	let prevLoading = false;
+	$: {
+		if (prevLoading && !$isLoading) {
+			fetchSuggestions($messages, $page.url.pathname);
+		}
+		prevLoading = $isLoading ?? false;
+	}
+
+	// Fetch starter suggestions when chat opens with no user messages yet
+	$: if ($botEngaged && !$minimized && !$isLoading) {
+		const hasUserMessages = $messages.some((m) => m.role === 'user');
+		if (!hasUserMessages && $suggestions.length === 0) {
+			fetchSuggestions($messages, $page.url.pathname);
+		}
+	}
+
+	// Clear suggestions when user starts typing
+	$: if ($input && $input.trim() !== '') {
+		suggestions.set([]);
+	}
+
+	async function selectSuggestion(suggestion: string) {
+		suggestions.set([]);
+		minimized.set(false);
+		// Server derives currentPage from the Referer header automatically
+		await append({ role: 'user', content: suggestion });
 	}
 </script>
 
@@ -141,6 +171,9 @@
 				{/if}
 			</div>
 		</div>
+	{/if}
+	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
+		<ChatSuggestions suggestions={$suggestions} onSelect={selectSuggestion} />
 	{/if}
 	{#if $botEngaged}
 		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} />
