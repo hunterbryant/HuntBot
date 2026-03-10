@@ -27,7 +27,7 @@
 	let isScrolling = false;
 	let scrolledToBottom = false;
 
-	export let greeting: string = "Hi 👋, I'm HuntBot";
+	export let greeting: string = "Hi, I'm HuntBot";
 
 	// Check if scrolled to the bottom
 	function checkScrolledDown() {
