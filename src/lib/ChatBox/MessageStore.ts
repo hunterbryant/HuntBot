@@ -7,6 +7,34 @@ import { writable } from 'svelte/store';
 
 export const suggestions = writable<string[]>([]);
 
+export async function triggerProactiveOpener(
+	currentMessages: Message[],
+	currentPage: string
+): Promise<void> {
+	try {
+		const response = await fetch('/api/chat/proactive', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ currentPage })
+		});
+		if (response.ok) {
+			const data = await response.json();
+			if (data.message && setMessagesGlobal) {
+				setMessagesGlobal([
+					...currentMessages,
+					{
+						id: 'proactive-' + Date.now(),
+						role: 'assistant' as const,
+						content: data.message
+					}
+				]);
+			}
+		}
+	} catch {
+		// Silently fail — proactive opener is best-effort
+	}
+}
+
 export async function fetchSuggestions(messages: Message[], currentPage: string): Promise<void> {
 	try {
 		const response = await fetch('/api/chat/suggestions', {

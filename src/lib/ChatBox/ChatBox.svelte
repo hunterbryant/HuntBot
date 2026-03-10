@@ -11,7 +11,14 @@
 	import { page } from '$app/stores';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
-	import { chat, botEngaged, minimized, suggestions, fetchSuggestions } from './MessageStore';
+	import {
+		chat,
+		botEngaged,
+		minimized,
+		suggestions,
+		fetchSuggestions,
+		triggerProactiveOpener
+	} from './MessageStore';
 	import LoadingStream from './LoadingStream.svelte';
 
 	const { messages, isLoading, handleSubmit, input, append } = chat();
@@ -76,6 +83,29 @@
 		suggestions.set([]);
 	}
 
+	// Proactive page-aware opener: fire when user navigates to a project/case study
+	// and hasn't started a conversation yet
+	let proactiveTimer: ReturnType<typeof setTimeout> | null = null;
+	let lastProactivePage = '';
+
+	$: {
+		const path = $page.url.pathname;
+		const isProjectPage = /^\/(case-studies|projects)\/.+/.test(path);
+		const hasUserMessages = $messages.some((m) => m.role === 'user');
+
+		if (isProjectPage && path !== lastProactivePage && !hasUserMessages && !$minimized) {
+			lastProactivePage = path;
+			if (proactiveTimer) clearTimeout(proactiveTimer);
+			proactiveTimer = setTimeout(() => {
+				triggerProactiveOpener($messages, path);
+			}, 2500);
+		} else if (!isProjectPage && lastProactivePage) {
+			// Reset when navigating away so it can fire again on the next project page
+			lastProactivePage = '';
+			if (proactiveTimer) clearTimeout(proactiveTimer);
+		}
+	}
+
 	async function selectSuggestion(suggestion: string) {
 		suggestions.set([]);
 		minimized.set(false);
@@ -137,7 +167,7 @@
 						with a grain of salt.
 					</p>
 				</div>
-				{#each $messages as message}
+				{#each $messages as message, i}
 					<div
 						in:slide|global={{ duration: 400 }}
 						on:introend={() => {
@@ -150,7 +180,10 @@
 						{#if message.role === 'user'}
 							<UserMessage value={message.content} />
 						{:else if message.role === 'assistant'}
-							<BotMessage value={message.content} />
+							<BotMessage
+								value={message.content}
+								isLast={i === $messages.length - 1 && !$isLoading}
+							/>
 						{:else if message.role === 'function'}
 							<ActionMessage value={message} />
 						{/if}
