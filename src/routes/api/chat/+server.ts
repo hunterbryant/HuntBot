@@ -41,11 +41,31 @@ async function getAvailableRoutes(): Promise<string[]> {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		// Add the user message to the chat thread
-		const { messages } = await request.json();
+		const body = await request.json();
+		const { messages } = body;
 
-		// Get the last message
+		// Derive current page from the Referer header — the browser sets this automatically
+		// to the actual URL of the page that made the request, which is more reliable than
+		// passing it through the client-side body (which can be stale or default to '/').
+		// Fall back to the body value if Referer is absent (e.g. curl, test clients).
+		let currentPage: string = body.currentPage || '/';
+		const referer = request.headers.get('referer');
+		if (referer) {
+			try {
+				currentPage = new URL(referer).pathname;
+			} catch {
+				// keep body value
+			}
+		}
+
 		const lastMessage = messages[messages.length - 1];
+
+		// Extract prior user messages (excluding the current one) to improve retrieval
+		// on follow-up questions like "tell me more" or "what about X?"
+		const priorUserMessages: string[] = messages
+			.slice(0, -1)
+			.filter((m: { role: string }) => m.role === 'user')
+			.map((m: { content: string }) => m.content);
 
 		const langsmithClient = new Client({
 			apiKey: env.LANGCHAIN_API_KEY
@@ -63,7 +83,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		// Get context and available routes in parallel
 		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessage.content, runID, pipeline),
+			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage),
 			getAvailableRoutes()
 		]);
 
@@ -71,51 +91,107 @@ export const POST: RequestHandler = async ({ request }) => {
 		const functions: ChatCompletionCreateParams.Function[] = [
 			{
 				name: 'minimize_chat',
-				description: 'Minimize the chat interface in which this thread is taking place.'
+				description:
+					'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.'
 			},
 			{
 				name: 'route_to_page',
 				description:
-					'Route the user to a local route on Hunters website. Only route to one at a time.',
+					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
 				parameters: {
 					type: 'object',
 					properties: {
 						page: {
 							type: 'string',
 							enum: availableRoutes,
-							description: 'The local route to use.'
+							description: 'The local route path to navigate to.'
 						}
 					},
 					required: ['page']
 				}
+			},
+			{
+				name: 'ask_clarifying_question',
+				description:
+					"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
+				parameters: {
+					type: 'object',
+					properties: {
+						question: {
+							type: 'string',
+							description: 'The specific clarifying question to ask the user.'
+						}
+					},
+					required: ['question']
+				}
+			},
+			{
+				name: 'capture_lead_intent',
+				description:
+					"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
+				parameters: {
+					type: 'object',
+					properties: {
+						intent_type: {
+							type: 'string',
+							enum: ['hiring', 'collaboration', 'general'],
+							description: 'The type of interest the visitor has signalled.'
+						},
+						message: {
+							type: 'string',
+							description:
+								'A short, warm acknowledgement of their interest (1 sentence, plain text).'
+						}
+					},
+					required: ['intent_type', 'message']
+				}
 			}
 		];
 
-		// Completion prompt
+		const today = new Date().toLocaleDateString('en-US', {
+			weekday: 'long',
+			year: 'numeric',
+			month: 'long',
+			day: 'numeric'
+		});
+
+		const systemPrompt = `You are HuntBot — a conversational assistant on Hunter Bryant's portfolio website. Hunter is a senior product designer known for complex hardware/software product experiences, particularly in cycling tech and consumer apps.
+
+## Your role
+Help visitors discover Hunter's work, answer questions about his background and design philosophy, and guide them to relevant pages. You're essentially the smartest person at the party who happens to know everything about Hunter's career.
+
+## Tone
+Conversational and direct — like a knowledgeable friend, not a PR pitch. Keep responses to 1–2 sentences unless a topic genuinely needs more depth. No marketing speak, no filler phrases. Plain text only — no markdown, no bullet points, no links in your replies.
+
+## Handling follow-up questions
+The conversation has history. When a user says "tell me more", "what about that", or asks a follow-up, treat it in context of what was just discussed. Don't restart from scratch.
+
+## Time and dates
+Today is ${today}. Use this to interpret relative time questions like "recently", "last year", or "what has he been working on lately". When the context includes dates or timelines, use them to give specific, grounded answers. If you can name a month or year, do — vague answers like "recently" are less useful than "as of early 2025".
+
+## Current page
+The visitor is currently on: ${currentPage}
+If this is a specific case study or project URL (e.g. /case-studies/karoo2), they are already looking at that work — engage with it directly, don't ask them what they want to know about it. If they're on the home page, /case-studies, or /projects, treat them as still browsing.
+
+## Tools
+- Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific project or case study page. Don't ask clarifying questions back-to-back.
+- Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm, specific acknowledgement in the message field — this is what they'll see as your response. The function surfaces contact links automatically, so don't repeat contact info in your message.
+
+## Navigation
+When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
+
+APPROVED ROUTES (copy exactly, no modifications):
+${availableRoutes.join('\n')}
+
+---
+
+CONTEXT:
+${context}`;
+
 		const prompt = [
 			{
 				role: 'system',
-				content: `You are an assistant on product designer Hunter Bryants website. You exist as a way to show off his previous work and try to sell Hunter as a great product design job candidate.
-
-				Responses should be brief, in a chat app. Only write more than two sentences if going into the specifics of a topic.
-
-				When you begin talking about a topic that might have a relevant page, route the user to that page. When routing to a new page, make sure to tell the user a bit about that project.  If you are sending the user a message, only reply in plain text with no links. You tone: conversational, spartan, use less corporate jargon.
-
-				IMPORTANT: You may only route to pages that exist on the site. The complete list of available routes is:
-				${availableRoutes.join('\n')}
-				If a project or page is not in that list, do NOT call route_to_page for it. Simply discuss it without routing.
-
-				Take into account any CONTEXT BLOCK that is provided in a conversation.
-				If the context does not provide the answer to question, the say you don't know.
-
-				START CONTEXT BLOCK
-				${context}
-				END OF CONTEXT BLOCK
-
-				You will not apologize for previous responses, but instead will indicated new information was gained.
-				You will NOT invent anything that is not drawn directly from the context. If you do not find the answer to a question in the context, be upfront that you do not know.
-				You will NOT reply with any profanity.
-				`
+				content: systemPrompt
 			}
 		];
 

@@ -7,6 +7,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
 	import { navEngaged, chatOpen } from '$lib/nav/navstore';
+	import { page } from '$app/stores';
 	import Beaker from '$lib/assets/beaker.svelte';
 	import ActionMessage from './ActionMessage.svelte';
 	import { chat, botEngaged, minimized } from './MessageStore';
@@ -142,6 +143,6 @@
 		</div>
 	{/if}
 	{#if $botEngaged}
-		<TextInput {isLoading} {handleSubmit} {input} />
+		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} />
 	{/if}
 </div>

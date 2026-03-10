@@ -6,7 +6,7 @@ import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
 const greetingResponse: string =
-	'I know, I know, another chatbot. Hear me out, I’m a Frankenstein project Hunter hacked together to pitch himself. I’m wired into his site.\nIf you’re game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don’t want to play along, you can minimize me up to your right↗';
+	"I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗";
 
 const initMessage: Message = {
 	id: 'initialmessage',
@@ -20,7 +20,7 @@ export const botEngaged = writable(false);
 export const minimized = writable(true);
 
 export const chat = () => {
-	const { setMessages, ...chatProps } = useChat({
+	const { setMessages, append, messages, ...chatProps } = useChat({
 		initialMessages: [initMessage],
 		id: 'uniquechatid',
 		experimental_onFunctionCall: functionCallHandler
@@ -33,7 +33,7 @@ export const chat = () => {
 		setMessagesGlobal([{ ...initMessage, content: greetingResponse }]);
 	}, 2000);
 
-	return { setMessages, ...chatProps };
+	return { setMessages, append, messages, ...chatProps };
 };
 
 const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCall) => {
@@ -65,26 +65,62 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		if (functionCall.arguments) {
 			const parsedFunctionCallArguments = JSON.parse(functionCall.arguments);
 
-			// Navigate after a short delay
+			const updatedMessages = [
+				...chatMessages,
+				{
+					id: nanoid(),
+					role: 'function' as const,
+					name: functionCall.name,
+					content: `Routed to ${parsedFunctionCallArguments.page}`,
+					data: FunctionState.success
+				} as FunctionMessage
+			];
+
+			// Update the store immediately so ActionMessage renders before navigation
+			setMessagesGlobal(updatedMessages);
+
 			setTimeout(() => {
 				goto(`${parsedFunctionCallArguments.page}`);
 			}, 400);
 
-			// Return the function result directly — no separate setMessagesGlobal calls.
-			// The data field drives the ActionMessage UI (success check), the content
-			// is what the LLM receives as the function result to inform its follow-up.
-			return {
-				messages: [
-					...chatMessages,
-					{
-						id: nanoid(),
-						role: 'function' as const,
-						name: functionCall.name,
-						content: `Routed to ${parsedFunctionCallArguments.page}`,
-						data: FunctionState.success
-					} as FunctionMessage
-				]
-			};
+			// Return the same messages so the SDK makes a follow-up LLM call,
+			// allowing the bot to say something after navigating.
+			return { messages: updatedMessages };
+		}
+	} else if (functionCall.name === 'ask_clarifying_question') {
+		if (functionCall.arguments) {
+			const args = JSON.parse(functionCall.arguments);
+			// Render the clarifying question as a normal bot message, not an action bubble
+			setMessagesGlobal([
+				...chatMessages,
+				{
+					id: nanoid(),
+					role: 'assistant' as const,
+					content: args.question ?? "Could you tell me a bit more about what you're looking for?"
+				}
+			]);
+		}
+	} else if (functionCall.name === 'capture_lead_intent') {
+		if (functionCall.arguments) {
+			const args = JSON.parse(functionCall.arguments);
+			// Render the warm message as a normal bot message, then show the contact card
+			// separately. Using setMessagesGlobal (no return) prevents a redundant LLM follow-up.
+			const warmMessage = args.message ?? "Sounds like you're interested in working with Hunter.";
+			setMessagesGlobal([
+				...chatMessages,
+				{
+					id: nanoid(),
+					role: 'assistant' as const,
+					content: warmMessage
+				},
+				{
+					id: nanoid(),
+					role: 'function' as const,
+					name: functionCall.name,
+					content: '',
+					data: FunctionState.success
+				} as FunctionMessage
+			]);
 		}
 	} else {
 		console.log('Unexpected function call: ', functionCall.name);

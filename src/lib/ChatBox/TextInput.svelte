@@ -6,6 +6,7 @@
 	import { chat, minimized } from './MessageStore';
 
 	export let { input, handleSubmit, isLoading } = chat();
+	export let currentPage: string = '/';
 
 	let inputElement: HTMLInputElement;
 	let placeholder = 'Message HuntBot';
@@ -23,7 +24,7 @@
 			inputElement.blur();
 		}
 
-		handleSubmit(event);
+		handleSubmit(event, { body: { currentPage } });
 	}
 
 	function focusInput() {
