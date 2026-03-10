@@ -6,6 +6,30 @@ import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
 export const suggestions = writable<string[]>([]);
+export const scrollSuggestions = writable<string[]>([]);
+export const hoverSuggestions = writable<string[]>([]);
+export const loadingContextSuggestions = writable(false);
+
+// Shared debounce + abort for hover/scroll context fetches so back-to-back
+// triggers coalesce into a single request rather than racing each other.
+let contextDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let contextFetchController: AbortController | null = null;
+
+function scheduleContextFetch(fn: (signal: AbortSignal) => Promise<void>) {
+	if (contextDebounceTimer) clearTimeout(contextDebounceTimer);
+	if (contextFetchController) contextFetchController.abort();
+	contextFetchController = new AbortController();
+	const controller = contextFetchController;
+	contextDebounceTimer = setTimeout(() => fn(controller.signal), 400);
+}
+
+export function cancelContextFetches() {
+	if (contextDebounceTimer) clearTimeout(contextDebounceTimer);
+	if (contextFetchController) contextFetchController.abort();
+	contextDebounceTimer = null;
+	contextFetchController = null;
+	loadingContextSuggestions.set(false);
+}
 
 export async function triggerProactiveOpener(
 	currentMessages: Message[],
@@ -35,7 +59,68 @@ export async function triggerProactiveOpener(
 	}
 }
 
+export function fetchScrollSuggestions(
+	currentPage: string,
+	scrollDepth: number,
+	sectionHeading: string | null
+): void {
+	// Only show the loading state when tied to a specific section heading — the
+	// initial mount fetch and scroll-depth-only fetches produce generic suggestions
+	// that aren't tailored enough to warrant surfacing the placeholder transition.
+	const isContextual = sectionHeading !== null;
+
+	scheduleContextFetch(async (signal) => {
+		if (isContextual) loadingContextSuggestions.set(true);
+		try {
+			const response = await fetch('/api/chat/suggestions', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ messages: [], currentPage, scrollDepth, sectionHeading }),
+				signal
+			});
+			if (response.ok) {
+				const data = await response.json();
+				scrollSuggestions.set(data.suggestions ?? []);
+			}
+		} catch (e) {
+			if ((e as Error).name !== 'AbortError') {
+				// Silently fail — scroll suggestions are best-effort; keep last good set
+			}
+		} finally {
+			if (isContextual) loadingContextSuggestions.set(false);
+		}
+	});
+}
+
+export function fetchHoverSuggestions(currentPage: string, hoveredContent: string): void {
+	scheduleContextFetch(async (signal) => {
+		loadingContextSuggestions.set(true);
+		try {
+			const response = await fetch('/api/chat/suggestions', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ messages: [], currentPage, hoveredContent }),
+				signal
+			});
+			if (response.ok) {
+				const data = await response.json();
+				hoverSuggestions.set(data.suggestions ?? []);
+			}
+		} catch (e) {
+			if ((e as Error).name !== 'AbortError') {
+				// Silently fail — hover suggestions are best-effort
+			}
+		} finally {
+			loadingContextSuggestions.set(false);
+		}
+	});
+}
+
 export async function fetchSuggestions(messages: Message[], currentPage: string): Promise<void> {
+	// Cancel any pending context fetch — post-response suggestions take priority
+	cancelContextFetches();
+	scrollSuggestions.set([]);
+	hoverSuggestions.set([]);
 	try {
 		const response = await fetch('/api/chat/suggestions', {
 			method: 'POST',
@@ -89,8 +174,19 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		return;
 	}
 
+	// Strip the empty-content assistant message the SDK creates for function calls
+	const baseMessages = chatMessages.filter(
+		(m) => !(m.role === 'assistant' && !m.content?.trim() && 'function_call' in m)
+	);
+
 	if (functionCall.name === 'minimize_chat') {
 		if (functionCall.arguments) {
+			const args = JSON.parse(functionCall.arguments);
+			const textMessage: Message = {
+				id: nanoid(),
+				role: 'assistant' as const,
+				content: args.message ?? "I'll be here if you need me."
+			};
 			const functionMessage: FunctionMessage = {
 				id: nanoid(),
 				content: 'Minimizing the chat',
@@ -99,9 +195,13 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 				data: FunctionState.loading
 			};
 
-			setMessagesGlobal([...chatMessages, functionMessage]);
+			setMessagesGlobal([...baseMessages, textMessage, functionMessage]);
 			setTimeout(() => {
-				setMessagesGlobal([...chatMessages, { ...functionMessage, data: FunctionState.success }]);
+				setMessagesGlobal([
+					...baseMessages,
+					textMessage,
+					{ ...functionMessage, data: FunctionState.success }
+				]);
 				setTimeout(() => {
 					minimized.set(true);
 				}, 1000);
@@ -109,32 +209,34 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 		}
 	} else if (functionCall.name === 'route_to_page') {
 		if (functionCall.arguments) {
-			const parsedFunctionCallArguments = JSON.parse(functionCall.arguments);
+			const args = JSON.parse(functionCall.arguments);
+			const textMessage: Message = {
+				id: nanoid(),
+				role: 'assistant' as const,
+				content: args.message ?? `Taking you to ${args.page}.`
+			};
 
-			const updatedMessages = [
-				...chatMessages,
+			setMessagesGlobal([
+				...baseMessages,
+				textMessage,
 				{
 					id: nanoid(),
 					role: 'function' as const,
 					name: functionCall.name,
-					content: `Routed to ${parsedFunctionCallArguments.page}`,
+					content: `Routed to ${args.page}`,
 					data: FunctionState.success
 				} as FunctionMessage
-			];
-
-			// Update the store immediately so ActionMessage renders before navigation
-			setMessagesGlobal(updatedMessages);
+			]);
 
 			setTimeout(() => {
-				goto(`${parsedFunctionCallArguments.page}`);
+				goto(`${args.page}`);
 			}, 400);
 		}
 	} else if (functionCall.name === 'ask_clarifying_question') {
 		if (functionCall.arguments) {
 			const args = JSON.parse(functionCall.arguments);
-			// Render the clarifying question as a normal bot message, not an action bubble
 			setMessagesGlobal([
-				...chatMessages,
+				...baseMessages,
 				{
 					id: nanoid(),
 					role: 'assistant' as const,
@@ -145,11 +247,9 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 	} else if (functionCall.name === 'capture_lead_intent') {
 		if (functionCall.arguments) {
 			const args = JSON.parse(functionCall.arguments);
-			// Render the warm message as a normal bot message, then show the contact card
-			// separately. Using setMessagesGlobal (no return) prevents a redundant LLM follow-up.
 			const warmMessage = args.message ?? "Sounds like you're interested in working with Hunter.";
 			setMessagesGlobal([
-				...chatMessages,
+				...baseMessages,
 				{
 					id: nanoid(),
 					role: 'assistant' as const,

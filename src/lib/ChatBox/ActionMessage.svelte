@@ -14,7 +14,7 @@
 
 <div
 	in:slide|global={{ duration: 400 }}
-	class="items-top mb-4 ml-12 mr-6 mt-4 flex w-[calc(full-4rem)] shrink-0 basis-12 flex-col flex-nowrap gap-1 rounded-2xl border border-stone-200 bg-stone-100 py-1 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300"
+	class="mb-4 ml-12 mr-6 mt-4 flex flex-col gap-1 rounded-2xl border border-stone-200 bg-stone-100 py-1 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300"
 >
 	{#if typedValue.name === 'capture_lead_intent'}
 		<div class="my-1 flex gap-3">

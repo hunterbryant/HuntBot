@@ -21,6 +21,7 @@
 		"@sveltejs/kit": "^2.5.4",
 		"@sveltejs/vite-plugin-svelte": "^3.0.2",
 		"@tailwindcss/typography": "^0.5.10",
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/html-to-text": "^9.0.4",
 		"@types/md5": "^2.3.5",
 		"@typescript-eslint/eslint-plugin": "^6.21.0",
@@ -50,15 +51,16 @@
 		"@langchain/openai": "^0.0.20",
 		"@langchain/qdrant": "^0.0.5",
 		"@notionhq/client": "^2.2.14",
-		"@qdrant/js-client-rest": "^1.9.0",
 		"@prismicio/client": "^7.3.1",
 		"@prismicio/svelte": "^1.0.3",
+		"@qdrant/js-client-rest": "^1.9.0",
 		"@splinetool/runtime": "^1.0.66",
 		"@types/jsonwebtoken": "^9.0.6",
 		"@vercel/analytics": "^1.2.2",
 		"@vercel/speed-insights": "^1.0.10",
 		"add": "^2.0.6",
 		"ai": "^2.2.37",
+		"better-sqlite3": "^12.6.2",
 		"cheerio": "1.0.0-rc.12",
 		"d3-dsv": "^2.0.0",
 		"embla-carousel": "8.0.0-rc19",
@@ -78,6 +80,9 @@
 	"pnpm": {
 		"overrides": {
 			"@langchain/core": "0.1.46"
-		}
+		},
+		"onlyBuiltDependencies": [
+			"better-sqlite3"
+		]
 	}
 }

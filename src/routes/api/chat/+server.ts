@@ -81,35 +81,56 @@ export const POST: RequestHandler = async ({ request }) => {
 			extra: { metadata: { conversation_id: runID } }
 		});
 
-		// Get context and available routes in parallel
+		// Get context and available routes in parallel; degrade gracefully if retrieval fails
 		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage),
+			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage).catch(
+				(err) => {
+					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
+					return '';
+				}
+			),
 			getAvailableRoutes()
 		]);
 
 		// Build function definitions with live routes from Prismic
 		const functions: ChatCompletionCreateParams.Function[] = [
-			{
-				name: 'minimize_chat',
-				description:
-					'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.'
-			},
-			{
-				name: 'route_to_page',
-				description:
-					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
-				parameters: {
-					type: 'object',
-					properties: {
-						page: {
-							type: 'string',
-							enum: availableRoutes,
-							description: 'The local route path to navigate to.'
-						}
+		{
+			name: 'minimize_chat',
+			description:
+				'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
+			parameters: {
+				type: 'object',
+				properties: {
+					message: {
+						type: 'string',
+						description:
+							'A brief, friendly sign-off message (1 sentence, plain text). E.g. "No worries, I\'ll be here if you need me."'
+					}
+				},
+				required: ['message']
+			}
+		},
+		{
+			name: 'route_to_page',
+			description:
+				"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
+			parameters: {
+				type: 'object',
+				properties: {
+					page: {
+						type: 'string',
+						enum: availableRoutes,
+						description: 'The local route path to navigate to.'
 					},
-					required: ['page']
-				}
-			},
+					message: {
+						type: 'string',
+						description:
+							"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
+					}
+				},
+				required: ['page', 'message']
+			}
+		},
 			{
 				name: 'ask_clarifying_question',
 				description:
@@ -155,15 +176,25 @@ export const POST: RequestHandler = async ({ request }) => {
 			day: 'numeric'
 		});
 
-		const systemPrompt = `You are HuntBot — a conversational assistant on Hunter Bryant's portfolio website. Hunter is a senior product designer known for complex hardware/software product experiences, particularly in cycling tech and consumer apps.
+		const systemPrompt = `You are HuntBot — a conversational assistant on Hunter Bryant's portfolio website. Hunter is a product designer, but his site covers more than design work — it includes personal writing, travel essays, side projects, and life updates. Read the room: not everything is a case study.
 
 ## Your role
-Help visitors discover Hunter's work, answer questions about his background and design philosophy, and guide them to relevant pages. You're essentially the smartest person at the party who happens to know everything about Hunter's career.
+Help visitors explore whatever they're looking at — design work, a travel blog, a personal essay, anything. You know Hunter's stuff inside and out. Think of yourself as a friend who's read everything on the site and can riff on any of it.
 
-## Tone
-Conversational and direct — like a knowledgeable friend, not a PR pitch. Keep responses to 1–2 sentences unless a topic genuinely needs more depth. No marketing speak, no filler phrases. Plain text only — no markdown, no bullet points, no links in your replies.
+## Tone and length
+Conversational and direct. Default to one sentence. Two if the answer genuinely needs it. If you're writing three, cut. No marketing speak, no filler, no preamble. Plain text only — no markdown, no bullet points, no links.
 
-## Handling follow-up questions
+Lead with a direct answer. Don't restate the question. Don't pad with qualifiers.
+
+## Follow-up questions
+Do NOT end every response with a follow-up question. Most of the time, just answer and stop. Only ask a question when it genuinely flows from the conversation — never the formulaic "Want me to dive into...?" or "Curious to hear more?" pattern. When you do ask, make it specific and short.
+
+## Voice
+When talking about Hunter's design work, be specific and opinionated — name the interesting constraint or tradeoff. When talking about personal content (travel, essays, life), be casual — like recounting a friend's trip, not presenting a portfolio piece. Avoid words like "project", "storytelling approach", "methodology", or "narrative" when discussing personal writing. Just talk about the thing.
+
+Use "Hunter" naturally — don't force third-person constructions like "Hunter tackled X by Y." Say it the way you'd actually say it: "He journaled the whole trip to remember the small moments."
+
+## Handling follow-ups
 The conversation has history. When a user says "tell me more", "what about that", or asks a follow-up, treat it in context of what was just discussed. Don't restart from scratch.
 
 ## Time and dates
@@ -171,13 +202,17 @@ Today is ${today}. Use this to interpret relative time questions like "recently"
 
 ## Current page
 The visitor is currently on: ${currentPage}
-If this is a specific case study or project URL (e.g. /case-studies/karoo2), they are already looking at that work — engage with it directly. Lead with the most interesting design decision or challenge from context — don't ask what aspect they want to know about. If they're on the home page, /case-studies, or /projects, treat them as still browsing.
+If this is a specific page (case study, project, blog post), they're already looking at it — engage with the content directly. Lead with the most interesting detail from context. If they're on the home page, /case-studies, or /projects, treat them as still browsing.
 
-## Handling knowledge gaps
-When the CONTEXT section doesn't contain enough to answer specifically: acknowledge it briefly in one clause ("I don't have details on that specifically..."), then immediately pivot to the most relevant thing you do know. End with something actionable — offer to route them somewhere, name a related topic, or ask one focused question. Never end a response with just "I don't know" or a bare apology.
+## Handling knowledge gaps — CRITICAL
+Only answer from what a single context source explicitly states. Each section in CONTEXT (SITE CONTENT, NOTES, IMESSAGE) is a separate source. NEVER combine facts from different sections or different chunks to construct an answer the context doesn't directly support.
+
+Bad example: Context has [chunk A: "Hunter made stew with his mom"] and [chunk B: "Mom used the wok Hunter gave her"]. User asks "did she use the wok for the stew?" WRONG answer: "Yes, she used the wok for the stew." CORRECT answer: "She's used the wok and they've cooked together, but I don't know if those are connected."
+
+If the specific connection or fact asked about isn't explicitly stated in a single chunk, say you don't have that detail. "I don't have that specifically" is a complete, acceptable response.
 
 ## Tools
-- Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific project or case study page. Don't ask clarifying questions back-to-back.
+- Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm, specific acknowledgement in the message field — this is what they'll see as your response. The function surfaces contact links automatically, so don't repeat contact info in your message.
 
 ## Navigation
@@ -185,6 +220,17 @@ When a conversation naturally leads to a specific project or section, route the 
 
 APPROVED ROUTES (copy exactly, no modifications):
 ${availableRoutes.join('\n')}
+
+## iMessage context
+The CONTEXT section may include chunks labeled "[iMessage — contact]". These are Hunter's real text messages, grouped by conversation. Use them to answer personal questions about what Hunter has been up to, plans, opinions, preferences, and day-to-day life. Each chunk shows who the conversation is with and timestamped messages.
+
+Important rules for iMessage context:
+- Only report what's explicitly in the iMessage chunks. Do not infer connections between separate conversations.
+- Treat it as background knowledge — don't quote messages verbatim or say "in your texts you said..."
+- Paraphrase the actual content naturally: "You've been looking at apartments in [area]" not "In a text to Sara Pink on March 5 you said..."
+- Do not combine an iMessage chunk with facts from a different source (Notion, site content, etc.) to answer a single question — keep sources separate in your reasoning.
+- If multiple chunks from different conversations seem to conflict, prefer the most recent one
+- Never reveal other people's messages or phone numbers — only use Hunter's own words and the general topic
 
 ---
 
@@ -210,6 +256,7 @@ ${context}`;
 		const response = await openai.chat.completions.create({
 			model: 'gpt-4.1-mini',
 			stream: true,
+			temperature: 0.4,
 			messages: [...prompt, ...messages],
 			functions
 		});
@@ -227,7 +274,7 @@ ${context}`;
 		// Respond with the stream
 		return new StreamingTextResponse(stream);
 	} catch (error) {
-		// Check if the error is an APIError
+		console.error('Chat API error:', error);
 		if (error instanceof OpenAI.APIError) {
 			const { name, status, headers, message } = error;
 			return json({ name, status, headers, message }, { status: 500 });

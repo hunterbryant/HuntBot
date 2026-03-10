@@ -5,6 +5,7 @@ import type { Document } from '@langchain/core/documents';
 import { compile } from 'html-to-text';
 import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';
 import { Client } from 'langsmith';
+import { getImessageEnabled } from '$lib/server/imessage-config';
 
 export type Metadata = {
 	url: string;
@@ -105,15 +106,44 @@ export const getContext = async (
 		client: langsmithClient
 	});
 
+	const imessageEnabled = await getImessageEnabled();
+
+	// Always exclude iMessage docs from the main retriever. When iMessage is enabled,
+	// those documents are fetched by the dedicated iMessage retriever below. When it's
+	// disabled, they should never surface at all — regardless of what's in the collection.
+	const mainRetrieverOptions = {
+		k: 6,
+		filter: {
+			must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
+		}
+	};
+
 	const retriever = MultiQueryRetriever.fromLLM({
 		llm: model,
-		retriever: vectorStore.asRetriever({ k: 6 }),
+		retriever: vectorStore.asRetriever(mainRetrieverOptions),
 		verbose: false
 	});
 
-	const retrievedDocs = await retriever.getRelevantDocuments(retrievalQuery, {
-		metadata: { conversation_id: runID }
-	});
+	// Run iMessage retrieval in parallel when enabled.
+	// k=8 casts a wider net across long conversation histories so more topically
+	// distinct chunks (e.g. work vs. side projects) can surface.
+	const imessageRetrieverPromise = imessageEnabled
+		? vectorStore
+				.asRetriever({
+					k: 8,
+					filter: { must: [{ key: 'metadata.source', match: { value: 'imessage' } }] }
+				})
+				.getRelevantDocuments(retrievalQuery)
+		: Promise.resolve([]);
+
+	const [mainDocs, imessageDocs] = await Promise.all([
+		retriever.getRelevantDocuments(retrievalQuery, {
+			metadata: { conversation_id: runID }
+		}),
+		imessageRetrieverPromise
+	]);
+
+	const retrievedDocs = [...mainDocs, ...imessageDocs];
 
 	// Log to Langsmith on completion
 	childRun.end({ outputs: { answer: retrievedDocs } });
@@ -121,27 +151,61 @@ export const getContext = async (
 
 	const deduplicated = deduplicateDocs(retrievedDocs);
 
-	// Split retrieved docs into site pages (fetch full content) vs other sources (use chunks)
+	// Split retrieved docs into site pages, iMessage, and other sources.
+	// Keep up to MAX_IMESSAGE_CHUNKS_PER_CHAT highest-scoring chunks per conversation —
+	// chunks arrive ranked by score so the first stored is the best match. Allowing a
+	// second chunk lets topically distinct sections (e.g. work talk vs. side projects)
+	// from the same long conversation both surface in context.
+	const MAX_IMESSAGE_CHUNKS_PER_CHAT = 2;
 	const siteUrls = new Set<string>();
+	const imessageChatChunks = new Map<string, Document[]>();
 	const fallbackDocs: Document[] = [];
 
 	for (const doc of deduplicated) {
 		const source = doc.metadata?.source;
-		if (typeof source === 'string' && source.startsWith(SITE_ORIGIN)) {
+		if (source === 'imessage') {
+			const chatId = String(doc.metadata?.chatId ?? '');
+			if (chatId) {
+				const existing = imessageChatChunks.get(chatId) ?? [];
+				if (existing.length < MAX_IMESSAGE_CHUNKS_PER_CHAT) {
+					existing.push(doc);
+					imessageChatChunks.set(chatId, existing);
+				}
+			}
+		} else if (typeof source === 'string' && source.startsWith(SITE_ORIGIN)) {
 			siteUrls.add(source);
 		} else {
 			fallbackDocs.push(doc);
 		}
 	}
 
-	// If the user is on a specific page, always include it — don't rely on retrieval alone.
-	// This ensures "tell me more about this page" always has the right content.
+	// Build iMessage context. First chunk: use expandedContext (±5k char window around
+	// the best match). Additional chunks: include their raw pageContent only if not
+	// already covered by the primary window, to avoid redundancy without losing coverage.
+	const imessageParts: string[] = [];
+	for (const [, chunks] of imessageChatChunks) {
+		const meta = chunks[0].metadata ?? {};
+		// Use participants list for group chats so all names appear in the context label
+		const label =
+			meta.isGroupChat === 1 && meta.participants ? meta.participants : (meta.contact ?? 'unknown');
+		const primaryContext = meta.expandedContext || chunks[0].pageContent;
+		const parts = [primaryContext];
+
+		for (let i = 1; i < chunks.length; i++) {
+			const extra = chunks[i].pageContent;
+			// Skip if the primary window already contains this chunk's opening text
+			if (!primaryContext.includes(extra.slice(0, 80))) {
+				parts.push(extra);
+			}
+		}
+
+		imessageParts.push(`[iMessage — ${label}]\n${parts.join('\n\n---\n\n')}`);
+	}
+
 	if (currentPage && !BROWSE_PAGES.has(currentPage)) {
 		siteUrls.add(`${SITE_ORIGIN}${currentPage}`);
 	}
 
-	// Fetch full page text for each matched site URL in parallel.
-	// Multiple chunks from the same page collapse into one full fetch.
 	const pageResults = await Promise.all(
 		[...siteUrls].map(async (url) => {
 			const text = await fetchFullPageText(url);
@@ -149,14 +213,25 @@ export const getContext = async (
 		})
 	);
 
-	// Format fallback docs (Notion, text files) using their chunk content
 	const fallbackParts = fallbackDocs.map((doc) => {
 		const label = doc.metadata?.title || doc.metadata?.source || '';
 		return label ? `[${label}]\n${doc.pageContent}` : doc.pageContent;
 	});
 
-	return [
-		...pageResults.filter((r): r is string => r !== null),
-		...fallbackParts
-	].join('\n\n---\n\n');
+	const sections: string[] = [];
+
+	const siteContent = pageResults.filter((r): r is string => r !== null);
+	if (siteContent.length > 0) {
+		sections.push(`### SITE CONTENT (pages from hunterbryant.io)\n${siteContent.join('\n\n---\n\n')}`);
+	}
+
+	if (fallbackParts.length > 0) {
+		sections.push(`### NOTES & DOCUMENTS\n${fallbackParts.join('\n\n---\n\n')}`);
+	}
+
+	if (imessageParts.length > 0) {
+		sections.push(`### IMESSAGE CONVERSATIONS (private text messages — separate source from above)\n${imessageParts.join('\n\n---\n\n')}`);
+	}
+
+	return sections.join('\n\n========\n\n');
 };
