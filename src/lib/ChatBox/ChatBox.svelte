@@ -74,6 +74,15 @@
 		prevLoading = $isLoading ?? false;
 	}
 
+	// Show starter suggestions once the intro message is visible and no conversation yet
+	$: if ($botEngaged && !$minimized && !$isLoading) {
+		const hasUserMessages = $messages.some((m) => m.role === 'user');
+		const hasBotMessages = $messages.some((m) => m.role === 'assistant');
+		if (!hasUserMessages && hasBotMessages && $suggestions.length === 0) {
+			fetchSuggestions($messages, $page.url.pathname);
+		}
+	}
+
 	// Clear suggestions when user starts typing
 	$: if ($input && $input.trim() !== '') {
 		suggestions.set([]);
