@@ -128,10 +128,6 @@ const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCa
 			setTimeout(() => {
 				goto(`${parsedFunctionCallArguments.page}`);
 			}, 400);
-
-			// Return the same messages so the SDK makes a follow-up LLM call,
-			// allowing the bot to say something after navigating.
-			return { messages: updatedMessages };
 		}
 	} else if (functionCall.name === 'ask_clarifying_question') {
 		if (functionCall.arguments) {
