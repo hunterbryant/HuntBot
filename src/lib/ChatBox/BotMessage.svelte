@@ -1,23 +1,18 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide, fade } from 'svelte/transition';
-	import { chat } from './MessageStore';
 
 	export let value: string;
 	export let isLast: boolean = false;
+	export let onRetry: (() => void) | null = null;
 
 	$: updatedVal = value;
-
-	const { append } = chat();
 
 	let retried = false;
 
 	function handleRetry() {
 		retried = true;
-		append({
-			role: 'user',
-			content: "That response wasn't quite right — can you give a more specific or direct answer?"
-		});
+		onRetry?.();
 	}
 </script>
 

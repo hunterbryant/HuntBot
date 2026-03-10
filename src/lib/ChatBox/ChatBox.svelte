@@ -112,6 +112,13 @@
 		// Server derives currentPage from the Referer header automatically
 		await append({ role: 'user', content: suggestion });
 	}
+
+	function retryLastResponse() {
+		append({
+			role: 'user',
+			content: "That response wasn't quite right — can you give a more specific or direct answer?"
+		});
+	}
 </script>
 
 <div
@@ -183,6 +190,7 @@
 							<BotMessage
 								value={message.content}
 								isLast={i === $messages.length - 1 && !$isLoading}
+								onRetry={retryLastResponse}
 							/>
 						{:else if message.role === 'function'}
 							<ActionMessage value={message} />
