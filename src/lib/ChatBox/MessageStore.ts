@@ -5,6 +5,8 @@ import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
+const SESSION_ID = crypto.randomUUID();
+
 export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
 export const hoverSuggestions = writable<string[]>([]);
@@ -154,6 +156,7 @@ export const chat = () => {
 	const { setMessages, append, messages, ...chatProps } = useChat({
 		initialMessages: [initMessage],
 		id: 'uniquechatid',
+		body: { sessionId: SESSION_ID },
 		experimental_onFunctionCall: functionCallHandler
 	});
 

@@ -42,7 +42,7 @@ async function getAvailableRoutes(): Promise<string[]> {
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const body = await request.json();
-		const { messages } = body;
+		const { messages, sessionId } = body;
 
 		// Derive current page from the Referer header — the browser sets this automatically
 		// to the actual URL of the page that made the request, which is more reliable than
@@ -261,14 +261,46 @@ ${context}`;
 			functions
 		});
 
+		// Capture any function call fired during streaming (for PostHog logging)
+		let capturedFunctionCall: { name: string; arguments: string } | null = null;
+
 		// Convert the response into a friendly text-stream
 		const stream = OpenAIStream(response, {
+			experimental_onFunctionCall: async (payload) => {
+				capturedFunctionCall = { name: payload.name, arguments: JSON.stringify(payload.arguments) };
+			},
 			onCompletion: async (completeResponse) => {
 				// Log to Langsmith on completion
 				childRun.end({ outputs: { answer: completeResponse } });
 				await childRun.postRun();
 				pipeline.end({ outputs: { answer: completeResponse } });
 				await pipeline.postRun();
+
+				// Fire PostHog event — fire-and-forget, never blocks the stream
+				const posthogKey = env.POSTHOG_API_KEY;
+				if (posthogKey) {
+					fetch('https://us.i.posthog.com/capture/', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({
+							api_key: posthogKey,
+							event: 'chat_message',
+							distinct_id: sessionId ?? runID,
+							timestamp: new Date().toISOString(),
+							properties: {
+								user_message: lastMessage.content,
+								bot_response: completeResponse || null,
+								function_call_name: capturedFunctionCall?.name ?? null,
+								function_call_args: capturedFunctionCall?.arguments ?? null,
+								current_page: currentPage,
+								run_id: runID,
+								session_id: sessionId ?? null
+							}
+						})
+					}).catch(() => {
+						/* swallow — don't break chat if PostHog is unreachable */
+					});
+				}
 			}
 		});
 		// Respond with the stream
