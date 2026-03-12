@@ -5,14 +5,18 @@ import jwt from 'jsonwebtoken';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
-	// If already logged in continue to destination
-	if (locals.user && locals.user.role === UserRole.USER) {
-		const redirectTo = url.searchParams.get('redirectTo');
+	if (!locals.user) return;
 
+	const redirectTo = url.searchParams.get('redirectTo');
+
+	if (locals.user.role === UserRole.ADMIN) {
+		redirect(303, redirectTo ? `/${redirectTo.slice(1)}` : '/admin');
+	}
+
+	if (locals.user.role === UserRole.USER) {
 		if (redirectTo && redirectTo !== '/admin') {
 			redirect(303, `/${redirectTo.slice(1)}`);
 		}
-
 		redirect(303, '/');
 	}
 };
