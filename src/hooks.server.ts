@@ -7,7 +7,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.user = authenticateUser(event.cookies);
 
 	if (event.url.pathname.startsWith('/admin') && event.locals.user?.role !== UserRole.ADMIN) {
-		redirect(303, '/login?redirectTo=/admin');
+		return new Response(null, {
+			status: 303,
+			headers: {
+				Location: '/login?redirectTo=/admin',
+				'Cache-Control': 'no-store'
+			}
+		});
 	}
 
 	const response = await resolve(event);
