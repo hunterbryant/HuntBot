@@ -9,10 +9,6 @@ export const load: PageServerLoad = ({ locals, url }) => {
 
 	const redirectTo = url.searchParams.get('redirectTo');
 
-	if (locals.user.role === UserRole.ADMIN) {
-		redirect(303, redirectTo ? `/${redirectTo.slice(1)}` : '/admin');
-	}
-
 	if (locals.user.role === UserRole.USER) {
 		if (redirectTo && redirectTo !== '/admin') {
 			redirect(303, `/${redirectTo.slice(1)}`);
