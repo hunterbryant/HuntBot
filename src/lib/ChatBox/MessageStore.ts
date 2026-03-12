@@ -1,9 +1,21 @@
 import { goto } from '$app/navigation';
+import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import type { FunctionCallHandler } from 'ai';
 import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
+
+function getOrCreateSessionId(): string {
+	const key = 'huntbot_session_id';
+	const existing = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null;
+	if (existing) return existing;
+	const id = crypto.randomUUID();
+	if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(key, id);
+	return id;
+}
+
+export const SESSION_ID = getOrCreateSessionId();
 
 export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
@@ -80,7 +92,16 @@ export function fetchScrollSuggestions(
 			});
 			if (response.ok) {
 				const data = await response.json();
-				scrollSuggestions.set(data.suggestions ?? []);
+				const suggs: string[] = data.suggestions ?? [];
+				scrollSuggestions.set(suggs);
+				if (suggs.length > 0) {
+					captureEvent('suggestions_shown', SESSION_ID, {
+						suggestion_type: 'scroll',
+						suggestions: suggs,
+						current_page: currentPage,
+						session_id: SESSION_ID
+					});
+				}
 			}
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
@@ -104,7 +125,16 @@ export function fetchHoverSuggestions(currentPage: string, hoveredContent: strin
 			});
 			if (response.ok) {
 				const data = await response.json();
-				hoverSuggestions.set(data.suggestions ?? []);
+				const suggs: string[] = data.suggestions ?? [];
+				hoverSuggestions.set(suggs);
+				if (suggs.length > 0) {
+					captureEvent('suggestions_shown', SESSION_ID, {
+						suggestion_type: 'hover',
+						suggestions: suggs,
+						current_page: currentPage,
+						session_id: SESSION_ID
+					});
+				}
 			}
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
@@ -129,7 +159,16 @@ export async function fetchSuggestions(messages: Message[], currentPage: string)
 		});
 		if (response.ok) {
 			const data = await response.json();
-			suggestions.set(data.suggestions ?? []);
+			const suggs: string[] = data.suggestions ?? [];
+			suggestions.set(suggs);
+			if (suggs.length > 0) {
+				captureEvent('suggestions_shown', SESSION_ID, {
+					suggestion_type: 'post_message',
+					suggestions: suggs,
+					current_page: currentPage,
+					session_id: SESSION_ID
+				});
+			}
 		}
 	} catch {
 		suggestions.set([]);
@@ -137,7 +176,7 @@ export async function fetchSuggestions(messages: Message[], currentPage: string)
 }
 
 const greetingResponse: string =
-	"I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗";
+	"I know, another chatbot. But I'm wired into Hunter's site — ask me about his work, design philosophy, or life.\nNot interested? Minimize me up to your right↗";
 
 const initMessage: Message = {
 	id: 'initialmessage',
@@ -154,6 +193,7 @@ export const chat = () => {
 	const { setMessages, append, messages, ...chatProps } = useChat({
 		initialMessages: [initMessage],
 		id: 'uniquechatid',
+		body: { sessionId: SESSION_ID },
 		experimental_onFunctionCall: functionCallHandler
 	});
 

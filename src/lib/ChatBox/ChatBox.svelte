@@ -25,11 +25,21 @@
 		fetchSuggestions,
 		fetchScrollSuggestions,
 		fetchHoverSuggestions,
-		triggerProactiveOpener
+		triggerProactiveOpener,
+		SESSION_ID
 	} from './MessageStore';
+	import { captureEvent } from '$lib/analytics';
 	import LoadingStream from './LoadingStream.svelte';
 
 	const { messages, isLoading, handleSubmit, input, append } = chat();
+
+	const animatedMessageIds = new Set<string>();
+
+	function shouldAnimate(id: string): boolean {
+		if (animatedMessageIds.has(id)) return false;
+		animatedMessageIds.add(id);
+		return true;
+	}
 
 	let scrollElement: HTMLDivElement;
 	let isScrolling = false;
@@ -130,7 +140,7 @@
 		if (prevLoading && !$isLoading) {
 			const hasUserMessages = $messages.some((m) => m.role === 'user');
 			if (hasUserMessages) {
-				fetchSuggestions($messages, $page.url.pathname);
+				setTimeout(() => fetchSuggestions($messages, $page.url.pathname), 2000);
 			}
 		}
 		prevLoading = $isLoading ?? false;
@@ -460,6 +470,11 @@
 
 	async function selectSuggestion(suggestion: string) {
 		cancelContextFetches();
+		captureEvent('suggestion_clicked', SESSION_ID, {
+			suggestion_text: suggestion,
+			current_page: $page.url.pathname,
+			session_id: SESSION_ID
+		});
 		suggestions.set([]);
 		scrollSuggestions.set([]);
 		hoverSuggestions.set([]);
@@ -469,6 +484,10 @@
 	}
 
 	function retryLastResponse() {
+		captureEvent('not_helpful', SESSION_ID, {
+			session_id: SESSION_ID,
+			current_page: $page.url.pathname
+		});
 		append({
 			role: 'user',
 			content: "That response wasn't quite right — can you give a more specific or direct answer?"
@@ -539,6 +558,7 @@
 							value={message.content}
 							isLast={i === $messages.length - 1 && !$isLoading}
 							onRetry={retryLastResponse}
+							animate={shouldAnimate(message.id)}
 						/>
 					{:else if message.role === 'function'}
 						<ActionMessage value={message} />
@@ -562,7 +582,9 @@
 		</div>
 	{/if}
 	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
-		<ChatSuggestions suggestions={$activeSuggestions} onSelect={selectSuggestion} />
+		<div out:slide|global={{ duration: 200, easing: cubicOut }}>
+			<ChatSuggestions suggestions={$activeSuggestions} onSelect={selectSuggestion} />
+		</div>
 	{/if}
 	{#if $botEngaged}
 		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} onPlaceholderSelect={selectSuggestion} />
