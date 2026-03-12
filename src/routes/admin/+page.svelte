@@ -2,6 +2,66 @@
 	import { dev } from '$app/environment';
 	import { onMount } from 'svelte';
 
+	// --- Conversations tab ---
+	interface ConversationEvent {
+		type: 'chat_message' | 'suggestion_clicked';
+		timestamp: string;
+		userMessage: string | null;
+		botResponse: string | null;
+		functionCallName: string | null;
+		functionCallArgs: string | null;
+		currentPage: string | null;
+		suggestionText: string | null;
+	}
+	interface Conversation {
+		sessionId: string;
+		startedAt: string;
+		lastActiveAt: string;
+		events: ConversationEvent[];
+	}
+
+	let activeTab: 'embedding' | 'conversations' = 'embedding';
+	let conversations: Conversation[] = [];
+	let convoStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle';
+	let convoError = '';
+	let convoDays = 30;
+	let convoFetchedAt = '';
+
+	async function fetchConversations() {
+		convoStatus = 'loading';
+		convoError = '';
+		try {
+			const res = await fetch(`/api/admin/conversations?days=${convoDays}`);
+			if (!res.ok) throw new Error(`HTTP ${res.status}`);
+			const data = await res.json();
+			conversations = data.conversations ?? [];
+			convoFetchedAt = data.fetchedAt;
+			convoStatus = 'loaded';
+		} catch (e) {
+			convoError = String(e);
+			convoStatus = 'error';
+		}
+	}
+
+	function formatTime(ts: string) {
+		return new Date(ts).toLocaleString('en-US', {
+			month: 'short',
+			day: 'numeric',
+			hour: 'numeric',
+			minute: '2-digit'
+		});
+	}
+
+	function parseFnArgs(args: string | null): string {
+		if (!args) return '';
+		try {
+			const parsed = JSON.parse(args);
+			return parsed.page ?? parsed.intent_type ?? parsed.question ?? '';
+		} catch {
+			return args;
+		}
+	}
+
 	let notionStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
 	let notionProgress = 0;
 	let notionTotal = 0;
@@ -256,6 +316,30 @@
 		<div
 			class="col-start-1 col-end-6 flex flex-col gap-4 text-stone-800 sm:col-start-4 sm:col-end-7 dark:text-stone-200"
 		>
+			<!-- Tab switcher -->
+			<div class="flex gap-1 border-b border-stone-200 dark:border-stone-700">
+				<button
+					on:click={() => (activeTab = 'embedding')}
+					class="px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors {activeTab === 'embedding'
+						? 'border-b-2 border-stone-800 text-stone-800 dark:border-stone-200 dark:text-stone-200'
+						: 'text-stone-400 hover:text-stone-600 dark:hover:text-stone-300'}"
+				>
+					Embedding
+				</button>
+				<button
+					on:click={() => {
+						activeTab = 'conversations';
+						if (convoStatus === 'idle') fetchConversations();
+					}}
+					class="px-4 py-2 text-xs font-medium uppercase tracking-wider transition-colors {activeTab === 'conversations'
+						? 'border-b-2 border-stone-800 text-stone-800 dark:border-stone-200 dark:text-stone-200'
+						: 'text-stone-400 hover:text-stone-600 dark:hover:text-stone-300'}"
+				>
+					Conversations
+				</button>
+			</div>
+
+			{#if activeTab === 'embedding'}
 			<p class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
 				Embedding Processing Triggers
 			</p>
@@ -468,6 +552,103 @@
 					{/if}
 				</div>
 			</div>
+
+		{:else}
+
+		<!-- Conversations tab -->
+		<div class="flex flex-col gap-4">
+			<!-- Controls -->
+			<div class="flex items-center justify-between gap-4">
+				<p class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
+					Recent Conversations
+				</p>
+				<div class="flex items-center gap-2">
+					<select
+						bind:value={convoDays}
+						on:change={fetchConversations}
+						class="rounded border border-stone-300 bg-transparent px-2 py-1 text-xs dark:border-stone-700"
+					>
+						<option value={1}>Last 24h</option>
+						<option value={7}>Last 7 days</option>
+						<option value={30}>Last 30 days</option>
+						<option value={90}>Last 90 days</option>
+					</select>
+					<button
+						on:click={fetchConversations}
+						disabled={convoStatus === 'loading'}
+						class="rounded border border-stone-300 px-4 py-1.5 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700"
+					>
+						{convoStatus === 'loading' ? 'Loading...' : 'Refresh'}
+					</button>
+				</div>
+			</div>
+
+			{#if convoFetchedAt}
+				<p class="text-xs text-stone-400 dark:text-stone-500">
+					{conversations.length} conversation{conversations.length !== 1 ? 's' : ''} · fetched {formatTime(convoFetchedAt)}
+				</p>
+			{/if}
+
+			{#if convoStatus === 'error'}
+				<p class="text-xs text-red-500">{convoError}</p>
+			{/if}
+
+			{#if convoStatus === 'loaded' && conversations.length === 0}
+				<p class="text-sm text-stone-400 dark:text-stone-500">No conversations in this period.</p>
+			{/if}
+
+			{#each conversations as convo (convo.sessionId)}
+				<div class="flex flex-col gap-3 rounded border border-stone-200 p-4 dark:border-stone-700">
+					<!-- Session header -->
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-xs text-stone-400 dark:text-stone-500">
+							{formatTime(convo.startedAt)}
+						</span>
+						<span class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500 dark:bg-stone-800 dark:text-stone-400">
+							{convo.events.filter((e) => e.type === 'chat_message').length} msg{convo.events.filter((e) => e.type === 'chat_message').length !== 1 ? 's' : ''}
+						</span>
+					</div>
+
+					<!-- Events -->
+					{#each convo.events as event, i}
+						{#if event.type === 'chat_message'}
+							<div class="flex flex-col gap-1.5 {i > 0 ? 'border-t border-stone-100 pt-3 dark:border-stone-800' : ''}">
+								<!-- Page badge -->
+								{#if event.currentPage}
+									<span class="w-fit rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500">
+										{event.currentPage}
+									</span>
+								{/if}
+								<!-- User message -->
+								{#if event.userMessage}
+									<p class="text-sm font-medium text-stone-800 dark:text-stone-200">
+										{event.userMessage}
+									</p>
+								{/if}
+								<!-- Tool call -->
+								{#if event.functionCallName}
+									<p class="text-xs text-blue-600 dark:text-blue-400">
+										→ {event.functionCallName}{#if parseFnArgs(event.functionCallArgs)} · {parseFnArgs(event.functionCallArgs)}{/if}
+									</p>
+								{/if}
+								<!-- Bot response -->
+								{#if event.botResponse}
+									<p class="text-sm text-stone-500 dark:text-stone-400">
+										{event.botResponse.length > 300 ? event.botResponse.slice(0, 300) + '…' : event.botResponse}
+									</p>
+								{/if}
+							</div>
+						{:else if event.type === 'suggestion_clicked'}
+							<p class="pl-2 text-xs text-stone-400 dark:text-stone-500">
+								↳ clicked: <span class="italic">{event.suggestionText}</span>
+							</p>
+						{/if}
+					{/each}
+				</div>
+			{/each}
+		</div>
+		{/if}
+
 		</div>
 	</div>
 </div>

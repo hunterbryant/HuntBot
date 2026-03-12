@@ -1,11 +1,12 @@
 import { goto } from '$app/navigation';
+import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import type { FunctionCallHandler } from 'ai';
 import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
-const SESSION_ID = crypto.randomUUID();
+export const SESSION_ID = crypto.randomUUID();
 
 export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
@@ -82,7 +83,16 @@ export function fetchScrollSuggestions(
 			});
 			if (response.ok) {
 				const data = await response.json();
-				scrollSuggestions.set(data.suggestions ?? []);
+				const suggs: string[] = data.suggestions ?? [];
+				scrollSuggestions.set(suggs);
+				if (suggs.length > 0) {
+					captureEvent('suggestions_shown', SESSION_ID, {
+						suggestion_type: 'scroll',
+						suggestions: suggs,
+						current_page: currentPage,
+						session_id: SESSION_ID
+					});
+				}
 			}
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
@@ -106,7 +116,16 @@ export function fetchHoverSuggestions(currentPage: string, hoveredContent: strin
 			});
 			if (response.ok) {
 				const data = await response.json();
-				hoverSuggestions.set(data.suggestions ?? []);
+				const suggs: string[] = data.suggestions ?? [];
+				hoverSuggestions.set(suggs);
+				if (suggs.length > 0) {
+					captureEvent('suggestions_shown', SESSION_ID, {
+						suggestion_type: 'hover',
+						suggestions: suggs,
+						current_page: currentPage,
+						session_id: SESSION_ID
+					});
+				}
 			}
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
@@ -131,7 +150,16 @@ export async function fetchSuggestions(messages: Message[], currentPage: string)
 		});
 		if (response.ok) {
 			const data = await response.json();
-			suggestions.set(data.suggestions ?? []);
+			const suggs: string[] = data.suggestions ?? [];
+			suggestions.set(suggs);
+			if (suggs.length > 0) {
+				captureEvent('suggestions_shown', SESSION_ID, {
+					suggestion_type: 'post_message',
+					suggestions: suggs,
+					current_page: currentPage,
+					session_id: SESSION_ID
+				});
+			}
 		}
 	} catch {
 		suggestions.set([]);

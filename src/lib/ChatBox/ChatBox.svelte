@@ -25,8 +25,10 @@
 		fetchSuggestions,
 		fetchScrollSuggestions,
 		fetchHoverSuggestions,
-		triggerProactiveOpener
+		triggerProactiveOpener,
+		SESSION_ID
 	} from './MessageStore';
+	import { captureEvent } from '$lib/analytics';
 	import LoadingStream from './LoadingStream.svelte';
 
 	const { messages, isLoading, handleSubmit, input, append } = chat();
@@ -460,6 +462,11 @@
 
 	async function selectSuggestion(suggestion: string) {
 		cancelContextFetches();
+		captureEvent('suggestion_clicked', SESSION_ID, {
+			suggestion_text: suggestion,
+			current_page: $page.url.pathname,
+			session_id: SESSION_ID
+		});
 		suggestions.set([]);
 		scrollSuggestions.set([]);
 		hoverSuggestions.set([]);
