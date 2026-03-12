@@ -6,7 +6,16 @@ import { nanoid } from 'ai';
 import { useChat, type Message } from 'ai/svelte';
 import { writable } from 'svelte/store';
 
-export const SESSION_ID = crypto.randomUUID();
+function getOrCreateSessionId(): string {
+	const key = 'huntbot_session_id';
+	const existing = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null;
+	if (existing) return existing;
+	const id = crypto.randomUUID();
+	if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(key, id);
+	return id;
+}
+
+export const SESSION_ID = getOrCreateSessionId();
 
 export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
@@ -167,7 +176,7 @@ export async function fetchSuggestions(messages: Message[], currentPage: string)
 }
 
 const greetingResponse: string =
-	"I know, I know, another chatbot. Hear me out, I'm a Frankenstein project Hunter hacked together to pitch himself. I'm wired into his site.\nIf you're game, ask me a question. You could ask about his work, design philosophy, or about life.\nIf you don't want to play along, you can minimize me up to your right↗";
+	"I know, another chatbot. But I'm wired into Hunter's site — ask me about his work, design philosophy, or life.\nNot interested? Minimize me up to your right↗";
 
 const initMessage: Message = {
 	id: 'initialmessage',

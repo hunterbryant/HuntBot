@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import { createClient } from '$lib/prismicio';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -277,7 +278,7 @@ ${context}`;
 				await pipeline.postRun();
 
 				// Fire PostHog event — fire-and-forget, never blocks the stream
-				const posthogKey = env.POSTHOG_API_KEY;
+				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
 				if (posthogKey) {
 					fetch('https://us.i.posthog.com/capture/', {
 						method: 'POST',

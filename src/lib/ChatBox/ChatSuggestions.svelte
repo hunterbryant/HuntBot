@@ -71,7 +71,7 @@
 
 {#if suggestions.length > 0}
 	<div
-		class="no-scrollbar flex min-h-[44px] items-center gap-1.5 overflow-x-auto overflow-y-hidden px-2 pb-6 pt-4"
+		class="no-scrollbar flex min-h-[44px] items-center gap-1.5 overflow-x-auto overflow-y-hidden px-4 pb-3 pt-4"
 		in:fade|global={{ duration: 150 }}
 	>
 		{#each suggestions as suggestion, i (suggestion)}

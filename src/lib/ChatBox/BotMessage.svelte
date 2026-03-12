@@ -5,6 +5,7 @@
 	export let value: string;
 	export let isLast: boolean = false;
 	export let onRetry: (() => void) | null = null;
+	export let animate: boolean = true;
 
 	$: updatedVal = value;
 
@@ -13,6 +14,122 @@
 	function handleRetry() {
 		retried = true;
 		onRetry?.();
+	}
+
+	const KEYFRAMES_ID = 'stream-reveal-kf';
+
+	function ensureKeyframes() {
+		if (document.getElementById(KEYFRAMES_ID)) return;
+		const style = document.createElement('style');
+		style.id = KEYFRAMES_ID;
+		style.textContent = `@keyframes streamCharIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}`;
+		document.head.appendChild(style);
+	}
+
+	function streamReveal(node: HTMLElement, text: string) {
+		ensureKeyframes();
+
+		const STAGGER = 10;
+
+		let current = '';
+		let settleTimer: ReturnType<typeof setTimeout> | null = null;
+		let startTime: number | null = null;
+		let charIndex = 0;
+
+		if (!animate) {
+			current = text;
+			node.textContent = text;
+		}
+
+		function render(newText: string) {
+			const prevLen = current.length;
+			current = newText;
+
+			if (newText.length < prevLen) {
+				if (settleTimer) clearTimeout(settleTimer);
+				node.textContent = newText;
+				startTime = null;
+				charIndex = 0;
+				return;
+			}
+
+			const delta = newText.slice(prevLen);
+			if (!delta) return;
+
+			if (startTime === null) startTime = performance.now();
+			const elapsed = performance.now() - startTime;
+
+			let lastDelay = 0;
+			const chunks = delta.match(/\S+|\s+/g) || [];
+
+			for (const chunk of chunks) {
+				const isSpace = /^\s+$/.test(chunk);
+
+				if (isSpace) {
+					for (const ch of chunk) {
+						const delay = Math.max(0, charIndex * STAGGER - elapsed);
+						charIndex++;
+						lastDelay = delay;
+						const span = document.createElement('span');
+						span.textContent = ch;
+						span.style.cssText = `display:inline;opacity:0;animation:streamCharIn 140ms ease-out ${delay}ms forwards`;
+						node.appendChild(span);
+					}
+				} else {
+					const wordSpan = document.createElement('span');
+					wordSpan.style.cssText = 'white-space:nowrap';
+
+					for (const ch of chunk) {
+						const delay = Math.max(0, charIndex * STAGGER - elapsed);
+						charIndex++;
+						lastDelay = delay;
+						const charSpan = document.createElement('span');
+						charSpan.textContent = ch;
+						charSpan.style.cssText = `display:inline-block;opacity:0;animation:streamCharIn 140ms ease-out ${delay}ms forwards`;
+						wordSpan.appendChild(charSpan);
+					}
+
+					node.appendChild(wordSpan);
+				}
+			}
+
+			if (settleTimer) clearTimeout(settleTimer);
+			settleTimer = setTimeout(() => {
+				const before = node.offsetHeight;
+				node.textContent = current;
+				const after = node.offsetHeight;
+
+				if (before !== after) {
+					node.style.height = before + 'px';
+					node.style.overflow = 'hidden';
+					node.style.transition = 'height 200ms ease-out';
+					requestAnimationFrame(() => {
+						node.style.height = after + 'px';
+						const onEnd = () => {
+							node.style.height = '';
+							node.style.overflow = '';
+							node.style.transition = '';
+							node.removeEventListener('transitionend', onEnd);
+						};
+						node.addEventListener('transitionend', onEnd, { once: true });
+					});
+				}
+
+				startTime = null;
+				charIndex = 0;
+			}, lastDelay + 200);
+		}
+
+		if (animate) render(text);
+
+		return {
+			update(newText: string) {
+				render(newText);
+			},
+			destroy() {
+				if (settleTimer) clearTimeout(settleTimer);
+			}
+		};
 	}
 </script>
 
@@ -41,9 +158,11 @@
 		</p>
 	{:else}
 		<div class="mr-6 mt-3 grow">
-			<p class="whitespace-pre-line font-normal text-stone-600 dark:text-stone-400" in:slide|global={{ duration: 400 }}>
-				{@html value}
-			</p>
+			<p
+				class="whitespace-pre-line font-normal text-stone-600 dark:text-stone-400"
+				in:slide|global={{ duration: 400 }}
+				use:streamReveal={value}
+			></p>
 			{#if isLast && !retried}
 				<button
 					on:click={handleRetry}
