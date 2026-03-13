@@ -1,3 +1,4 @@
+import { dev } from '$app/environment';
 import { env } from '$env/dynamic/private';
 import { UserRole, type User } from '$lib/types';
 import { fail, redirect } from '@sveltejs/kit';
@@ -5,14 +6,14 @@ import jwt from 'jsonwebtoken';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
-	if (!locals.user) return;
+	// If already logged in continue to destination
+	if (locals.user && locals.user.role === UserRole.USER) {
+		const redirectTo = url.searchParams.get('redirectTo');
 
-	const redirectTo = url.searchParams.get('redirectTo');
-
-	if (locals.user.role === UserRole.USER) {
 		if (redirectTo && redirectTo !== '/admin') {
 			redirect(303, `/${redirectTo.slice(1)}`);
 		}
+
 		redirect(303, '/');
 	}
 };
@@ -44,7 +45,7 @@ export const actions = {
 			path: '/',
 			httpOnly: true,
 			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
+			secure: !dev,
 			maxAge: 60 * 60 // 1 hour
 		});
 
