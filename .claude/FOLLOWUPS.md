@@ -21,4 +21,4 @@ These require re-embedding or infrastructure changes and are out of scope for Ph
 
 ## Observability
 
-- **Per-session retrieval quality scoring** — Log retrieval precision (how many returned chunks were actually used in the final response) back to LangSmith for ongoing monitoring.
+- **Per-session retrieval quality scoring** — Log retrieval precision (how many returned chunks were actually used in the final response) as a PostHog event for ongoing monitoring. Note: we don't use LangSmith — PostHog is the analytics layer.
