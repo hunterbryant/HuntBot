@@ -3,7 +3,6 @@ import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
 import type { Document } from '@langchain/core/documents';
 import { compile } from 'html-to-text';
-import { MultiQueryRetriever } from 'langchain/retrievers/multi_query';
 import { Client } from 'langsmith';
 import { getImessageEnabled } from '$lib/server/imessage-config';
 
@@ -100,7 +99,7 @@ export const getContext = async (
 
 	// Create a child run for Langsmith
 	const childRun = await pipeline.createChild({
-		name: 'MultiQueryRetriever',
+		name: 'HyDERetriever',
 		run_type: 'retriever',
 		inputs: { message: retrievalQuery },
 		client: langsmithClient
@@ -108,21 +107,20 @@ export const getContext = async (
 
 	const imessageEnabled = await getImessageEnabled();
 
-	// Always exclude iMessage docs from the main retriever. When iMessage is enabled,
-	// those documents are fetched by the dedicated iMessage retriever below. When it's
-	// disabled, they should never surface at all — regardless of what's in the collection.
-	const mainRetrieverOptions = {
-		k: 6,
-		filter: {
-			must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
-		}
-	};
+	// HyDE: generate a hypothetical answer to the user's question, then embed
+	// that answer instead of the raw query. The hypothetical answer uses the same
+	// vocabulary and phrasing as real documents in the knowledge base, improving
+	// semantic recall for abstract questions.
+	const hydePrompt = `You are Hunter Bryant, a product designer. Write a brief, direct answer to this question based on your background and work. Be specific but concise (2-3 sentences max):
 
-	const retriever = MultiQueryRetriever.fromLLM({
-		llm: model,
-		retriever: vectorStore.asRetriever(mainRetrieverOptions),
-		verbose: false
-	});
+"${retrievalQuery}"`;
+
+	const hydeResponse = await model.invoke(hydePrompt);
+	const hydeText = hydeResponse.content as string;
+
+	const mainFilter = {
+		must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
+	};
 
 	// Run iMessage retrieval in parallel when enabled.
 	// k=8 casts a wider net across long conversation histories so more topically
@@ -136,12 +134,15 @@ export const getContext = async (
 				.getRelevantDocuments(retrievalQuery)
 		: Promise.resolve([]);
 
-	const [mainDocs, imessageDocs] = await Promise.all([
-		retriever.getRelevantDocuments(retrievalQuery, {
-			metadata: { conversation_id: runID }
-		}),
+	// Search with the hypothetical answer embedding (primary) + original query (safety fallback).
+	// The deduplication step below handles any overlap between the two result sets.
+	const [hydeDocs, fallbackQueryDocs, imessageDocs] = await Promise.all([
+		vectorStore.similaritySearch(hydeText, 8, mainFilter),
+		vectorStore.similaritySearch(retrievalQuery, 4, mainFilter),
 		imessageRetrieverPromise
 	]);
+
+	const mainDocs = [...hydeDocs, ...fallbackQueryDocs];
 
 	const retrievedDocs = [...mainDocs, ...imessageDocs];
 
