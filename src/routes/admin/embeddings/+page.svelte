@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 
+	// Collection init state
+	let initStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
+	let initMessage = '';
+
 	// URL crawl state
 	let urlStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
 
@@ -53,6 +57,26 @@
 			imessageToggle = data.enabled;
 		} finally {
 			imessageToggleLoading = false;
+		}
+	};
+
+	const initCollection = async () => {
+		if (!confirm('This will DROP and recreate the Qdrant collection, deleting all embeddings. Continue?')) return;
+		initStatus = 'running';
+		initMessage = '';
+		try {
+			const res = await fetch('/api/embed/init', { method: 'GET' });
+			const data = await res.json();
+			if (data.success) {
+				initStatus = 'done';
+				initMessage = data.message;
+			} else {
+				initStatus = 'error';
+				initMessage = data.message ?? 'Unknown error';
+			}
+		} catch (err) {
+			initStatus = 'error';
+			initMessage = String(err);
 		}
 	};
 
@@ -253,8 +277,31 @@
 		<div
 			class="col-start-1 col-end-6 flex flex-col gap-4 text-stone-800 sm:col-start-4 sm:col-end-7 md:col-end-8 lg:col-end-10 dark:text-stone-200"
 		>
-			<!-- Site crawl -->
+			<!-- Collection init -->
 			<p class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
+				Collection
+			</p>
+
+			<div class="flex flex-col gap-2">
+				<span class="flex h-12 items-center justify-between gap-4 align-middle">
+					Initialize collection (drops + recreates)
+					<button
+						on:click={initCollection}
+						disabled={initStatus === 'running'}
+						class="h-full rounded border border-red-400 px-4 text-xs font-medium uppercase tracking-wider text-red-500 transition-colors hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-600 dark:text-red-400 dark:hover:bg-red-600 dark:hover:text-white"
+					>
+						{initStatus === 'running' ? 'Initializing...' : initStatus === 'done' ? 'Done' : 'Initialize'}
+					</button>
+				</span>
+				{#if initMessage}
+					<p class="text-xs {initStatus === 'error' ? 'text-red-500' : 'text-stone-400 dark:text-stone-500'}">
+						{initMessage}
+					</p>
+				{/if}
+			</div>
+
+			<!-- Site crawl -->
+			<p class="mt-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
 				Web
 			</p>
 

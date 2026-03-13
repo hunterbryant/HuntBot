@@ -1,7 +1,6 @@
 import { env } from '$env/dynamic/private';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { QdrantVectorStore } from '@langchain/qdrant';
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { upsertHybrid, makeEmbeddings } from '$lib/utilities/embed.js';
 import { Document } from 'langchain/document';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import Database from 'better-sqlite3';
@@ -443,11 +442,7 @@ export async function GET({ url }) {
 				if (!env.QDRANT_API_KEY) throw new Error('QDRANT_API_KEY is not set');
 				if (!env.QDRANT_COLLECTION) throw new Error('QDRANT_COLLECTION is not set');
 
-				const embeddings = new OpenAIEmbeddings({
-					modelName: 'text-embedding-3-small',
-					openAIApiKey: env.OPENAI_API_KEY,
-					dimensions: 512
-				});
+				const embeddings = makeEmbeddings(env.OPENAI_API_KEY);
 
 				const qdrantConfig = {
 					url: env.QDRANT_URL,
@@ -472,18 +467,10 @@ export async function GET({ url }) {
 				// Batch upload in groups of 50 to show progress
 				const BATCH_SIZE = 50;
 				let uploaded = 0;
-				let vectorStore: QdrantVectorStore | null = null;
 
 				for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
 					const batch = chunks.slice(i, i + BATCH_SIZE);
-
-					if (!vectorStore) {
-						vectorStore = await QdrantVectorStore.fromExistingCollection(
-							embeddings,
-							qdrantConfig
-						);
-					}
-					await vectorStore.addDocuments(batch);
+					await upsertHybrid(batch, embeddings, qdrantConfig);
 
 					uploaded += batch.length;
 					send('progress', {

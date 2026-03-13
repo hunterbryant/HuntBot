@@ -43,7 +43,9 @@ export async function setImessageEnabled(value: boolean): Promise<void> {
 		points: [
 			{
 				id: CONFIG_POINT_ID,
-				vector: new Array(VECTOR_DIMS).fill(0),
+				vector: {
+					dense: new Array(VECTOR_DIMS).fill(0)
+				},
 				payload: { type: '_config', imessageEnabled: value }
 			}
 		]
