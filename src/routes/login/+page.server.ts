@@ -5,14 +5,14 @@ import jwt from 'jsonwebtoken';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
-	// If already logged in continue to destination
-	if (locals.user && locals.user.role === UserRole.USER) {
-		const redirectTo = url.searchParams.get('redirectTo');
+	if (!locals.user) return;
 
+	const redirectTo = url.searchParams.get('redirectTo');
+
+	if (locals.user.role === UserRole.USER) {
 		if (redirectTo && redirectTo !== '/admin') {
 			redirect(303, `/${redirectTo.slice(1)}`);
 		}
-
 		redirect(303, '/');
 	}
 };
@@ -43,7 +43,7 @@ export const actions = {
 		cookies.set('auth', authToken, {
 			path: '/',
 			httpOnly: true,
-			sameSite: 'strict',
+			sameSite: 'lax',
 			secure: process.env.NODE_ENV === 'production',
 			maxAge: 60 * 60 // 1 hour
 		});
