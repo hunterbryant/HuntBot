@@ -44,15 +44,20 @@ interface UserMeta {
 	lon: number | null;
 }
 
-interface Conversation {
+interface ConversationSummary {
 	sessionId: string;
 	startedAt: string;
 	lastActiveAt: string;
 	durationMs: number;
 	hasNavigation: boolean;
 	hasNotHelpful: boolean;
-	events: ConversationEvent[];
 	userMeta: UserMeta;
+	msgCount: number;
+	userMsgCount: number;
+	suggestionClickCount: number;
+	pages: string[];
+	pagesVisited: string;
+	navDest: string | null;
 }
 
 async function fetchPostHogEvents(event: string, since: string): Promise<PostHogEvent[]> {
@@ -91,11 +96,10 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
 	try {
-		const [chatEvents, clickEvents, shownEvents, openedEvents, notHelpfulEvents] = await Promise.all([
+		const [chatEvents, clickEvents, shownEvents, notHelpfulEvents] = await Promise.all([
 			fetchPostHogEvents('chat_message', since),
 			fetchPostHogEvents('suggestion_clicked', since),
 			fetchPostHogEvents('suggestions_shown', since),
-			fetchPostHogEvents('chat_opened', since),
 			fetchPostHogEvents('not_helpful', since)
 		]);
 
@@ -118,6 +122,14 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 			}
 			return (p as Record<string, unknown>) ?? {};
 		};
+
+		// Build a reverse lookup: distinct_id → session key (for not_helpful correlation)
+		const distinctIdToSession = new Map<string, string>();
+		for (const e of all) {
+			const p = getProps(e);
+			const key = str(p.session_id) ?? e.distinct_id;
+			if (e.distinct_id) distinctIdToSession.set(e.distinct_id, key);
+		}
 
 		// Group by session_id
 		const sessionMap = new Map<string, ConversationEvent[]>();
@@ -155,13 +167,24 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 		for (const e of notHelpfulEvents) {
 			const p = getProps(e);
 			const sid = str(p.session_id);
-			if (sid) notHelpfulSessions.add(sid);
-			if (e.distinct_id) notHelpfulSessions.add(String(e.distinct_id));
+			if (sid) {
+				notHelpfulSessions.add(sid);
+			} else {
+				// Resolve via distinct_id → session key mapping built from chat events
+				const resolved = distinctIdToSession.get(e.distinct_id);
+				if (resolved) notHelpfulSessions.add(resolved);
+				else if (e.distinct_id) notHelpfulSessions.add(e.distinct_id); // last-resort fallback
+			}
 		}
 
-		const conversations: Conversation[] = Array.from(sessionMap.entries())
-			.filter(([, events]) => !events.some((e) => e.currentPage?.startsWith('/admin')))
+		// Build eventsMap alongside summaries
+		const eventsMap: Record<string, ConversationEvent[]> = {};
+
+		const conversations: ConversationSummary[] = Array.from(sessionMap.entries())
 			.map(([sessionId, events]) => {
+				// Store events in the map for the response
+				eventsMap[sessionId] = events;
+
 				const firstWithMeta = events.find((e) => e.city || e.timezone);
 				const userMeta: UserMeta = {
 					city: firstWithMeta?.city ?? null,
@@ -176,38 +199,86 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 				};
 				const startedAt = events[0].timestamp;
 				const lastActiveAt = events[events.length - 1].timestamp;
+
+				// Pre-compute counts
+				const msgCount = events.filter((e) => e.type === 'chat_message').length;
+				const userMsgCount = events.filter(
+					(e) => e.type === 'chat_message' && e.userMessage
+				).length;
+				const suggestionClickCount = events.filter(
+					(e) => e.type === 'suggestion_clicked'
+				).length;
+
+				// Pre-compute pages visited
+				const pages = [...new Set(events.map((e) => e.currentPage).filter(Boolean))] as string[];
+				const pagesVisited = pages.join(' → ');
+
+				// Pre-compute nav destination
+				let navDest: string | null = null;
+				const navEventByField = events.find((e) => e.functionCallName !== null);
+				if (navEventByField?.functionCallArgs) {
+					try {
+						const parsed = JSON.parse(navEventByField.functionCallArgs);
+						navDest = parsed.page ?? null;
+					} catch {
+						/* ignore */
+					}
+				} else {
+					// Fallback: check botResponse JSON for function_call.arguments.page
+					for (const e of events) {
+						if (e.botResponse) {
+							try {
+								const parsed = JSON.parse(e.botResponse);
+								if (parsed.function_call?.arguments) {
+									const args =
+										typeof parsed.function_call.arguments === 'string'
+											? JSON.parse(parsed.function_call.arguments)
+											: parsed.function_call.arguments;
+									if (args?.page) {
+										navDest = args.page;
+										break;
+									}
+								}
+							} catch {
+								/* ignore */
+							}
+						}
+					}
+				}
+
 				return {
 					sessionId,
 					startedAt,
 					lastActiveAt,
 					durationMs: new Date(lastActiveAt).getTime() - new Date(startedAt).getTime(),
 					hasNavigation: events.some((e) => {
-					if (e.functionCallName !== null) return true;
-					if (e.botResponse) {
-						try { return !!(JSON.parse(e.botResponse).function_call?.name); } catch { /* */ }
-					}
-					return false;
-				}),
+						if (e.functionCallName !== null) return true;
+						if (e.botResponse) {
+							try {
+								return !!(JSON.parse(e.botResponse).function_call?.name);
+							} catch {
+								/* */
+							}
+						}
+						return false;
+					}),
 					hasNotHelpful: notHelpfulSessions.has(sessionId),
-					events,
-					userMeta
+					userMeta,
+					msgCount,
+					userMsgCount,
+					suggestionClickCount,
+					pages,
+					pagesVisited,
+					navDest
 				};
 			})
-			.sort(
-				(a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()
-			);
-
-		const chatOpenedCount = new Set(
-			openedEvents
-				.filter((e) => !String(getProps(e).current_page ?? '').startsWith('/admin'))
-				.map((e) => String(getProps(e).session_id ?? e.distinct_id))
-		).size;
+			.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 
 		const notHelpfulCount = notHelpfulSessions.size;
 
 		return json(
-			{ conversations, chatOpenedCount, notHelpfulCount, fetchedAt: new Date().toISOString() },
-			{ headers: { 'Cache-Control': 'no-store' } }
+			{ conversations, events: eventsMap, notHelpfulCount, fetchedAt: new Date().toISOString() },
+			{ headers: { 'Cache-Control': 'private, max-age=120, stale-while-revalidate=30' } }
 		);
 	} catch (err) {
 		console.error('Conversations fetch failed:', err);

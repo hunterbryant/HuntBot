@@ -35,18 +35,24 @@
 		lon: number | null;
 	}
 
-	interface Conversation {
+	interface ConversationSummary {
 		sessionId: string;
 		startedAt: string;
 		lastActiveAt: string;
 		durationMs: number;
 		hasNavigation: boolean;
 		hasNotHelpful: boolean;
-		events: ConversationEvent[];
 		userMeta: UserMeta;
+		msgCount: number;
+		userMsgCount: number;
+		suggestionClickCount: number;
+		pages: string[];
+		pagesVisited: string;
+		navDest: string | null;
 	}
 
-	let conversations: Conversation[] = [];
+	let conversations: ConversationSummary[] = [];
+	let eventsMap: Record<string, ConversationEvent[]> = {};
 	let convoStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle';
 	let convoError = '';
 	let convoDays = 30;
@@ -55,49 +61,30 @@
 	let expandedBotResponses = new Set<string>();
 	let copiedSession: string | null = null;
 	let chatOpenedCount = 0;
+	let metaStatus: 'idle' | 'loading' | 'loaded' | 'error' = 'idle';
 	let notHelpfulCount = 0;
 	let sortBy: 'recent' | 'messages' | 'duration' = 'recent';
 	let selectedPage: string | null = null;
 	let showSuggestionsShown = false;
 	let hideNoUserMessages = true;
+	let hideAdminSessions = true;
 
-	function msgCount(c: Conversation) {
-		return c.events.filter((e) => e.type === 'chat_message').length;
-	}
-
-	function suggestionClickCount(c: Conversation) {
-		return c.events.filter((e) => e.type === 'suggestion_clicked').length;
-	}
-
-	function userMsgCount(c: Conversation) {
-		return c.events.filter((e) => e.type === 'chat_message' && e.userMessage).length;
-	}
-
-	function suggestionPct(c: Conversation): number | null {
-		const total = userMsgCount(c);
-		if (total === 0) return null;
-		return Math.round((suggestionClickCount(c) / total) * 100);
-	}
-
-	$: uniquePages = [
-		...new Set(
-			conversations.flatMap((c) => c.events.map((e) => e.currentPage).filter(Boolean))
-		)
-	].sort() as string[];
+	$: uniquePages = [...new Set(conversations.flatMap((c) => c.pages))].sort();
 
 	$: filtered = conversations
-		.filter((c) => !selectedPage || c.events.some((e) => e.currentPage === selectedPage))
-		.filter((c) => !hideNoUserMessages || c.events.some((e) => e.type === 'chat_message' && e.userMessage));
+		.filter((c) => !selectedPage || c.pages.includes(selectedPage))
+		.filter((c) => !hideNoUserMessages || c.userMsgCount > 0)
+		.filter((c) => !hideAdminSessions || !c.pages.some((p) => p.startsWith('/admin')));
 
 	$: sorted = [...filtered].sort((a, b) => {
-		if (sortBy === 'messages') return msgCount(b) - msgCount(a);
+		if (sortBy === 'messages') return b.msgCount - a.msgCount;
 		if (sortBy === 'duration') return b.durationMs - a.durationMs;
 		return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime();
 	});
 
-	$: totalMessages = filtered.reduce((n, c) => n + msgCount(c), 0);
-	$: totalSuggestionClicks = filtered.reduce((n, c) => n + suggestionClickCount(c), 0);
-	$: totalUserMessages = filtered.reduce((n, c) => n + userMsgCount(c), 0);
+	$: totalMessages = filtered.reduce((n, c) => n + c.msgCount, 0);
+	$: totalSuggestionClicks = filtered.reduce((n, c) => n + c.suggestionClickCount, 0);
+	$: totalUserMessages = filtered.reduce((n, c) => n + c.userMsgCount, 0);
 	$: suggestionsPct =
 		totalUserMessages > 0 ? Math.round((totalSuggestionClicks / totalUserMessages) * 100) : null;
 	$: navCount = filtered.filter((c) => c.hasNavigation).length;
@@ -108,8 +95,9 @@
 			: null;
 	$: avgMessages = filtered.length > 0 ? (totalMessages / filtered.length).toFixed(1) : '0';
 
-	async function copySession(convo: Conversation) {
-		await navigator.clipboard.writeText(JSON.stringify(convo, null, 2));
+	async function copySession(convo: ConversationSummary) {
+		const payload = { ...convo, events: eventsMap[convo.sessionId] ?? [] };
+		await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
 		copiedSession = convo.sessionId;
 		setTimeout(() => (copiedSession = null), 1500);
 	}
@@ -133,28 +121,60 @@
 	}
 
 	let fetchController: AbortController | null = null;
+	let metaController: AbortController | null = null;
 
-	async function fetchConversations() {
+	async function fetchConversations(force = false) {
 		fetchController?.abort();
+		metaController?.abort();
 		fetchController = new AbortController();
+		metaController = new AbortController();
 		convoStatus = 'loading';
+		metaStatus = 'loading';
 		convoError = '';
-		try {
-			const res = await fetch(`/api/admin/conversations?days=${convoDays}`, {
-				signal: fetchController.signal
+		chatOpenedCount = 0;
+
+		const cacheMode: RequestCache = force ? 'no-cache' : 'default';
+
+		// Fire core and meta fetches simultaneously — do not await one before the other
+		const corePromise = fetch(`/api/admin/conversations?days=${convoDays}`, {
+			signal: fetchController.signal,
+			cache: cacheMode
+		});
+
+		const metaPromise = fetch(`/api/admin/conversations/meta?days=${convoDays}`, {
+			signal: metaController.signal,
+			cache: cacheMode
+		});
+
+		// Resolve core
+		corePromise
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const data = await res.json();
+				conversations = data.conversations ?? [];
+				eventsMap = data.events ?? {};
+				notHelpfulCount = data.notHelpfulCount ?? 0;
+				convoFetchedAt = data.fetchedAt;
+				convoStatus = 'loaded';
+			})
+			.catch((e: unknown) => {
+				if ((e as Error).name === 'AbortError') return;
+				convoError = String(e);
+				convoStatus = 'error';
 			});
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data = await res.json();
-			conversations = data.conversations ?? [];
-			chatOpenedCount = data.chatOpenedCount ?? 0;
-			notHelpfulCount = data.notHelpfulCount ?? 0;
-			convoFetchedAt = data.fetchedAt;
-			convoStatus = 'loaded';
-		} catch (e) {
-			if ((e as Error).name === 'AbortError') return;
-			convoError = String(e);
-			convoStatus = 'error';
-		}
+
+		// Resolve meta independently
+		metaPromise
+			.then(async (res) => {
+				if (!res.ok) throw new Error(`HTTP ${res.status}`);
+				const data = await res.json();
+				chatOpenedCount = data.chatOpenedCount ?? 0;
+				metaStatus = 'loaded';
+			})
+			.catch((e: unknown) => {
+				if ((e as Error).name === 'AbortError') return;
+				metaStatus = 'error';
+			});
 	}
 
 	function formatTime(ts: string) {
@@ -212,23 +232,6 @@
 		}
 	}
 
-	function getNavDest(events: ConversationEvent[]): string | null {
-		const navEvent = events.find((e) => e.functionCallName);
-		if (!navEvent?.functionCallArgs) return null;
-		try {
-			const parsed = JSON.parse(navEvent.functionCallArgs);
-			return parsed.page ?? null;
-		} catch {
-			return null;
-		}
-	}
-
-	function getPagesVisited(events: ConversationEvent[]): string {
-		const pages = events.map((e) => e.currentPage).filter((p): p is string => !!p);
-		const unique = [...new Set(pages)];
-		return unique.join(' → ');
-	}
-
 	function locationLabel(meta: UserMeta): string {
 		return [meta.city, meta.regionCode ?? meta.region, meta.countryCode ?? meta.country]
 			.filter(Boolean)
@@ -276,7 +279,7 @@
 				<div class="flex gap-1">
 					{#each [1, 7, 30, 90] as d}
 						<button
-							on:click={() => { convoDays = d; fetchConversations(); }}
+							on:click={() => { convoDays = d; fetchConversations(true); }}
 							class="rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:pointer-events-none {convoDays === d
 								? 'bg-stone-800 text-stone-100 dark:bg-stone-200 dark:text-stone-800'
 								: 'text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300'}"
@@ -293,7 +296,7 @@
 						</p>
 					{/if}
 					<button
-						on:click={fetchConversations}
+						on:click={() => fetchConversations(true)}
 						disabled={convoStatus === 'loading'}
 						class="rounded border border-stone-300 px-3 py-1.5 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-stone-700 dark:hover:bg-stone-800"
 					>
@@ -336,6 +339,16 @@
 								: 'text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300'}"
 						>
 							Has messages
+						</button>
+
+						<!-- Hide admin sessions toggle -->
+						<button
+							on:click={() => (hideAdminSessions = !hideAdminSessions)}
+							class="rounded-full px-3 py-1 text-xs font-medium transition-colors {hideAdminSessions
+								? 'bg-stone-800 text-stone-100 dark:bg-stone-200 dark:text-stone-800'
+								: 'text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300'}"
+						>
+							Hide admin
 						</button>
 					</div>
 
@@ -394,14 +407,20 @@
 					<!-- Opened chat -->
 					<div class="flex flex-col gap-0.5">
 						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Opened chat</span>
-						<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
-							{chatOpenedCount}
-							{#if openPct !== null}
-								<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{openPct}% messaged</span>
-							{:else}
-								<span class="text-xs font-normal text-stone-400 dark:text-stone-500">—</span>
-							{/if}
-						</span>
+						{#if metaStatus === 'loading'}
+							<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
+								<span class="inline-block h-3.5 w-8 animate-pulse rounded bg-stone-200 align-middle dark:bg-stone-700" />
+							</span>
+						{:else}
+							<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
+								{chatOpenedCount}
+								{#if openPct !== null}
+									<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{openPct}% messaged</span>
+								{:else}
+									<span class="text-xs font-normal text-stone-400 dark:text-stone-500">—</span>
+								{/if}
+							</span>
+						{/if}
 					</div>
 
 					<!-- Not helpful -->
@@ -444,11 +463,8 @@
 			{#if convoStatus !== 'loading'}
 			{#each sorted as convo (convo.sessionId)}
 				{@const expanded = expandedSessions.has(convo.sessionId)}
-				{@const msgs = msgCount(convo)}
-				{@const pagesVisited = getPagesVisited(convo.events)}
 				{@const loc = locationLabel(convo.userMeta)}
-				{@const navDest = getNavDest(convo.events)}
-				{@const suggPct = suggestionPct(convo)}
+				{@const suggPct = convo.userMsgCount > 0 ? Math.round((convo.suggestionClickCount / convo.userMsgCount) * 100) : null}
 
 				<div class="rounded border border-stone-200 dark:border-stone-700">
 					<!-- Collapsed row -->
@@ -466,7 +482,7 @@
 								<span
 									class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500 dark:bg-stone-800 dark:text-stone-400"
 								>
-									{msgs} msg{msgs !== 1 ? 's' : ''}
+									{convo.msgCount} msg{convo.msgCount !== 1 ? 's' : ''}
 								</span>
 								{#if convo.hasNavigation}
 									<span class="rounded bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">tool call</span>
@@ -483,31 +499,31 @@
 							</div>
 
 							<!-- Pages visited -->
-							{#if pagesVisited}
+							{#if convo.pagesVisited}
 								<p class="truncate text-xs text-stone-500 dark:text-stone-400">
-									{pagesVisited}
+									{convo.pagesVisited}
 								</p>
 							{/if}
 
 							<!-- Nav destination badge -->
-							{#if navDest}
+							{#if convo.navDest}
 								<p class="text-xs font-medium text-blue-600 dark:text-blue-400">
-									→ {navDest}
+									→ {convo.navDest}
 								</p>
 							{/if}
 
 							<!-- Not helpful badge -->
-						{#if convo.hasNotHelpful}
-							<div class="flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400">
-								<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-									<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z" />
-									<path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-								</svg>
-								Not helpful
-							</div>
-						{/if}
+							{#if convo.hasNotHelpful}
+								<div class="flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400">
+									<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+										<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z" />
+										<path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+									</svg>
+									Not helpful
+								</div>
+							{/if}
 
-						<!-- Meta pills -->
+							<!-- Meta pills -->
 							{#if loc || convo.userMeta.timezone}
 								<div class="flex flex-wrap gap-1.5">
 									{#if loc}
@@ -551,6 +567,7 @@
 
 					<!-- Expanded content -->
 					{#if expanded}
+						{@const sessionEvents = eventsMap[convo.sessionId] ?? []}
 						<div class="border-t border-stone-200 px-4 pb-4 pt-3 dark:border-stone-700">
 							<!-- User meta block -->
 							{#if loc || convo.userMeta.timezone || convo.userMeta.ip}
@@ -590,7 +607,7 @@
 
 							<!-- Events transcript -->
 							<div class="flex flex-col gap-3">
-								{#each convo.events as event, i}
+								{#each sessionEvents as event, i}
 									{#if event.type === 'chat_message'}
 										{@const responseKey = `${convo.sessionId}-${i}`}
 										{@const resolved = resolveEvent(event)}
