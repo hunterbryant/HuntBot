@@ -1,6 +1,8 @@
 <script lang="ts">
-	import type { ActionData, ActionResult } from './$types';
+	import type { ActionData } from './$types';
+	import type { ActionResult } from '@sveltejs/kit';
 	import { enhance } from '$app/forms';
+	import { goto, invalidateAll } from '$app/navigation';
 	import LockClosed from '$lib/assets/lock-closed.svelte';
 
 	export let form: ActionData;
@@ -8,7 +10,8 @@
 	function loginEnhance() {
 		return async ({ result, update }: { result: ActionResult; update: () => Promise<void> }) => {
 			if (result.type === 'redirect') {
-				window.location.href = result.location;
+				await invalidateAll();
+				await goto(result.location);
 			} else {
 				await update();
 			}
