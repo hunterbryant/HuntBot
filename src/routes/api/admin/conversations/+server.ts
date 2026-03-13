@@ -65,13 +65,20 @@ async function fetchPostHogEvents(event: string, since: string): Promise<PostHog
 	url.searchParams.set('after', since);
 	url.searchParams.set('limit', '500');
 
-
-	const res = await fetch(url.toString(), {
-		headers: { Authorization: `Bearer ${personalKey}` }
-	});
-	if (!res.ok) throw new Error(`PostHog API error: ${res.status} ${await res.text()}`);
-	const data = await res.json();
-	return (data.results as PostHogEvent[]) ?? [];
+	try {
+		const res = await fetch(url.toString(), {
+			headers: { Authorization: `Bearer ${personalKey}` }
+		});
+		if (!res.ok) {
+			console.warn(`PostHog API error for event "${event}": ${res.status} ${await res.text()}`);
+			return [];
+		}
+		const data = await res.json();
+		return (data.results as PostHogEvent[]) ?? [];
+	} catch (err) {
+		console.warn(`PostHog fetch failed for event "${event}":`, err);
+		return [];
+	}
 }
 
 export const GET: RequestHandler = async ({ cookies, url }) => {
@@ -99,11 +106,23 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 			...shownEvents.map((e) => ({ ...e, _type: 'suggestions_shown' as const }))
 		].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
+		const str = (v: unknown) => (typeof v === 'string' ? v : null);
+		const getProps = (e: PostHogEvent): Record<string, unknown> => {
+			const p = e.properties;
+			if (typeof p === 'string') {
+				try {
+					return (JSON.parse(p) as Record<string, unknown>) ?? {};
+				} catch {
+					return {};
+				}
+			}
+			return (p as Record<string, unknown>) ?? {};
+		};
+
 		// Group by session_id
 		const sessionMap = new Map<string, ConversationEvent[]>();
 		for (const e of all) {
-			const p = e.properties;
-			const str = (v: unknown) => (typeof v === 'string' ? v : null);
+			const p = getProps(e);
 			const num = (v: unknown) => (typeof v === 'number' ? v : null);
 			const arr2str = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).map(String) : null);
 			const key = str(p.session_id) ?? e.distinct_id;
@@ -132,12 +151,13 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 			sessionMap.set(key, arr);
 		}
 
-		const notHelpfulSessions = new Set(
-			notHelpfulEvents.map((e) => {
-				const str = (v: unknown) => (typeof v === 'string' ? v : null);
-				return str(e.properties.session_id) ?? e.distinct_id;
-			})
-		);
+		const notHelpfulSessions = new Set<string>();
+		for (const e of notHelpfulEvents) {
+			const p = getProps(e);
+			const sid = str(p.session_id);
+			if (sid) notHelpfulSessions.add(sid);
+			if (e.distinct_id) notHelpfulSessions.add(String(e.distinct_id));
+		}
 
 		const conversations: Conversation[] = Array.from(sessionMap.entries())
 			.filter(([, events]) => !events.some((e) => e.currentPage?.startsWith('/admin')))
@@ -179,26 +199,14 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 
 		const chatOpenedCount = new Set(
 			openedEvents
-				.filter((e) => !String(e.properties.current_page ?? '').startsWith('/admin'))
-				.map((e) => String(e.properties.session_id ?? e.distinct_id))
+				.filter((e) => !String(getProps(e).current_page ?? '').startsWith('/admin'))
+				.map((e) => String(getProps(e).session_id ?? e.distinct_id))
 		).size;
 
 		const notHelpfulCount = notHelpfulSessions.size;
 
 		return json(
-			{
-				conversations,
-				chatOpenedCount,
-				notHelpfulCount,
-				_debug: {
-					notHelpfulSessionIds: [...notHelpfulSessions],
-					conversationSessionIds: conversations.map(c => c.sessionId),
-					rawCounts: { chatEvents: chatEvents.length, clickEvents: clickEvents.length, shownEvents: shownEvents.length, openedEvents: openedEvents.length, notHelpfulEvents: notHelpfulEvents.length },
-					newestChatEvent: chatEvents[0]?.timestamp ?? null,
-					since
-				},
-				fetchedAt: new Date().toISOString()
-			},
+			{ conversations, chatOpenedCount, notHelpfulCount, fetchedAt: new Date().toISOString() },
 			{ headers: { 'Cache-Control': 'no-store' } }
 		);
 	} catch (err) {
