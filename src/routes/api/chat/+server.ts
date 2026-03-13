@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { createClient } from '$lib/prismicio';
-import { getContext } from '$lib/utilities/context';
+import { getContext, type ContextResult } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
 import { Client, RunTree } from 'langsmith';
@@ -83,15 +83,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		});
 
 		// Get context and available routes in parallel; degrade gracefully if retrieval fails
-		const [context, availableRoutes] = await Promise.all([
+		const [contextResult, availableRoutes] = await Promise.all([
 			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage).catch(
 				(err) => {
 					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
-					return '';
+					return { context: '', latestContentDate: null } as ContextResult;
 				}
 			),
 			getAvailableRoutes()
 		]);
+
+		const { context, latestContentDate } = contextResult;
 
 		// Build function definitions with live routes from Prismic
 		const functions: ChatCompletionCreateParams.Function[] = [
@@ -177,6 +179,10 @@ export const POST: RequestHandler = async ({ request }) => {
 			day: 'numeric'
 		});
 
+		const contentFreshness = latestContentDate
+			? ` The most recent content in CONTEXT was last updated ${new Date(latestContentDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}. If the retrieved context is significantly older than today, note that the information may not reflect Hunter's current situation — say so rather than presenting old info as current.`
+			: '';
+
 		// Build a human-readable page label from the current URL path
 		const pageSlug = currentPage.split('/').pop() || '';
 		const pageLabel = pageSlug
@@ -229,7 +235,7 @@ A: San Francisco.
 The conversation has history. When a user says "tell me more", "what about that", or asks a follow-up, treat it in context of what was just discussed. Don't restart from scratch.
 
 ## Time and dates
-Today is ${today}. Use this to interpret relative time questions like "recently", "last year", or "what has he been working on lately". When the context includes dates or timelines, use them to give specific, grounded answers. If you can name a month or year, do — vague answers like "recently" are less useful than "as of early 2025".
+Today is ${today}.${contentFreshness} Use this to interpret relative time questions like "recently", "last year", or "what has he been working on lately". When the context includes dates or timelines, use them to give specific, grounded answers. If you can name a month or year, do — vague answers like "recently" are less useful than "as of early 2025".
 
 ## Current page
 The visitor is currently on: ${pageContext}

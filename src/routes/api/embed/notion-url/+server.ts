@@ -1,10 +1,9 @@
 import { env } from '$env/dynamic/private';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import { QdrantVectorStore } from '@langchain/qdrant';
 import { Client } from '@notionhq/client';
 import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import { Document } from 'langchain/document';
-import { MarkdownTextSplitter } from 'langchain/text_splitter';
+import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
+import { upsertHybrid, makeEmbeddings, makeParentChildDocs } from '$lib/utilities/embed.js';
 
 const DATABASE_ID = '637fbb5a0236401fa1ee8e5e05775b5e';
 
@@ -182,13 +181,13 @@ export async function GET() {
 				if (!env.QDRANT_API_KEY) throw new Error('QDRANT_API_KEY is not set');
 				if (!env.QDRANT_COLLECTION) throw new Error('QDRANT_COLLECTION is not set');
 
-				const embeddings = new OpenAIEmbeddings({
-					modelName: 'text-embedding-3-small',
-					openAIApiKey: env.OPENAI_API_KEY,
-					dimensions: 512
-				});
+				const embeddings = makeEmbeddings(env.OPENAI_API_KEY);
 
-				const splitter = new MarkdownTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
+				const parentSplitter = RecursiveCharacterTextSplitter.fromLanguage('markdown', {
+					chunkSize: 1500,
+					chunkOverlap: 100
+				});
+				const childSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 300, chunkOverlap: 30 });
 
 				const qdrantConfig = {
 					url: env.QDRANT_URL,
@@ -197,7 +196,6 @@ export async function GET() {
 				};
 
 				// 3. Fetch each page and upload to Qdrant immediately — no buffering until the end
-				let vectorStore: QdrantVectorStore | null = null;
 				let loaded = 0;
 				let skipped = 0;
 				let totalChunks = 0;
@@ -218,25 +216,16 @@ export async function GET() {
 						const fullContent = properties ? `${properties}\n\n${content}` : content;
 
 						if (fullContent.trim()) {
-							const chunks = await splitter.splitDocuments([
-								new Document({
-									pageContent: fullContent,
-									metadata: { source: 'notion', notionId: page.id as string, title: pageTitle }
-								})
-							]);
+							const embeddedDate = ((page as Record<string, unknown>).last_edited_time as string) || new Date().toISOString();
+							const chunks = await makeParentChildDocs(
+								[new Document({ pageContent: fullContent, metadata: { source: 'notion', notionId: page.id as string, title: pageTitle, embeddedDate } })],
+								parentSplitter,
+								childSplitter
+							);
 
 							if (chunks.length > 0) {
 								await withRetry(async () => {
-									if (!vectorStore) {
-										// First write — fromDocuments creates the Qdrant collection automatically
-										vectorStore = await QdrantVectorStore.fromDocuments(
-											chunks,
-											embeddings,
-											qdrantConfig
-										);
-									} else {
-										await vectorStore.addDocuments(chunks);
-									}
+									await upsertHybrid(chunks, embeddings, qdrantConfig);
 								});
 								totalChunks += chunks.length;
 							}

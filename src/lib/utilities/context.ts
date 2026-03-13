@@ -1,15 +1,21 @@
 import { env } from '$env/dynamic/private';
 import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
-import { QdrantVectorStore } from '@langchain/qdrant';
-import type { Document } from '@langchain/core/documents';
+import { QdrantClient } from '@qdrant/js-client-rest';
+import type { Document } from 'langchain/document';
 import { compile } from 'html-to-text';
 import { Client } from 'langsmith';
 import { getImessageEnabled } from '$lib/server/imessage-config';
+import { generateSparseVector } from './sparse.js';
 
 export type Metadata = {
 	url: string;
 	text: string;
 	chunk: string;
+};
+
+export type ContextResult = {
+	context: string;
+	latestContentDate: string | null;
 };
 
 const convertHtml = compile({ wordwrap: 130 });
@@ -66,6 +72,31 @@ function buildRetrievalQuery(
 	return parts.join(' | ');
 }
 
+async function hybridSearch(
+	client: QdrantClient,
+	collection: string,
+	dense: number[],
+	sparse: { indices: number[]; values: number[] },
+	limit: number,
+	filter?: Record<string, unknown>
+): Promise<Document[]> {
+	const result = await client.query(collection, {
+		prefetch: [
+			{ query: dense, using: 'dense', limit: limit * 2 },
+			{ query: { indices: sparse.indices, values: sparse.values }, using: 'sparse', limit: limit * 2 }
+		],
+		query: { fusion: 'rrf' },
+		limit,
+		with_payload: true,
+		...(filter ? { filter } : {})
+	});
+
+	return (result.points ?? []).map((p) => ({
+		pageContent: (p.payload as Record<string, unknown>)?.content as string ?? '',
+		metadata: (p.payload as Record<string, unknown>)?.metadata as Record<string, unknown> ?? {}
+	}));
+}
+
 // The function `getContext` is used to retrieve the context of a given message
 export const getContext = async (
 	message: string,
@@ -73,19 +104,14 @@ export const getContext = async (
 	pipeline: any,
 	conversationHistory: string[] = [],
 	currentPage: string = '/'
-): Promise<string> => {
-	const vectorStore = await QdrantVectorStore.fromExistingCollection(
-		new OpenAIEmbeddings({
-			modelName: 'text-embedding-3-small',
-			openAIApiKey: env.OPENAI_API_KEY,
-			dimensions: 512
-		}),
-		{
-			url: env.QDRANT_URL,
-			apiKey: env.QDRANT_API_KEY,
-			collectionName: env.QDRANT_COLLECTION
-		}
-	);
+): Promise<ContextResult> => {
+	const embeddings = new OpenAIEmbeddings({
+		modelName: 'text-embedding-3-small',
+		openAIApiKey: env.OPENAI_API_KEY,
+		dimensions: 512
+	});
+
+	const client = new QdrantClient({ url: env.QDRANT_URL, apiKey: env.QDRANT_API_KEY });
 
 	const model = new ChatOpenAI({
 		openAIApiKey: env.OPENAI_API_KEY
@@ -122,24 +148,29 @@ export const getContext = async (
 		must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
 	};
 
+	const sparseVector = generateSparseVector(retrievalQuery);
+
+	const [hydeDenseVec, fallbackDenseVec] = await Promise.all([
+		embeddings.embedQuery(hydeText),
+		embeddings.embedQuery(retrievalQuery)
+	]);
+
 	// Run iMessage retrieval in parallel when enabled.
 	// k=8 casts a wider net across long conversation histories so more topically
 	// distinct chunks (e.g. work vs. side projects) can surface.
-	const imessageRetrieverPromise = imessageEnabled
-		? vectorStore
-				.asRetriever({
-					k: 8,
-					filter: { must: [{ key: 'metadata.source', match: { value: 'imessage' } }] }
-				})
-				.getRelevantDocuments(retrievalQuery)
-		: Promise.resolve([]);
-
-	// Search with the hypothetical answer embedding (primary) + original query (safety fallback).
-	// The deduplication step below handles any overlap between the two result sets.
 	const [hydeDocs, fallbackQueryDocs, imessageDocs] = await Promise.all([
-		vectorStore.similaritySearch(hydeText, 8, mainFilter),
-		vectorStore.similaritySearch(retrievalQuery, 4, mainFilter),
-		imessageRetrieverPromise
+		hybridSearch(client, env.QDRANT_COLLECTION, hydeDenseVec, sparseVector, 8, mainFilter),
+		hybridSearch(client, env.QDRANT_COLLECTION, fallbackDenseVec, sparseVector, 4, mainFilter),
+		imessageEnabled
+			? hybridSearch(
+					client,
+					env.QDRANT_COLLECTION,
+					hydeDenseVec,
+					generateSparseVector(retrievalQuery),
+					8,
+					{ must: [{ key: 'metadata.source', match: { value: 'imessage' } }] }
+				)
+			: Promise.resolve([])
 	]);
 
 	const mainDocs = [...hydeDocs, ...fallbackQueryDocs];
@@ -151,6 +182,16 @@ export const getContext = async (
 	await childRun.postRun();
 
 	const deduplicated = deduplicateDocs(retrievedDocs);
+
+	// Find the most recent content date across non-iMessage retrieved chunks
+	let latestContentDate: string | null = null;
+	for (const doc of deduplicated) {
+		if (doc.metadata?.source === 'imessage') continue;
+		const dateStr = doc.metadata?.embeddedDate as string | undefined;
+		if (dateStr && (!latestContentDate || dateStr > latestContentDate)) {
+			latestContentDate = dateStr;
+		}
+	}
 
 	// Split retrieved docs into site pages, iMessage, and other sources.
 	// Keep up to MAX_IMESSAGE_CHUNKS_PER_CHAT highest-scoring chunks per conversation —
@@ -216,7 +257,12 @@ export const getContext = async (
 
 	const fallbackParts = fallbackDocs.map((doc) => {
 		const label = doc.metadata?.title || doc.metadata?.source || '';
-		return label ? `[${label}]\n${doc.pageContent}` : doc.pageContent;
+		const dateStr = doc.metadata?.embeddedDate as string | undefined;
+		const dateLabel = dateStr
+			? ` (updated ${new Date(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })})`
+			: '';
+		const content = (doc.metadata?.parentContent as string) || doc.pageContent;
+		return label ? `[${label}${dateLabel}]\n${content}` : content;
 	});
 
 	const sections: string[] = [];
@@ -234,5 +280,8 @@ export const getContext = async (
 		sections.push(`### IMESSAGE CONVERSATIONS (private text messages — separate source from above)\n${imessageParts.join('\n\n---\n\n')}`);
 	}
 
-	return sections.join('\n\n========\n\n');
+	return {
+		context: sections.join('\n\n========\n\n'),
+		latestContentDate
+	};
 };
