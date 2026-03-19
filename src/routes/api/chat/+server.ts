@@ -4,7 +4,6 @@ import { createClient } from '$lib/prismicio';
 import { getContext } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { OpenAIStream, StreamingTextResponse } from 'ai';
-import { Client, RunTree } from 'langsmith';
 import OpenAI from 'openai';
 import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,23 +67,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			.filter((m: { role: string }) => m.role === 'user')
 			.map((m: { content: string }) => m.content);
 
-		const langsmithClient = new Client({
-			apiKey: env.LANGCHAIN_API_KEY
-		});
-
-		// Setup Langsmith tracing pipeline
 		const runID = uuidv4();
-		const pipeline = new RunTree({
-			name: 'Chat Pipeline',
-			run_type: 'chain',
-			inputs: { lastMessage },
-			client: langsmithClient,
-			extra: { metadata: { conversation_id: runID } }
-		});
 
 		// Get context and available routes in parallel; degrade gracefully if retrieval fails
 		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage).catch(
+			getContext(lastMessage.content, priorUserMessages, currentPage).catch(
 				(err) => {
 					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
 					return '';
@@ -278,14 +265,6 @@ ${context}`;
 			}
 		];
 
-		// Create a child run for Langsmith
-		const childRun = await pipeline.createChild({
-			name: 'OpenAI Call',
-			run_type: 'llm',
-			inputs: { ...[...prompt, ...messages] },
-			client: langsmithClient
-		});
-
 		// Ask OpenAI for a streaming chat completion given the prompt
 		const response = await openai.chat.completions.create({
 			model: 'gpt-4.1-mini',
@@ -304,12 +283,6 @@ ${context}`;
 				capturedFunctionCall = { name: payload.name, arguments: JSON.stringify(payload.arguments) };
 			},
 			onCompletion: async (completeResponse) => {
-				// Log to Langsmith on completion
-				childRun.end({ outputs: { answer: completeResponse } });
-				await childRun.postRun();
-				pipeline.end({ outputs: { answer: completeResponse } });
-				await pipeline.postRun();
-
 				// Fire PostHog event — fire-and-forget, never blocks the stream
 				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
 				if (posthogKey) {

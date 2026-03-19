@@ -3,7 +3,6 @@ import { ChatOpenAI, OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
 import type { Document } from '@langchain/core/documents';
 import { compile } from 'html-to-text';
-import { Client } from 'langsmith';
 import { getImessageEnabled } from '$lib/server/imessage-config';
 
 export type Metadata = {
@@ -17,6 +16,10 @@ const SITE_ORIGIN = 'https://www.hunterbryant.io';
 
 // Pages that are listing/nav pages — not specific enough to force-fetch
 const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']);
+
+// Score thresholds for adaptive retrieval
+const MIN_SCORE = 0.3; // Filter out noise from any round
+const GOOD_SCORE = 0.5; // "Good enough to stop" — skip further rounds
 
 // For matched site pages, fetch the full page text at query time rather than
 // relying on whatever chunk happened to score highest. This ensures the LLM
@@ -45,9 +48,44 @@ function deduplicateDocs(docs: Document[]): Document[] {
 	});
 }
 
+// Check if any result in a scored set meets the "good enough" threshold
+function hasGoodResults(results: [Document, number][]): boolean {
+	return results.some(([, score]) => score >= GOOD_SCORE);
+}
+
+// Extract key proper nouns and specific terms from a question via a fast LLM call.
+// Returns an array of entity strings to search for individually.
+async function extractEntities(model: ChatOpenAI, message: string): Promise<string[]> {
+	try {
+		const response = await model.invoke(
+			`Extract the key proper nouns and specific terms from this question. Return them as a comma-separated list. If there are no specific names or terms, return "NONE".
+
+Question: "${message}"`
+		);
+		const text = (response.content as string).trim();
+		if (text === 'NONE' || !text) return [];
+		return text
+			.split(',')
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0 && s.toLowerCase() !== 'hunter' && s.toLowerCase() !== 'hunter bryant');
+	} catch {
+		return [];
+	}
+}
+
+// Generate a hypothetical answer (HyDE) for embedding-based search.
+async function generateHyde(model: ChatOpenAI, query: string): Promise<string> {
+	const response = await model.invoke(
+		`You are Hunter Bryant, a product designer. Write a brief, direct answer to this question based on your background and work. Be specific but concise (2-3 sentences max):
+
+"${query}"`
+	);
+	return response.content as string;
+}
+
 // Build an enriched retrieval query that incorporates recent conversation history
-// and the current page slug. This helps MultiQueryRetriever handle follow-up
-// questions like "tell me more about this page" by grounding the query.
+// and the current page slug. This helps handle follow-up questions like
+// "tell me more about this page" by grounding the query.
 function buildRetrievalQuery(
 	message: string,
 	conversationHistory: string[],
@@ -66,11 +104,17 @@ function buildRetrievalQuery(
 	return parts.join(' | ');
 }
 
-// The function `getContext` is used to retrieve the context of a given message
+// Retrieve context for a user message using adaptive multi-round search.
+//
+// Round 1 — Direct search (always, fast): vector search with the raw query.
+// Round 2 — Entity-focused (if Round 1 is weak): extract proper nouns, search each.
+// Round 3 — HyDE (last resort): generate hypothetical answer, embed and search.
+//
+// This inverts the old approach where HyDE ran first and could bias results with
+// hallucinated content. Now direct search runs first, entity extraction catches
+// person-lookup queries, and HyDE only kicks in for abstract questions when needed.
 export const getContext = async (
 	message: string,
-	runID: string,
-	pipeline: any,
 	conversationHistory: string[] = [],
 	currentPage: string = '/'
 ): Promise<string> => {
@@ -91,113 +135,62 @@ export const getContext = async (
 		openAIApiKey: env.OPENAI_API_KEY
 	});
 
-	const langsmithClient = new Client({
-		apiKey: env.LANGCHAIN_API_KEY
-	});
-
 	const retrievalQuery = buildRetrievalQuery(message, conversationHistory, currentPage);
-
-	// Create a child run for Langsmith
-	const childRun = await pipeline.createChild({
-		name: 'HyDERetriever',
-		run_type: 'retriever',
-		inputs: { message: retrievalQuery },
-		client: langsmithClient
-	});
-
 	const imessageEnabled = await getImessageEnabled();
-
-	const MIN_SCORE = 0.3;
-	const SHORT_QUERY_THRESHOLD = 30;
-	const skipHyde = message.length < SHORT_QUERY_THRESHOLD;
-
-	// HyDE: generate a hypothetical answer to the user's question, then embed
-	// that answer instead of the raw query. The hypothetical answer uses the same
-	// vocabulary and phrasing as real documents in the knowledge base, improving
-	// semantic recall for abstract questions.
-	// Skip HyDE for short queries — direct embedding is more reliable for entity
-	// lookups like "Who is Max?" where HyDE tends to hallucinate and bias retrieval.
-	let hydeText: string | null = null;
-	if (!skipHyde) {
-		const hydePrompt = `You are Hunter Bryant, a product designer. Write a brief, direct answer to this question based on your background and work. Be specific but concise (2-3 sentences max):
-
-"${retrievalQuery}"`;
-
-		const hydeResponse = await model.invoke(hydePrompt);
-		hydeText = hydeResponse.content as string;
-	}
 
 	const mainFilter = {
 		must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
 	};
-
 	const imessageFilter = {
 		must: [{ key: 'metadata.source', match: { value: 'imessage' } }]
 	};
 
-	// Run iMessage retrieval in parallel when enabled, using scored search
-	// so we can filter out low-relevance matches.
-	const imessageRetrieverPromise = imessageEnabled
-		? vectorStore
-				.similaritySearchWithScore(retrievalQuery, 8, imessageFilter)
-				.then((results) =>
-					results.filter(([, score]) => score >= MIN_SCORE).map(([doc]) => doc)
-				)
-		: Promise.resolve([] as Document[]);
-
-	// Search with the hypothetical answer embedding + original query (equal k).
-	// Direct search results come first so they win deduplication when both return
-	// the same chunk — direct embeddings are more grounded than HyDE for entity lookups.
-	// Score filtering removes irrelevant results that would otherwise pollute context.
-	const [hydeResults, fallbackResults, imessageDocs] = await Promise.all([
-		hydeText
-			? vectorStore.similaritySearchWithScore(hydeText, 8, mainFilter)
-			: Promise.resolve([] as [Document, number][]),
+	// ── Round 1: Direct search ──
+	const [mainResults, imessageResults] = await Promise.all([
 		vectorStore.similaritySearchWithScore(retrievalQuery, 8, mainFilter),
-		imessageRetrieverPromise
+		imessageEnabled
+			? vectorStore.similaritySearchWithScore(retrievalQuery, 8, imessageFilter)
+			: Promise.resolve([] as [Document, number][])
 	]);
 
-	let hydeDocs = hydeResults
-		.filter(([, score]) => score >= MIN_SCORE)
-		.map(([doc]) => doc);
+	let allScoredResults: [Document, number][] = [...mainResults, ...imessageResults];
 
-	let fallbackQueryDocs = fallbackResults
-		.filter(([, score]) => score >= MIN_SCORE)
-		.map(([doc]) => doc);
-
-	// If score filtering removes everything, keep the single best direct search
-	// result so the LLM has something to work with rather than zero context.
-	if (hydeDocs.length === 0 && fallbackQueryDocs.length === 0 && fallbackResults.length > 0) {
-		fallbackQueryDocs = [fallbackResults[0][0]];
+	// ── Round 2: Entity-focused search (if Round 1 is weak) ──
+	if (!hasGoodResults(allScoredResults)) {
+		const entities = await extractEntities(model, message);
+		if (entities.length > 0) {
+			const entitySearches = entities.flatMap((entity) => [
+				vectorStore.similaritySearchWithScore(entity, 4, mainFilter),
+				...(imessageEnabled
+					? [vectorStore.similaritySearchWithScore(entity, 4, imessageFilter)]
+					: [])
+			]);
+			const entityResults = (await Promise.all(entitySearches)).flat();
+			allScoredResults = [...allScoredResults, ...entityResults];
+		}
 	}
 
-	// Direct search first — wins dedup over HyDE for overlapping chunks
-	const mainDocs = [...fallbackQueryDocs, ...hydeDocs];
+	// ── Round 3: HyDE (last resort if still weak) ──
+	if (!hasGoodResults(allScoredResults)) {
+		const hydeText = await generateHyde(model, retrievalQuery);
+		const hydeResults = await vectorStore.similaritySearchWithScore(hydeText, 8, mainFilter);
+		allScoredResults = [...allScoredResults, ...hydeResults];
+	}
 
-	const retrievedDocs = [...mainDocs, ...imessageDocs];
+	// Filter by MIN_SCORE, then dedup
+	let docs = allScoredResults
+		.filter(([, score]) => score >= MIN_SCORE)
+		.map(([doc]) => doc);
 
-	// Log to Langsmith on completion — include scores for threshold tuning
-	childRun.end({
-		outputs: {
-			answer: retrievedDocs,
-			hydeSkipped: skipHyde,
-			hydeScores: hydeResults.map(([doc, score]) => ({
-				source: doc.metadata?.source,
-				score,
-				snippet: doc.pageContent.slice(0, 80)
-			})),
-			directScores: fallbackResults.map(([doc, score]) => ({
-				source: doc.metadata?.source,
-				score,
-				snippet: doc.pageContent.slice(0, 80)
-			})),
-			filteredOutCount:
-				hydeResults.length - hydeDocs.length + (fallbackResults.length - fallbackQueryDocs.length)
-		}
-	});
-	await childRun.postRun();
+	// If score filtering removes everything, keep the single best result
+	// so the LLM has something to work with rather than zero context.
+	if (docs.length === 0 && allScoredResults.length > 0) {
+		// Sort descending by score to pick the best one
+		allScoredResults.sort((a, b) => b[1] - a[1]);
+		docs = [allScoredResults[0][0]];
+	}
 
-	const deduplicated = deduplicateDocs(retrievedDocs);
+	const deduplicated = deduplicateDocs(docs);
 
 	// Split retrieved docs into site pages, iMessage, and other sources.
 	// Keep up to MAX_IMESSAGE_CHUNKS_PER_CHAT highest-scoring chunks per conversation —
