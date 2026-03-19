@@ -107,47 +107,94 @@ export const getContext = async (
 
 	const imessageEnabled = await getImessageEnabled();
 
+	const MIN_SCORE = 0.3;
+	const SHORT_QUERY_THRESHOLD = 30;
+	const skipHyde = message.length < SHORT_QUERY_THRESHOLD;
+
 	// HyDE: generate a hypothetical answer to the user's question, then embed
 	// that answer instead of the raw query. The hypothetical answer uses the same
 	// vocabulary and phrasing as real documents in the knowledge base, improving
 	// semantic recall for abstract questions.
-	const hydePrompt = `You are Hunter Bryant, a product designer. Write a brief, direct answer to this question based on your background and work. Be specific but concise (2-3 sentences max):
+	// Skip HyDE for short queries — direct embedding is more reliable for entity
+	// lookups like "Who is Max?" where HyDE tends to hallucinate and bias retrieval.
+	let hydeText: string | null = null;
+	if (!skipHyde) {
+		const hydePrompt = `You are Hunter Bryant, a product designer. Write a brief, direct answer to this question based on your background and work. Be specific but concise (2-3 sentences max):
 
 "${retrievalQuery}"`;
 
-	const hydeResponse = await model.invoke(hydePrompt);
-	const hydeText = hydeResponse.content as string;
+		const hydeResponse = await model.invoke(hydePrompt);
+		hydeText = hydeResponse.content as string;
+	}
 
 	const mainFilter = {
 		must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
 	};
 
-	// Run iMessage retrieval in parallel when enabled.
-	// k=8 casts a wider net across long conversation histories so more topically
-	// distinct chunks (e.g. work vs. side projects) can surface.
+	const imessageFilter = {
+		must: [{ key: 'metadata.source', match: { value: 'imessage' } }]
+	};
+
+	// Run iMessage retrieval in parallel when enabled, using scored search
+	// so we can filter out low-relevance matches.
 	const imessageRetrieverPromise = imessageEnabled
 		? vectorStore
-				.asRetriever({
-					k: 8,
-					filter: { must: [{ key: 'metadata.source', match: { value: 'imessage' } }] }
-				})
-				.getRelevantDocuments(retrievalQuery)
-		: Promise.resolve([]);
+				.similaritySearchWithScore(retrievalQuery, 8, imessageFilter)
+				.then((results) =>
+					results.filter(([, score]) => score >= MIN_SCORE).map(([doc]) => doc)
+				)
+		: Promise.resolve([] as Document[]);
 
-	// Search with the hypothetical answer embedding (primary) + original query (safety fallback).
-	// The deduplication step below handles any overlap between the two result sets.
-	const [hydeDocs, fallbackQueryDocs, imessageDocs] = await Promise.all([
-		vectorStore.similaritySearch(hydeText, 8, mainFilter),
-		vectorStore.similaritySearch(retrievalQuery, 4, mainFilter),
+	// Search with the hypothetical answer embedding + original query (equal k).
+	// Direct search results come first so they win deduplication when both return
+	// the same chunk — direct embeddings are more grounded than HyDE for entity lookups.
+	// Score filtering removes irrelevant results that would otherwise pollute context.
+	const [hydeResults, fallbackResults, imessageDocs] = await Promise.all([
+		hydeText
+			? vectorStore.similaritySearchWithScore(hydeText, 8, mainFilter)
+			: Promise.resolve([] as [Document, number][]),
+		vectorStore.similaritySearchWithScore(retrievalQuery, 8, mainFilter),
 		imessageRetrieverPromise
 	]);
 
-	const mainDocs = [...hydeDocs, ...fallbackQueryDocs];
+	let hydeDocs = hydeResults
+		.filter(([, score]) => score >= MIN_SCORE)
+		.map(([doc]) => doc);
+
+	let fallbackQueryDocs = fallbackResults
+		.filter(([, score]) => score >= MIN_SCORE)
+		.map(([doc]) => doc);
+
+	// If score filtering removes everything, keep the single best direct search
+	// result so the LLM has something to work with rather than zero context.
+	if (hydeDocs.length === 0 && fallbackQueryDocs.length === 0 && fallbackResults.length > 0) {
+		fallbackQueryDocs = [fallbackResults[0][0]];
+	}
+
+	// Direct search first — wins dedup over HyDE for overlapping chunks
+	const mainDocs = [...fallbackQueryDocs, ...hydeDocs];
 
 	const retrievedDocs = [...mainDocs, ...imessageDocs];
 
-	// Log to Langsmith on completion
-	childRun.end({ outputs: { answer: retrievedDocs } });
+	// Log to Langsmith on completion — include scores for threshold tuning
+	childRun.end({
+		outputs: {
+			answer: retrievedDocs,
+			hydeSkipped: skipHyde,
+			hydeScores: hydeResults.map(([doc, score]) => ({
+				source: doc.metadata?.source,
+				score,
+				snippet: doc.pageContent.slice(0, 80)
+			})),
+			directScores: fallbackResults.map(([doc, score]) => ({
+				source: doc.metadata?.source,
+				score,
+				snippet: doc.pageContent.slice(0, 80)
+			})),
+			filteredOutCount:
+				hydeResults.length - hydeDocs.length + (fallbackResults.length - fallbackQueryDocs.length)
+		}
+	});
 	await childRun.postRun();
 
 	const deduplicated = deduplicateDocs(retrievedDocs);
