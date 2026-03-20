@@ -181,9 +181,27 @@ export const getContext = async (
 		const entities = await extractEntities(model, message);
 		if (entities.length > 0) {
 			const entitySearches = entities.flatMap((entity) => [
+				// Semantic search with entity name in main content
 				vectorStore.similaritySearchWithScore(entity, 4, mainFilter),
+				// Semantic search with entity name in iMessages
 				...(imessageEnabled
 					? [vectorStore.similaritySearchWithScore(entity, 4, imessageFilter)]
+					: []),
+				// Payload-filtered search: use the ORIGINAL query embedding but filter
+				// to only this contact's conversations. This finds the most relevant
+				// chunks about "Steve" within Steve's actual iMessage history, rather
+				// than relying on the name embedding to match conversation content.
+				...(imessageEnabled
+					? [
+							vectorStore
+								.similaritySearchWithScore(retrievalQuery, 8, {
+									must: [
+										{ key: 'metadata.source', match: { value: 'imessage' } },
+										{ key: 'metadata.contact', match: { value: entity } }
+									]
+								})
+								.catch(() => [] as [Document, number][])
+						]
 					: [])
 			]);
 			const entityResults = (await Promise.all(entitySearches)).flat();
