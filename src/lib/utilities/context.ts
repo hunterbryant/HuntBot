@@ -83,25 +83,46 @@ async function generateHyde(model: ChatOpenAI, query: string): Promise<string> {
 	return response.content as string;
 }
 
-// Build an enriched retrieval query that incorporates recent conversation history
-// and the current page slug. This helps handle follow-up questions like
-// "tell me more about this page" by grounding the query.
-function buildRetrievalQuery(
+// Rewrite a follow-up message into a standalone search query using an LLM.
+// For first messages (no history), returns the raw message + page slug with no LLM call.
+// For follow-ups, the LLM incorporates conversation context so "tell me more about that"
+// becomes "tell me more about Hunter's work on the Uber autonomous booking experience."
+async function rewriteQuery(
+	model: ChatOpenAI,
 	message: string,
 	conversationHistory: string[],
 	currentPage: string
-): string {
-	const parts: string[] = [];
-	if (conversationHistory.length) {
-		parts.push(conversationHistory.slice(-3).join(' | '));
+): Promise<string> {
+	// Single-turn: no rewrite needed, just append page slug for context
+	if (conversationHistory.length === 0) {
+		if (currentPage && !BROWSE_PAGES.has(currentPage)) {
+			const slug = currentPage.split('/').pop();
+			return slug ? `${message} ${slug}` : message;
+		}
+		return message;
 	}
-	parts.push(message);
-	// Include the page slug so retrieval finds the right content for vague follow-ups
-	if (currentPage && !BROWSE_PAGES.has(currentPage)) {
-		const slug = currentPage.split('/').pop();
-		if (slug) parts.push(slug);
+
+	// Multi-turn: LLM rewrites follow-up into standalone query
+	try {
+		const recent = conversationHistory.slice(-3);
+		const pageHint = !BROWSE_PAGES.has(currentPage)
+			? `The user is currently viewing: ${currentPage}`
+			: '';
+
+		const response = await model.invoke(
+			`Rewrite the follow-up message into a standalone search query that captures the full intent. Include any names, topics, or specifics from the conversation that the follow-up refers to. Output ONLY the rewritten query, nothing else.
+
+${pageHint}
+
+Conversation history:
+${recent.map((m, i) => `User ${i + 1}: ${m}`).join('\n')}
+
+Follow-up: "${message}"`
+		);
+		return (response.content as string).trim() || message;
+	} catch {
+		return message;
 	}
-	return parts.join(' | ');
 }
 
 // Retrieve context for a user message using adaptive multi-round search.
@@ -135,7 +156,7 @@ export const getContext = async (
 		openAIApiKey: env.OPENAI_API_KEY
 	});
 
-	const retrievalQuery = buildRetrievalQuery(message, conversationHistory, currentPage);
+	const retrievalQuery = await rewriteQuery(model, message, conversationHistory, currentPage);
 	const imessageEnabled = await getImessageEnabled();
 
 	const mainFilter = {
@@ -240,7 +261,13 @@ export const getContext = async (
 			}
 		}
 
-		imessageParts.push(`[iMessage — ${label}]\n${parts.join('\n\n---\n\n')}`);
+		const dateInfo = meta.dateRange ? ` (${meta.dateRange})` : '';
+		const msgCount = meta.messageCount ? ` — ${meta.messageCount} messages` : '';
+		const participantLine =
+			meta.isGroupChat === 1 && meta.participants ? `Participants: ${meta.participants}\n` : '';
+		imessageParts.push(
+			`[iMessage — ${label}${dateInfo}${msgCount}]\n${participantLine}${parts.join('\n\n---\n\n')}`
+		);
 	}
 
 	if (currentPage && !BROWSE_PAGES.has(currentPage)) {
