@@ -1,6 +1,4 @@
-// These types help match the Open AI function definitions I created on their site with supported actions here
-
-import type { Message } from 'ai/svelte';
+// These types help match the AI SDK tool definitions with supported actions here
 
 export enum SupportedActions {
 	route_to_page = 'route_to_page',
@@ -15,8 +13,15 @@ export enum FunctionState {
 	failed = 'failed'
 }
 
-export type FunctionMessage = Omit<Message, 'data'> & {
+// Synthetic message type for action feedback UI (minimize, route, lead capture).
+// These are injected into the message list but never sent to the API.
+export type FunctionMessage = {
+	id: string;
+	role: 'data';
+	content: string;
+	name?: string;
 	data: FunctionState;
+	parts: Array<{ type: string; text?: string }>;
 };
 
 export interface BotAction {

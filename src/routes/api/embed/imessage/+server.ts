@@ -455,18 +455,25 @@ export async function GET({ url }) {
 					collectionName: env.QDRANT_COLLECTION
 				};
 
-				// Ensure payload index exists so filtering/purging by source works
+				// Ensure payload indexes exist so filtering/purging by source works
+				// and entity-based payload-filtered search can narrow to a contact's conversations
 				try {
 					const qdrantClient = new QdrantClient({
 						url: env.QDRANT_URL,
 						apiKey: env.QDRANT_API_KEY
 					});
-					await qdrantClient.createPayloadIndex(env.QDRANT_COLLECTION as string, {
-						field_name: 'metadata.source',
-						field_schema: 'keyword'
-					});
+					await Promise.all([
+						qdrantClient.createPayloadIndex(env.QDRANT_COLLECTION as string, {
+							field_name: 'metadata.source',
+							field_schema: 'keyword'
+						}),
+						qdrantClient.createPayloadIndex(env.QDRANT_COLLECTION as string, {
+							field_name: 'metadata.contact',
+							field_schema: 'keyword'
+						})
+					]);
 				} catch {
-					// Index may already exist — safe to ignore
+					// Indexes may already exist — safe to ignore
 				}
 
 				// Batch upload in groups of 50 to show progress

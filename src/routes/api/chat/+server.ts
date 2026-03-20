@@ -1,16 +1,15 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { createClient } from '$lib/prismicio';
-import { getContext } from '$lib/utilities/context';
+import { logRag } from '$lib/server/rag-debug';
+import { planSupplementalSearches } from '$lib/server/rag-router';
+import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
+import { getContext, searchKnowledgeBase } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
-import { Client, RunTree } from 'langsmith';
+import { streamText, tool, convertToModelMessages, stepCountIs } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 import OpenAI from 'openai';
-import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
-import { v4 as uuidv4 } from 'uuid';
-
-// Initialize OpenAI API client
-const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+import { z } from 'zod';
 
 // Cache available routes from Prismic to avoid querying on every request
 let routeCache: { routes: string[]; expires: number } | null = null;
@@ -61,31 +60,32 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const lastMessage = messages[messages.length - 1];
 
+		// Extract text content from a UIMessage (v6 format uses parts array)
+		function getMessageText(m: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
+			if (m.parts) {
+				return m.parts
+					.filter((p: { type: string }) => p.type === 'text')
+					.map((p: { text?: string }) => p.text ?? '')
+					.join('');
+			}
+			return m.content ?? '';
+		}
+
 		// Extract prior user messages (excluding the current one) to improve retrieval
 		// on follow-up questions like "tell me more" or "what about X?"
 		const priorUserMessages: string[] = messages
 			.slice(0, -1)
 			.filter((m: { role: string }) => m.role === 'user')
-			.map((m: { content: string }) => m.content);
+			.map(getMessageText);
 
-		const langsmithClient = new Client({
-			apiKey: env.LANGCHAIN_API_KEY
-		});
-
-		// Setup Langsmith tracing pipeline
-		const runID = uuidv4();
-		const pipeline = new RunTree({
-			name: 'Chat Pipeline',
-			run_type: 'chain',
-			inputs: { lastMessage },
-			client: langsmithClient,
-			extra: { metadata: { conversation_id: runID } }
-		});
+		const runID = crypto.randomUUID();
 
 		// Get context and available routes in parallel; degrade gracefully if retrieval fails
+		const lastMessageText = getMessageText(lastMessage);
+
 		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessage.content, runID, pipeline, priorUserMessages, currentPage).catch(
-				(err) => {
+			getContext(lastMessageText, priorUserMessages, currentPage).catch(
+				(err: { data?: string; message?: string }) => {
 					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
 					return '';
 				}
@@ -93,82 +93,106 @@ export const POST: RequestHandler = async ({ request }) => {
 			getAvailableRoutes()
 		]);
 
-		// Build function definitions with live routes from Prismic
-		const functions: ChatCompletionCreateParams.Function[] = [
-		{
-			name: 'minimize_chat',
-			description:
-				'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
-			parameters: {
-				type: 'object',
-				properties: {
-					message: {
-						type: 'string',
-						description:
+		const routerPlan = await planSupplementalSearches({
+			userMessage: lastMessageText,
+			priorUserMessages,
+			contextText: context
+		});
+
+		const seenSearchKeys = new Set<string>();
+		const supplementalBlocks: string[] = [];
+		for (const s of routerPlan.supplemental_searches) {
+			const key = `${s.query.trim().toLowerCase()}|${s.source_filter}`;
+			if (seenSearchKeys.has(key)) continue;
+			seenSearchKeys.add(key);
+			try {
+				const result = await searchKnowledgeBase(s.query, s.source_filter);
+				supplementalBlocks.push(
+					`### Supplemental search (${s.source_filter}): "${s.query}"\n${result}`
+				);
+			} catch (e) {
+				console.warn('Supplemental search failed:', s.query, e);
+			}
+		}
+
+		let contextForModel = context;
+		if (supplementalBlocks.length > 0) {
+			contextForModel = `${context}\n\n========\n\n### PRE-RUN VECTOR SEARCHES (router — same grounding rules as CONTEXT)\n${supplementalBlocks.join('\n\n---\n\n')}`;
+		}
+
+		// Build tool definitions with live routes from Prismic
+		const routeEnum = availableRoutes.length > 0
+			? (availableRoutes as [string, ...string[]])
+			: (['/' ] as [string, ...string[]]);
+
+		const tools = {
+			minimize_chat: tool({
+				description:
+					'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
+				inputSchema: z.object({
+					message: z
+						.string()
+						.describe(
 							'A brief, friendly sign-off message (1 sentence, plain text). E.g. "No worries, I\'ll be here if you need me."'
-					}
-				},
-				required: ['message']
-			}
-		},
-		{
-			name: 'route_to_page',
-			description:
-				"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
-			parameters: {
-				type: 'object',
-				properties: {
-					page: {
-						type: 'string',
-						enum: availableRoutes,
-						description: 'The local route path to navigate to.'
-					},
-					message: {
-						type: 'string',
-						description:
+						)
+				})
+			}),
+			route_to_page: tool({
+				description:
+					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
+				inputSchema: z.object({
+					page: z
+						.enum(routeEnum)
+						.describe('The local route path to navigate to.'),
+					message: z
+						.string()
+						.describe(
 							"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
-					}
-				},
-				required: ['page', 'message']
-			}
-		},
-			{
-				name: 'ask_clarifying_question',
+						)
+				})
+			}),
+			ask_clarifying_question: tool({
 				description:
 					"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
-				parameters: {
-					type: 'object',
-					properties: {
-						question: {
-							type: 'string',
-							description: 'The specific clarifying question to ask the user.'
-						}
-					},
-					required: ['question']
-				}
-			},
-			{
-				name: 'capture_lead_intent',
+				inputSchema: z.object({
+					question: z
+						.string()
+						.describe('The specific clarifying question to ask the user.')
+				})
+			}),
+			capture_lead_intent: tool({
 				description:
 					"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
-				parameters: {
-					type: 'object',
-					properties: {
-						intent_type: {
-							type: 'string',
-							enum: ['hiring', 'collaboration', 'general'],
-							description: 'The type of interest the visitor has signalled.'
-						},
-						message: {
-							type: 'string',
-							description:
-								'A short, warm acknowledgement of their interest (1 sentence, plain text).'
-						}
-					},
-					required: ['intent_type', 'message']
+				inputSchema: z.object({
+					intent_type: z
+						.enum(['hiring', 'collaboration', 'general'])
+						.describe('The type of interest the visitor has signalled.'),
+					message: z
+						.string()
+						.describe(
+							'A short, warm acknowledgement of their interest (1 sentence, plain text).'
+						)
+				})
+			}),
+			search_knowledge_base: tool({
+				description:
+					"Search Hunter's knowledge base for additional information. The server may have already run targeted searches (see PRE-RUN VECTOR SEARCHES in CONTEXT). Use this only if you still lack grounded material after reading CONTEXT, or the user shifts topic mid-thread.",
+				inputSchema: z.object({
+					query: z.string().describe('The search query to look up in the knowledge base.'),
+					source_filter: z
+						.enum(['all', 'imessage', 'site'])
+						.default('all')
+						.describe('Filter results by source type.')
+				}),
+				execute: async ({ query, source_filter }) => {
+					logRag('tool search_knowledge_base', {
+						query: query.slice(0, 200),
+						source_filter
+					});
+					return await searchKnowledgeBase(query, source_filter);
 				}
-			}
-		];
+			})
+		};
 
 		const today = new Date().toLocaleDateString('en-US', {
 			weekday: 'long',
@@ -196,25 +220,30 @@ export const POST: RequestHandler = async ({ request }) => {
 		const isListingPage = ['/', '/case-studies', '/projects', '/information'].includes(currentPage);
 		const pageContext = isListingPage ? pageSection : `${pageLabel} (${pageSection})`;
 
-		const systemPrompt = `You are HuntBot — a conversational assistant on Hunter Bryant's portfolio website. Hunter is a product designer, but his site covers more than design work — it includes personal writing, travel essays, side projects, and life updates. Read the room: not everything is a case study.
+		const systemPrompt = `## CRITICAL GROUNDING (highest priority)
+You MUST answer using ONLY the CONTEXT block at the end of this prompt. If CONTEXT does not support an answer, say so in one plain sentence (e.g. "I don't have that" or "I'm not sure from what's here") — do NOT invent details from general knowledge.
+
+CONTEXT lines start with chunk ids like [CHUNK-site-...], [CHUNK-notes-...], or [CHUNK-imsg-...]. Mentally tie each factual claim to those chunks; do not cite ids in the user-visible reply unless asked.
+
+It is OK to connect dots only within the SAME source type (e.g. two SITE chunks, or two iMessage chunks from one conversation) when the link is obvious. Do not merge facts across source types (site + iMessage + notes) unless each type independently supports the same point.
+
+Partial answers are good. Hedging is OK when evidence is thin.
 
 ## Your role
-Help visitors explore whatever they're looking at — design work, a travel blog, a personal essay, anything. You know Hunter's stuff inside and out. Think of yourself as a friend who's read everything on the site and can riff on any of it.
+You are HuntBot on Hunter Bryant's portfolio. Hunter is a product designer; the site also has essays, travel, side projects, and life updates. Read the room — not everything is a case study.
 
 ## Tone and length
-Conversational and direct. Default to one sentence. Two if the answer genuinely needs it. If you're writing three, cut. No marketing speak, no filler, no preamble. Plain text only — no markdown, no bullet points, no links.
-
-Lead with a direct answer. Don't restate the question. Don't pad with qualifiers.
+Conversational and direct. Default to one sentence. Two if needed. If you're writing three, cut. Plain text only — no markdown, no bullet points, no links. Lead with the answer; don't restate the question.
 
 ## Follow-up questions
-Do NOT end every response with a follow-up question. Most of the time, just answer and stop. Only ask a question when it genuinely flows from the conversation — never the formulaic "Want me to dive into...?" or "Curious to hear more?" pattern. When you do ask, make it specific and short.
+Do NOT end every response with a follow-up. Ask only when it naturally fits — never formulaic "Want me to dive into...?" patterns.
 
 ## Voice
-When talking about Hunter's design work, be specific and opinionated — name the interesting constraint or tradeoff. When talking about personal content (travel, essays, life), be casual — like recounting a friend's trip, not presenting a portfolio piece. Avoid words like "project", "storytelling approach", "methodology", or "narrative" when discussing personal writing. Just talk about the thing.
+For design work: specific, opinionated — name constraints and tradeoffs. For personal writing: casual, like a friend's story — avoid "methodology" or "narrative" jargon.
 
-Use "Hunter" naturally — don't force third-person constructions like "Hunter tackled X by Y." Say it the way you'd actually say it: "He journaled the whole trip to remember the small moments."
+Use "Hunter" naturally — e.g. "He journaled the whole trip" not stiff third-person portfolio speak.
 
-## Examples of ideal responses
+## Examples
 
 Q: What kind of designer is Hunter?
 A: Product designer who leans into systems thinking — most of his career has been at companies where design operates at scale.
@@ -226,25 +255,24 @@ Q: Where does Hunter live?
 A: San Francisco.
 
 ## Handling follow-ups
-The conversation has history. When a user says "tell me more", "what about that", or asks a follow-up, treat it in context of what was just discussed. Don't restart from scratch.
+Use conversation history. "Tell me more" continues the last topic — don't restart from scratch.
 
 ## Time and dates
-Today is ${today}. Use this to interpret relative time questions like "recently", "last year", or "what has he been working on lately". When the context includes dates or timelines, use them to give specific, grounded answers. If you can name a month or year, do — vague answers like "recently" are less useful than "as of early 2025".
+Today is ${today}. Use CONTEXT dates when present; prefer specific months/years over vague "recently".
 
 ## Current page
-The visitor is currently on: ${pageContext}
-If this is a specific page (case study, project, blog post), they're already looking at it — engage with the content directly. Lead with the most interesting detail from context. If they're on the home page, /case-studies, or /projects, treat them as still browsing.
+The visitor is on: ${pageContext}
+On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
 
-## Handling knowledge gaps — CRITICAL
-Only answer from what a single context source explicitly states. Each section in CONTEXT (SITE CONTENT, NOTES, IMESSAGE) is a separate source. NEVER combine facts from different sections or different chunks to construct an answer the context doesn't directly support.
+## Confidence calibration
+- Strong CONTEXT match → answer directly.
+- Partial CONTEXT → share what you know and name the gap.
+- No relevant CONTEXT → one sentence, stop. Do NOT guess.
 
-Bad example: Context has [chunk A: "Hunter made stew with his mom"] and [chunk B: "Mom used the wok Hunter gave her"]. User asks "did she use the wok for the stew?" WRONG answer: "Yes, she used the wok for the stew." CORRECT answer: "She's used the wok and they've cooked together, but I don't know if those are connected."
-
-If the specific connection or fact asked about isn't explicitly stated in a single chunk, say you don't have that detail. "I don't have that specifically" is a complete, acceptable response.
-
-If the retrieved context does not contain enough information to answer the question, say: "I don't have that detail — you can reach Hunter directly at hunterbryant@gmail.com or on LinkedIn." Do not guess or infer facts not present in the context.
+Never fill gaps with training-data knowledge about companies or tech if CONTEXT is silent.
 
 ## Tools
+- Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm, specific acknowledgement in the message field — this is what they'll see as your response. The function surfaces contact links automatically, so don't repeat contact info in your message.
 
@@ -265,79 +293,89 @@ Important rules for iMessage context:
 - If multiple chunks from different conversations seem to conflict, prefer the most recent one
 - Never reveal other people's messages or phone numbers — only use Hunter's own words and the general topic
 
+## Source awareness
+The CONTEXT section is labeled by source type: SITE CONTENT, NOTES & DOCUMENTS, and IMESSAGE CONVERSATIONS. When answering, be aware of which source you're drawing from. If a user asks about Hunter's professional work and only iMessage content is relevant, flag that naturally — e.g. "from his texts it sounds like..." rather than presenting casual conversation as professional portfolio content.
+
+Date ranges and message counts in iMessage labels tell you how recent and extensive a conversation is. Prefer recent conversations over old ones. If a label says "(Jan 2024 — Mar 2024)" and today is ${today}, note the time gap.
+
+${routerPlan.assistant_hint?.trim() ? `\n## Router note (internal)\n${routerPlan.assistant_hint.trim()}\n` : ''}
 ---
 
 CONTEXT:
-${context}`;
+${contextForModel}`;
 
-		const prompt = [
-			{
-				role: 'system',
-				content: systemPrompt
-			}
-		];
+		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
+		// Client injects synthetic UIMessages with role "data" for action UI (route/minimize feedback).
+		// convertToModelMessages only accepts roles the model understands — strip UI-only rows.
+		const messagesForModel = messages.filter(
+			(m: { role: string }) => m.role !== 'data'
+		);
+		const modelMessages = await convertToModelMessages(messagesForModel);
 
-		// Create a child run for Langsmith
-		const childRun = await pipeline.createChild({
-			name: 'OpenAI Call',
-			run_type: 'llm',
-			inputs: { ...[...prompt, ...messages] },
-			client: langsmithClient
-		});
-
-		// Ask OpenAI for a streaming chat completion given the prompt
-		const response = await openai.chat.completions.create({
-			model: 'gpt-4.1-mini',
-			stream: true,
+		const result = streamText({
+			model: openai('gpt-4.1-mini'),
+			system: systemPrompt,
+			messages: modelMessages,
+			tools,
+			stopWhen: stepCountIs(3),
 			temperature: 0.4,
-			messages: [...prompt, ...messages],
-			functions
-		});
-
-		// Capture any function call fired during streaming (for PostHog logging)
-		let capturedFunctionCall: { name: string; arguments: string } | null = null;
-
-		// Convert the response into a friendly text-stream
-		const stream = OpenAIStream(response, {
-			experimental_onFunctionCall: async (payload) => {
-				capturedFunctionCall = { name: payload.name, arguments: JSON.stringify(payload.arguments) };
+			onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
+				const callNames = toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
+				const resultSummary =
+					toolResults?.map((tr) => ('toolName' in tr ? tr.toolName : 'unknown')) ?? [];
+				logRag(`step finish`, {
+					stepNumber,
+					toolCalls: callNames,
+					toolResults: resultSummary,
+					textLen: text?.length ?? 0
+				});
 			},
-			onCompletion: async (completeResponse) => {
-				// Log to Langsmith on completion
-				childRun.end({ outputs: { answer: completeResponse } });
-				await childRun.postRun();
-				pipeline.end({ outputs: { answer: completeResponse } });
-				await pipeline.postRun();
-
-				// Fire PostHog event — fire-and-forget, never blocks the stream
+			onFinish: ({ text, toolCalls }) => {
 				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
-				if (posthogKey) {
-					fetch('https://us.i.posthog.com/capture/', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({
-							api_key: posthogKey,
-							event: 'chat_message',
-							distinct_id: sessionId ?? runID,
-							timestamp: new Date().toISOString(),
-							properties: {
-								user_message: lastMessage.content,
-								bot_response: completeResponse || null,
-								function_call_name: capturedFunctionCall?.name ?? null,
-								function_call_args: capturedFunctionCall?.arguments ?? null,
-								current_page: currentPage,
-								run_id: runID,
-								session_id: sessionId ?? null
-							}
-						})
-					}).catch(() => {
-						/* swallow — don't break chat if PostHog is unreachable */
-					});
-				}
+				if (!posthogKey) return;
+
+				const clientToolCall = toolCalls?.find(
+					(tc) => 'toolName' in tc && tc.toolName !== 'search_knowledge_base'
+				);
+				void fetch('https://us.i.posthog.com/capture/', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						api_key: posthogKey,
+						event: 'chat_message',
+						distinct_id: sessionId ?? runID,
+						timestamp: new Date().toISOString(),
+						properties: {
+							user_message: lastMessageText,
+							bot_response: text || null,
+							function_call_name: clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
+							function_call_args: clientToolCall && 'input' in clientToolCall
+								? JSON.stringify(clientToolCall.input)
+								: null,
+							current_page: currentPage,
+							run_id: runID,
+							session_id: sessionId ?? null
+						}
+					})
+				}).catch(() => {
+					/* swallow */
+				});
+
+				void sendRagReflectionToPosthog({
+					posthogKey,
+					userMessage: lastMessageText,
+					assistantText: text ?? '',
+					contextExcerpt: contextForModel,
+					sessionId: sessionId ?? null,
+					runID,
+					currentPage
+				}).catch(() => {
+					/* swallow — reflection is optional */
+				});
 			}
 		});
-		// Respond with the stream
-		return new StreamingTextResponse(stream);
+
+		return result.toUIMessageStreamResponse();
 	} catch (error) {
 		console.error('Chat API error:', error);
 		if (error instanceof OpenAI.APIError) {

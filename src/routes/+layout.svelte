@@ -9,7 +9,7 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen } from '$lib/nav/navstore';
-	import { botEngaged, chat, minimized } from '$lib/ChatBox/MessageStore';
+	import { botEngaged, chat, minimized } from '$lib/ChatBox/MessageStore.svelte';
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';

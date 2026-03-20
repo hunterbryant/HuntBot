@@ -3,7 +3,7 @@
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen, mobile } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { minimized, scrollSuggestions, hoverSuggestions, loadingContextSuggestions } from './MessageStore';
+	import { minimized, scrollSuggestions, hoverSuggestions, loadingContextSuggestions } from './MessageStore.svelte';
 	import type { Writable, Readable } from 'svelte/store';
 
 	export let input: Writable<string>;
