@@ -1,7 +1,5 @@
 // These types help match the AI SDK tool definitions with supported actions here
 
-import type { Message } from '@ai-sdk/svelte';
-
 export enum SupportedActions {
 	route_to_page = 'route_to_page',
 	minimize_chat = 'minimize_chat',
@@ -15,9 +13,15 @@ export enum FunctionState {
 	failed = 'failed'
 }
 
-export type FunctionMessage = Omit<Message, 'data'> & {
-	data: FunctionState;
+// Synthetic message type for action feedback UI (minimize, route, lead capture).
+// These are injected into the message list but never sent to the API.
+export type FunctionMessage = {
+	id: string;
+	role: 'data';
+	content: string;
 	name?: string;
+	data: FunctionState;
+	parts: Array<{ type: string; text?: string }>;
 };
 
 export interface BotAction {

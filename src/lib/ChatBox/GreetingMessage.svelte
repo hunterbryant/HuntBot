@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { botEngaged, minimized, SESSION_ID } from './MessageStore';
+	import { botEngaged, minimized, SESSION_ID } from './MessageStore.svelte';
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';

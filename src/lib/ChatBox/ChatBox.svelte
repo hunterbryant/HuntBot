@@ -26,13 +26,14 @@
 		fetchScrollSuggestions,
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
+		getMessageText,
 		SESSION_ID
-	} from './MessageStore';
+	} from './MessageStore.svelte';
+	import type { FunctionMessage } from '$lib/types';
 	import { captureEvent } from '$lib/analytics';
 	import LoadingStream from './LoadingStream.svelte';
 
-	const { messages, isLoading: _isLoading, handleSubmit, input, append } = chat();
-	const isLoading = derived(_isLoading, ($v) => $v ?? false);
+	const { messages, isLoading, handleSubmit, input, append } = chat();
 
 	const animatedMessageIds = new Set<string>();
 
@@ -89,7 +90,7 @@
 		const greetingLoaded =
 			$botEngaged &&
 			!$minimized &&
-			$messages.some((m) => m.role === 'assistant' && m.content.trim().length > 1);
+			$messages.some((m) => m.role === 'assistant' && getMessageText(m).trim().length > 1);
 		const hasUser = $messages.some((m) => m.role === 'user');
 
 		if (hasUser) {
@@ -553,20 +554,20 @@
 						}}
 					>
 					{#if message.role === 'user'}
-						<UserMessage value={message.content} />
-					{:else if message.role === 'assistant' && message.content.trim()}
+						<UserMessage value={getMessageText(message)} />
+					{:else if message.role === 'assistant' && getMessageText(message).trim()}
 						<BotMessage
-							value={message.content}
+							value={getMessageText(message)}
 							isLast={i === $messages.length - 1 && !$isLoading}
 							onRetry={retryLastResponse}
 							animate={shouldAnimate(message.id)}
 						/>
-					{:else if message.role === 'data'}
-						<ActionMessage value={message} />
+					{:else if (message.role as string) === 'data'}
+						<ActionMessage value={message as unknown as FunctionMessage} />
 					{/if}
 					</div>
 				{/each}
-				{#if $isLoading && ($messages[$messages.length - 1].role !== 'assistant' || !$messages[$messages.length - 1].content.trim())}
+				{#if $isLoading && ($messages[$messages.length - 1].role !== 'assistant' || !getMessageText($messages[$messages.length - 1]).trim())}
 					<div
 						in:slide|global={{ duration: 400 }}
 						out:fade|global={{ duration: 200 }}
