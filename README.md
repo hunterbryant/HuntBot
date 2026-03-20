@@ -31,6 +31,11 @@ export ADMIN_PASSWORD="..."
 export PINECONE_API_KEY="..."
 export PINECONE_INDEX="..."
 export NOTION_INTEGRATION_TOKEN="..."
+# export QDRANT_VECTOR_NAME="default"  # If Qdrant errors with "Not existing vector name" (named-vector collection)
+# Optional RAG tuning (see CLAUDE.md)
+# export RAG_DEBUG=1             # Verbose RAG logs outside dev
+# export RAG_REFLECTION=1        # PostHog structured audit of replies vs context
+# export RAG_ROUTER=0            # Disable pre-turn supplemental vector search planner
 ```
 
 The auth password is what site visitors must use to gain access to protected case studies. The admin password is used for access to the admin tools. Right now this include the triggers for embedding new data to the vector DB.

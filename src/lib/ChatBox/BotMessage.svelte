@@ -33,8 +33,14 @@
 
 		let current = '';
 		let settleTimer: ReturnType<typeof setTimeout> | null = null;
+		const appendTimers: ReturnType<typeof setTimeout>[] = [];
 		let startTime: number | null = null;
 		let charIndex = 0;
+
+		function clearAppendTimers() {
+			for (const t of appendTimers) clearTimeout(t);
+			appendTimers.length = 0;
+		}
 
 		if (!animate) {
 			current = text;
@@ -47,6 +53,7 @@
 
 			if (newText.length < prevLen) {
 				if (settleTimer) clearTimeout(settleTimer);
+				clearAppendTimers();
 				node.textContent = newText;
 				startTime = null;
 				charIndex = 0;
@@ -72,12 +79,17 @@
 						lastDelay = delay;
 						const span = document.createElement('span');
 						span.textContent = ch;
-						span.style.cssText = `display:inline;opacity:0;animation:streamCharIn 140ms ease-out ${delay}ms forwards`;
-						node.appendChild(span);
+						span.style.cssText = `display:inline;opacity:0;animation:streamCharIn 140ms ease-out 0ms forwards`;
+						appendTimers.push(
+							setTimeout(() => {
+								node.appendChild(span);
+							}, delay)
+						);
 					}
 				} else {
 					const wordSpan = document.createElement('span');
 					wordSpan.style.cssText = 'white-space:nowrap';
+					let wordMounted = false;
 
 					for (const ch of chunk) {
 						const delay = Math.max(0, charIndex * STAGGER - elapsed);
@@ -85,16 +97,23 @@
 						lastDelay = delay;
 						const charSpan = document.createElement('span');
 						charSpan.textContent = ch;
-						charSpan.style.cssText = `display:inline-block;opacity:0;animation:streamCharIn 140ms ease-out ${delay}ms forwards`;
-						wordSpan.appendChild(charSpan);
+						charSpan.style.cssText = `display:inline-block;opacity:0;animation:streamCharIn 140ms ease-out 0ms forwards`;
+						appendTimers.push(
+							setTimeout(() => {
+								if (!wordMounted) {
+									node.appendChild(wordSpan);
+									wordMounted = true;
+								}
+								wordSpan.appendChild(charSpan);
+							}, delay)
+						);
 					}
-
-					node.appendChild(wordSpan);
 				}
 			}
 
 			if (settleTimer) clearTimeout(settleTimer);
 			settleTimer = setTimeout(() => {
+				clearAppendTimers();
 				const before = node.offsetHeight;
 				node.textContent = current;
 				const after = node.offsetHeight;
@@ -128,6 +147,7 @@
 			},
 			destroy() {
 				if (settleTimer) clearTimeout(settleTimer);
+				clearAppendTimers();
 			}
 		};
 	}

@@ -5,7 +5,6 @@ These require re-embedding or infrastructure changes and are out of scope for Ph
 ## Retrieval quality
 
 - **Hybrid search (BM25 + dense vectors)** — Add a sparse index to Qdrant and blend keyword and semantic scores. Better recall for exact names, project titles, and proper nouns. Requires re-embedding with sparse vectors.
-- **Reranking (Cohere Rerank API)** — After hybrid search is working, pass the top-20 candidates through a cross-encoder reranker before injecting into context. Measurably improves precision at low cost.
 - **Semantic chunking** — Replace fixed 1000-char splits with topic-boundary splits (e.g. LangChain `SemanticChunker`). Chunks better reflect actual content units.
 - **Parent-child chunking** — Embed small child chunks for high-precision retrieval; return the larger parent chunk as the actual context. Better than increasing chunk size directly.
 
