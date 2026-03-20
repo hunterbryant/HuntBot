@@ -31,7 +31,8 @@
 	import { captureEvent } from '$lib/analytics';
 	import LoadingStream from './LoadingStream.svelte';
 
-	const { messages, isLoading, handleSubmit, input, append } = chat();
+	const { messages, isLoading: _isLoading, handleSubmit, input, append } = chat();
+	const isLoading = derived(_isLoading, ($v) => $v ?? false);
 
 	const animatedMessageIds = new Set<string>();
 
@@ -560,7 +561,7 @@
 							onRetry={retryLastResponse}
 							animate={shouldAnimate(message.id)}
 						/>
-					{:else if message.role === 'function'}
+					{:else if message.role === 'data'}
 						<ActionMessage value={message} />
 					{/if}
 					</div>

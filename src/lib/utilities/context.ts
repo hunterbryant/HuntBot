@@ -17,9 +17,8 @@ const SITE_ORIGIN = 'https://www.hunterbryant.io';
 // Pages that are listing/nav pages — not specific enough to force-fetch
 const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']);
 
-// Score thresholds for adaptive retrieval
-const MIN_SCORE = 0.3; // Filter out noise from any round
-const GOOD_SCORE = 0.5; // "Good enough to stop" — skip further rounds
+// Score threshold for filtering noise
+const MIN_SCORE = 0.3;
 
 // For matched site pages, fetch the full page text at query time rather than
 // relying on whatever chunk happened to score highest. This ensures the LLM
@@ -46,41 +45,6 @@ function deduplicateDocs(docs: Document[]): Document[] {
 		seen.add(key);
 		return true;
 	});
-}
-
-// Check if any result in a scored set meets the "good enough" threshold
-function hasGoodResults(results: [Document, number][]): boolean {
-	return results.some(([, score]) => score >= GOOD_SCORE);
-}
-
-// Extract key proper nouns and specific terms from a question via a fast LLM call.
-// Returns an array of entity strings to search for individually.
-async function extractEntities(model: ChatOpenAI, message: string): Promise<string[]> {
-	try {
-		const response = await model.invoke(
-			`Extract the key proper nouns and specific terms from this question. Return them as a comma-separated list. If there are no specific names or terms, return "NONE".
-
-Question: "${message}"`
-		);
-		const text = (response.content as string).trim();
-		if (text === 'NONE' || !text) return [];
-		return text
-			.split(',')
-			.map((s) => s.trim())
-			.filter((s) => s.length > 0 && s.toLowerCase() !== 'hunter' && s.toLowerCase() !== 'hunter bryant');
-	} catch {
-		return [];
-	}
-}
-
-// Generate a hypothetical answer (HyDE) for embedding-based search.
-async function generateHyde(model: ChatOpenAI, query: string): Promise<string> {
-	const response = await model.invoke(
-		`You are Hunter Bryant, a product designer. Write a brief, direct answer to this question based on your background and work. Be specific but concise (2-3 sentences max):
-
-"${query}"`
-	);
-	return response.content as string;
 }
 
 // Rewrite a follow-up message into a standalone search query using an LLM.
@@ -125,15 +89,8 @@ Follow-up: "${message}"`
 	}
 }
 
-// Retrieve context for a user message using adaptive multi-round search.
-//
-// Round 1 — Direct search (always, fast): vector search with the raw query.
-// Round 2 — Entity-focused (if Round 1 is weak): extract proper nouns, search each.
-// Round 3 — HyDE (last resort): generate hypothetical answer, embed and search.
-//
-// This inverts the old approach where HyDE ran first and could bias results with
-// hallucinated content. Now direct search runs first, entity extraction catches
-// person-lookup queries, and HyDE only kicks in for abstract questions when needed.
+// Retrieve context for a user message using a single-round vector search.
+// The LLM can call search_knowledge_base for additional retrieval when needed.
 export const getContext = async (
 	message: string,
 	conversationHistory: string[] = [],
@@ -174,47 +131,7 @@ export const getContext = async (
 			: Promise.resolve([] as [Document, number][])
 	]);
 
-	let allScoredResults: [Document, number][] = [...mainResults, ...imessageResults];
-
-	// ── Round 2: Entity-focused search (if Round 1 is weak) ──
-	if (!hasGoodResults(allScoredResults)) {
-		const entities = await extractEntities(model, message);
-		if (entities.length > 0) {
-			const entitySearches = entities.flatMap((entity) => [
-				// Semantic search with entity name in main content
-				vectorStore.similaritySearchWithScore(entity, 4, mainFilter),
-				// Semantic search with entity name in iMessages
-				...(imessageEnabled
-					? [vectorStore.similaritySearchWithScore(entity, 4, imessageFilter)]
-					: []),
-				// Payload-filtered search: use the ORIGINAL query embedding but filter
-				// to only this contact's conversations. This finds the most relevant
-				// chunks about "Steve" within Steve's actual iMessage history, rather
-				// than relying on the name embedding to match conversation content.
-				...(imessageEnabled
-					? [
-							vectorStore
-								.similaritySearchWithScore(retrievalQuery, 8, {
-									must: [
-										{ key: 'metadata.source', match: { value: 'imessage' } },
-										{ key: 'metadata.contact', match: { value: entity } }
-									]
-								})
-								.catch(() => [] as [Document, number][])
-						]
-					: [])
-			]);
-			const entityResults = (await Promise.all(entitySearches)).flat();
-			allScoredResults = [...allScoredResults, ...entityResults];
-		}
-	}
-
-	// ── Round 3: HyDE (last resort if still weak) ──
-	if (!hasGoodResults(allScoredResults)) {
-		const hydeText = await generateHyde(model, retrievalQuery);
-		const hydeResults = await vectorStore.similaritySearchWithScore(hydeText, 8, mainFilter);
-		allScoredResults = [...allScoredResults, ...hydeResults];
-	}
+	const allScoredResults: [Document, number][] = [...mainResults, ...imessageResults];
 
 	// Filter by MIN_SCORE, then dedup
 	let docs = allScoredResults
@@ -321,3 +238,45 @@ export const getContext = async (
 
 	return sections.join('\n\n========\n\n');
 };
+
+// Search the knowledge base on demand (called by the search_knowledge_base tool).
+// Returns formatted chunks with scores for the LLM to synthesize.
+export async function searchKnowledgeBase(
+	query: string,
+	sourceFilter: 'all' | 'imessage' | 'site' = 'all'
+): Promise<string> {
+	const vectorStore = await QdrantVectorStore.fromExistingCollection(
+		new OpenAIEmbeddings({
+			modelName: 'text-embedding-3-small',
+			openAIApiKey: env.OPENAI_API_KEY,
+			dimensions: 512
+		}),
+		{
+			url: env.QDRANT_URL,
+			apiKey: env.QDRANT_API_KEY,
+			collectionName: env.QDRANT_COLLECTION
+		}
+	);
+
+	let filter: Record<string, unknown> | undefined;
+	if (sourceFilter === 'imessage') {
+		filter = { must: [{ key: 'metadata.source', match: { value: 'imessage' } }] };
+	} else if (sourceFilter === 'site') {
+		filter = { must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }] };
+	}
+
+	const results = await vectorStore.similaritySearchWithScore(query, 8, filter);
+	const filtered = results.filter(([, score]) => score >= MIN_SCORE);
+
+	if (filtered.length === 0) {
+		return 'No relevant results found for this query.';
+	}
+
+	return filtered
+		.map(([doc, score]) => {
+			const source = doc.metadata?.source ?? 'unknown';
+			const label = doc.metadata?.title || doc.metadata?.contact || source;
+			return `[${label} (score: ${score.toFixed(2)})]\n${doc.pageContent}`;
+		})
+		.join('\n\n---\n\n');
+}

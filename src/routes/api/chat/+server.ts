@@ -1,15 +1,12 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { createClient } from '$lib/prismicio';
-import { getContext } from '$lib/utilities/context';
+import { getContext, searchKnowledgeBase } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { OpenAIStream, StreamingTextResponse } from 'ai';
+import { streamText, tool, convertToCoreMessages } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 import OpenAI from 'openai';
-import type { ChatCompletionCreateParams } from 'openai/resources/index.mjs';
-import { v4 as uuidv4 } from 'uuid';
-
-// Initialize OpenAI API client
-const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+import { z } from 'zod';
 
 // Cache available routes from Prismic to avoid querying on every request
 let routeCache: { routes: string[]; expires: number } | null = null;
@@ -67,12 +64,12 @@ export const POST: RequestHandler = async ({ request }) => {
 			.filter((m: { role: string }) => m.role === 'user')
 			.map((m: { content: string }) => m.content);
 
-		const runID = uuidv4();
+		const runID = crypto.randomUUID();
 
 		// Get context and available routes in parallel; degrade gracefully if retrieval fails
 		const [context, availableRoutes] = await Promise.all([
 			getContext(lastMessage.content, priorUserMessages, currentPage).catch(
-				(err) => {
+				(err: { data?: string; message?: string }) => {
 					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
 					return '';
 				}
@@ -80,82 +77,75 @@ export const POST: RequestHandler = async ({ request }) => {
 			getAvailableRoutes()
 		]);
 
-		// Build function definitions with live routes from Prismic
-		const functions: ChatCompletionCreateParams.Function[] = [
-		{
-			name: 'minimize_chat',
-			description:
-				'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
-			parameters: {
-				type: 'object',
-				properties: {
-					message: {
-						type: 'string',
-						description:
+		// Build tool definitions with live routes from Prismic
+		const routeEnum = availableRoutes.length > 0
+			? (availableRoutes as [string, ...string[]])
+			: (['/' ] as [string, ...string[]]);
+
+		const tools = {
+			minimize_chat: tool({
+				description:
+					'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
+				parameters: z.object({
+					message: z
+						.string()
+						.describe(
 							'A brief, friendly sign-off message (1 sentence, plain text). E.g. "No worries, I\'ll be here if you need me."'
-					}
-				},
-				required: ['message']
-			}
-		},
-		{
-			name: 'route_to_page',
-			description:
-				"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
-			parameters: {
-				type: 'object',
-				properties: {
-					page: {
-						type: 'string',
-						enum: availableRoutes,
-						description: 'The local route path to navigate to.'
-					},
-					message: {
-						type: 'string',
-						description:
+						)
+				})
+			}),
+			route_to_page: tool({
+				description:
+					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
+				parameters: z.object({
+					page: z
+						.enum(routeEnum)
+						.describe('The local route path to navigate to.'),
+					message: z
+						.string()
+						.describe(
 							"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
-					}
-				},
-				required: ['page', 'message']
-			}
-		},
-			{
-				name: 'ask_clarifying_question',
+						)
+				})
+			}),
+			ask_clarifying_question: tool({
 				description:
 					"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
-				parameters: {
-					type: 'object',
-					properties: {
-						question: {
-							type: 'string',
-							description: 'The specific clarifying question to ask the user.'
-						}
-					},
-					required: ['question']
-				}
-			},
-			{
-				name: 'capture_lead_intent',
+				parameters: z.object({
+					question: z
+						.string()
+						.describe('The specific clarifying question to ask the user.')
+				})
+			}),
+			capture_lead_intent: tool({
 				description:
 					"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
-				parameters: {
-					type: 'object',
-					properties: {
-						intent_type: {
-							type: 'string',
-							enum: ['hiring', 'collaboration', 'general'],
-							description: 'The type of interest the visitor has signalled.'
-						},
-						message: {
-							type: 'string',
-							description:
-								'A short, warm acknowledgement of their interest (1 sentence, plain text).'
-						}
-					},
-					required: ['intent_type', 'message']
+				parameters: z.object({
+					intent_type: z
+						.enum(['hiring', 'collaboration', 'general'])
+						.describe('The type of interest the visitor has signalled.'),
+					message: z
+						.string()
+						.describe(
+							'A short, warm acknowledgement of their interest (1 sentence, plain text).'
+						)
+				})
+			}),
+			search_knowledge_base: tool({
+				description:
+					"Search Hunter's knowledge base for additional information. Use this when the initial context provided is insufficient to answer the user's question, or when you need more specific details about a topic, person, or project.",
+				parameters: z.object({
+					query: z.string().describe('The search query to look up in the knowledge base.'),
+					source_filter: z
+						.enum(['all', 'imessage', 'site'])
+						.default('all')
+						.describe('Filter results by source type.')
+				}),
+				execute: async ({ query, source_filter }) => {
+					return await searchKnowledgeBase(query, source_filter);
 				}
-			}
-		];
+			})
+		};
 
 		const today = new Date().toLocaleDateString('en-US', {
 			weekday: 'long',
@@ -238,6 +228,7 @@ Partial answers are good. "He's worked on cycling products but I don't have deta
 Never use general knowledge about companies, technologies, or design practices to fill gaps. If you know Hunter worked at Uber but the context doesn't say what he did there, don't describe Uber's design org from your training data.
 
 ## Tools
+- Use search_knowledge_base when the initial CONTEXT below doesn't have enough information to answer the question well, especially for questions about specific people, projects, or topics. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm, specific acknowledgement in the message field — this is what they'll see as your response. The function surfaces contact links automatically, so don't repeat contact info in your message.
 
@@ -268,34 +259,23 @@ Date ranges and message counts in iMessage labels tell you how recent and extens
 CONTEXT:
 ${context}`;
 
-		const prompt = [
-			{
-				role: 'system',
-				content: systemPrompt
-			}
-		];
+		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 
-		// Ask OpenAI for a streaming chat completion given the prompt
-		const response = await openai.chat.completions.create({
-			model: 'gpt-4.1-mini',
-			stream: true,
+		const result = streamText({
+			model: openai('gpt-4.1-mini'),
+			system: systemPrompt,
+			messages: convertToCoreMessages(messages),
+			tools,
+			maxSteps: 3,
 			temperature: 0.4,
-			messages: [...prompt, ...messages],
-			functions
-		});
-
-		// Capture any function call fired during streaming (for PostHog logging)
-		let capturedFunctionCall: { name: string; arguments: string } | null = null;
-
-		// Convert the response into a friendly text-stream
-		const stream = OpenAIStream(response, {
-			experimental_onFunctionCall: async (payload) => {
-				capturedFunctionCall = { name: payload.name, arguments: JSON.stringify(payload.arguments) };
-			},
-			onCompletion: async (completeResponse) => {
+			onFinish: async ({ text, toolCalls }) => {
 				// Fire PostHog event — fire-and-forget, never blocks the stream
 				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
 				if (posthogKey) {
+					// Find the first client-side tool call (not search_knowledge_base)
+					const clientToolCall = toolCalls?.find(
+						(tc) => tc.toolName !== 'search_knowledge_base'
+					);
 					fetch('https://us.i.posthog.com/capture/', {
 						method: 'POST',
 						headers: { 'Content-Type': 'application/json' },
@@ -306,9 +286,11 @@ ${context}`;
 							timestamp: new Date().toISOString(),
 							properties: {
 								user_message: lastMessage.content,
-								bot_response: completeResponse || null,
-								function_call_name: capturedFunctionCall?.name ?? null,
-								function_call_args: capturedFunctionCall?.arguments ?? null,
+								bot_response: text || null,
+								function_call_name: clientToolCall?.toolName ?? null,
+								function_call_args: clientToolCall
+									? JSON.stringify(clientToolCall.args)
+									: null,
 								current_page: currentPage,
 								run_id: runID,
 								session_id: sessionId ?? null
@@ -320,8 +302,8 @@ ${context}`;
 				}
 			}
 		});
-		// Respond with the stream
-		return new StreamingTextResponse(stream);
+
+		return result.toDataStreamResponse();
 	} catch (error) {
 		console.error('Chat API error:', error);
 		if (error instanceof OpenAI.APIError) {

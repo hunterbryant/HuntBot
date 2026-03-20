@@ -1,10 +1,9 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
-import type { FunctionCallHandler } from 'ai';
-import { nanoid } from 'ai';
-import { useChat, type Message } from 'ai/svelte';
-import { writable } from 'svelte/store';
+import { generateId } from 'ai';
+import { useChat, type Message } from '@ai-sdk/svelte';
+import { get, writable } from 'svelte/store';
 
 function getOrCreateSessionId(): string {
 	const key = 'huntbot_session_id';
@@ -194,10 +193,15 @@ export const chat = () => {
 		initialMessages: [initMessage],
 		id: 'uniquechatid',
 		body: { sessionId: SESSION_ID },
-		experimental_onFunctionCall: functionCallHandler
+		onToolCall: async ({ toolCall }) => {
+			handleToolCall(
+				toolCall as { toolCallId: string; toolName: string; args: Record<string, unknown> },
+				messages
+			);
+		}
 	});
 
-	// Capture setMessages in a wider scope to be accessible by functionCallHandler
+	// Capture setMessages in a wider scope to be accessible by handleToolCall
 	setMessagesGlobal = setMessages;
 
 	setTimeout(() => {
@@ -207,104 +211,105 @@ export const chat = () => {
 	return { setMessages, append, messages, ...chatProps };
 };
 
-const functionCallHandler: FunctionCallHandler = async (chatMessages, functionCall) => {
-	// Use setMessagesGlobal directly without needing to call chat()
+function handleToolCall(
+	toolCall: { toolCallId: string; toolName: string; args: Record<string, unknown> },
+	messagesStore: ReturnType<typeof useChat>['messages']
+) {
 	if (!setMessagesGlobal) {
 		console.error('setMessages is not initialized.');
 		return;
 	}
 
-	// Strip the empty-content assistant message the SDK creates for function calls
-	const baseMessages = chatMessages.filter(
-		(m) => !(m.role === 'assistant' && !m.content?.trim() && 'function_call' in m)
+	const currentMessages = get(messagesStore);
+
+	// Strip assistant messages that are purely tool invocations with no text content
+	const baseMessages = currentMessages.filter(
+		(m) =>
+			!(
+				m.role === 'assistant' &&
+				!m.content?.trim() &&
+				m.parts?.some((p) => p.type === 'tool-invocation')
+			)
 	);
 
-	if (functionCall.name === 'minimize_chat') {
-		if (functionCall.arguments) {
-			const args = JSON.parse(functionCall.arguments);
-			const textMessage: Message = {
-				id: nanoid(),
-				role: 'assistant' as const,
-				content: args.message ?? "I'll be here if you need me."
-			};
-			const functionMessage: FunctionMessage = {
-				id: nanoid(),
-				content: 'Minimizing the chat',
-				role: 'function',
-				name: functionCall.name,
-				data: FunctionState.loading
-			};
+	if (toolCall.toolName === 'minimize_chat') {
+		const args = toolCall.args as { message: string };
+		const textMessage: Message = {
+			id: generateId(),
+			role: 'assistant' as const,
+			content: args.message ?? "I'll be here if you need me."
+		};
+		const functionMessage: FunctionMessage = {
+			id: generateId(),
+			content: 'Minimizing the chat',
+			role: 'data',
+			name: toolCall.toolName,
+			data: FunctionState.loading
+		};
 
-			setMessagesGlobal([...baseMessages, textMessage, functionMessage]);
-			setTimeout(() => {
-				setMessagesGlobal([
-					...baseMessages,
-					textMessage,
-					{ ...functionMessage, data: FunctionState.success }
-				]);
-				setTimeout(() => {
-					minimized.set(true);
-				}, 1000);
-			}, 1000);
-		}
-	} else if (functionCall.name === 'route_to_page') {
-		if (functionCall.arguments) {
-			const args = JSON.parse(functionCall.arguments);
-			const textMessage: Message = {
-				id: nanoid(),
-				role: 'assistant' as const,
-				content: args.message ?? `Taking you to ${args.page}.`
-			};
-
+		setMessagesGlobal([...baseMessages, textMessage, functionMessage]);
+		setTimeout(() => {
 			setMessagesGlobal([
 				...baseMessages,
 				textMessage,
-				{
-					id: nanoid(),
-					role: 'function' as const,
-					name: functionCall.name,
-					content: `Routed to ${args.page}`,
-					data: FunctionState.success
-				} as FunctionMessage
+				{ ...functionMessage, data: FunctionState.success }
 			]);
-
 			setTimeout(() => {
-				goto(`${args.page}`);
-			}, 400);
-		}
-	} else if (functionCall.name === 'ask_clarifying_question') {
-		if (functionCall.arguments) {
-			const args = JSON.parse(functionCall.arguments);
-			setMessagesGlobal([
-				...baseMessages,
-				{
-					id: nanoid(),
-					role: 'assistant' as const,
-					content: args.question ?? "Could you tell me a bit more about what you're looking for?"
-				}
-			]);
-		}
-	} else if (functionCall.name === 'capture_lead_intent') {
-		if (functionCall.arguments) {
-			const args = JSON.parse(functionCall.arguments);
-			const warmMessage = args.message ?? "Sounds like you're interested in working with Hunter.";
-			setMessagesGlobal([
-				...baseMessages,
-				{
-					id: nanoid(),
-					role: 'assistant' as const,
-					content: warmMessage
-				},
-				{
-					id: nanoid(),
-					role: 'function' as const,
-					name: functionCall.name,
-					content: '',
-					data: FunctionState.success
-				} as FunctionMessage
-			]);
-		}
+				minimized.set(true);
+			}, 1000);
+		}, 1000);
+	} else if (toolCall.toolName === 'route_to_page') {
+		const args = toolCall.args as { page: string; message: string };
+		const textMessage: Message = {
+			id: generateId(),
+			role: 'assistant' as const,
+			content: args.message ?? `Taking you to ${args.page}.`
+		};
+
+		setMessagesGlobal([
+			...baseMessages,
+			textMessage,
+			{
+				id: generateId(),
+				role: 'data' as const,
+				content: `Routed to ${args.page}`,
+				name: toolCall.toolName,
+				data: FunctionState.success
+			} as FunctionMessage
+		]);
+
+		setTimeout(() => {
+			goto(`${args.page}`);
+		}, 400);
+	} else if (toolCall.toolName === 'ask_clarifying_question') {
+		const args = toolCall.args as { question: string };
+		setMessagesGlobal([
+			...baseMessages,
+			{
+				id: generateId(),
+				role: 'assistant' as const,
+				content: args.question ?? "Could you tell me a bit more about what you're looking for?"
+			}
+		]);
+	} else if (toolCall.toolName === 'capture_lead_intent') {
+		const args = toolCall.args as { intent_type: string; message: string };
+		const warmMessage = args.message ?? "Sounds like you're interested in working with Hunter.";
+		setMessagesGlobal([
+			...baseMessages,
+			{
+				id: generateId(),
+				role: 'assistant' as const,
+				content: warmMessage
+			},
+			{
+				id: generateId(),
+				role: 'data' as const,
+				content: '',
+				name: toolCall.toolName,
+				data: FunctionState.success
+			} as FunctionMessage
+		]);
 	} else {
-		console.log('Unexpected function call: ', functionCall.name);
+		console.log('Unexpected tool call: ', toolCall.toolName);
 	}
-};
+}

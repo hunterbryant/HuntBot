@@ -4,7 +4,7 @@
 	import { slide } from 'svelte/transition';
 	import Check from '$lib/assets/check.svelte';
 	import Close from '$lib/assets/close.svelte';
-	import type { Message } from 'ai/svelte';
+	import type { Message } from '@ai-sdk/svelte';
 	import { FunctionState, type FunctionMessage } from '$lib/types';
 
 	export let value: Message;
