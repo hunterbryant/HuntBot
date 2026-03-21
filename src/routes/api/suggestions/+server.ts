@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				{
 					role: 'system',
 					content:
-						'Based on this conversation about product designer Hunter Bryant, generate exactly 3 short follow-up questions the visitor might want to ask next. Return only a JSON array of strings, nothing else. Each question should be 3–8 words, conversational, and specific to what was just discussed. Example: ["What tools does he use?", "Can I see that project?", "How long did that take?"]'
+						'Based on this conversation about product designer Hunter Bryant, generate exactly 3 short follow-up questions the visitor might want to ask next. Return only a JSON array of strings, nothing else. Each question should be 3–6 words, conversational, and specific to what was just discussed. Example: ["What tools does he use?", "Can I see that project?", "How long did that take?"]'
 				},
 				...recentMessages
 			]

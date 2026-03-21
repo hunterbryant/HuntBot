@@ -271,6 +271,33 @@ export const chat = () => {
 	return { messages, isLoading, handleSubmit, input, append, setMessages };
 };
 
+/** True for UI tool parts in AI SDK v6 (`tool-*`, `dynamic-tool`) and legacy `tool-invocation`. */
+function partLooksLikeToolInvocation(p: { type: string }): boolean {
+	return (
+		p.type === 'tool-invocation' ||
+		p.type === 'dynamic-tool' ||
+		(typeof p.type === 'string' && p.type.startsWith('tool-'))
+	);
+}
+
+/**
+ * Remove trailing assistant rows that still contain tool-call UI parts.
+ * Client-side tools are handled by replacing the turn with synthetic messages (no addToolOutput).
+ * Leaving SDK tool rows in history sends dangling tool_calls to the model without tool results,
+ * which often yields empty assistant text on the next turn (spinner stops, no bubble).
+ */
+function stripTrailingAssistantToolTurns(messages: UIMessage[]): UIMessage[] {
+	const out = [...messages];
+	while (out.length > 0) {
+		const last = out[out.length - 1];
+		if (last.role !== 'assistant') break;
+		const hasToolPart = last.parts.some((p) => partLooksLikeToolInvocation(p));
+		if (!hasToolPart) break;
+		out.pop();
+	}
+	return out;
+}
+
 function handleToolCall(
 	toolCall: { toolCallId: string; toolName: string; args: Record<string, unknown> }
 ) {
@@ -279,17 +306,7 @@ function handleToolCall(
 		return;
 	}
 
-	const currentMessages = chatInstance.messages;
-
-	// Strip assistant messages that are purely tool invocations with no text content
-	const baseMessages = currentMessages.filter(
-		(m) =>
-			!(
-				m.role === 'assistant' &&
-				!m.parts.some((p) => p.type === 'text' && 'text' in p && (p as { text: string }).text.trim()) &&
-				m.parts.some((p) => p.type === 'tool-invocation')
-			)
-	);
+	const baseMessages = stripTrailingAssistantToolTurns(chatInstance.messages);
 
 	if (toolCall.toolName === 'minimize_chat') {
 		const args = toolCall.args as { message: string };
