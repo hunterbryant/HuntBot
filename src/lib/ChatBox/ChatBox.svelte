@@ -546,7 +546,6 @@
 			<div class="first:pt-4 {$activeSuggestions.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
 				{#each $messages as message, i}
 					<div
-						class="min-w-0"
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
 						on:introend={() => {
 							scrollToBottom();
@@ -563,7 +562,6 @@
 							isLast={i === $messages.length - 1 && !$isLoading}
 							onRetry={retryLastResponse}
 							animate={shouldAnimate(message.id)}
-							singleLine={message.id !== 'initialmessage'}
 						/>
 					{:else if (message.role as string) === 'data'}
 						<ActionMessage value={message as unknown as FunctionMessage} />
