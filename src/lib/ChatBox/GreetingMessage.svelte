@@ -20,7 +20,7 @@
 </script>
 
 <div
-	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1 text-stone-800 dark:text-stone-200"
+	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1 text-stone-600 dark:text-stone-400"
 >
 	<Huntbotlogo />
 	<p class="grow text-stone-600 dark:text-stone-400">{greeting}</p>
@@ -38,12 +38,12 @@
 				minimized.set(true);
 				chatOpen.set(false);
 			}}
-			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-slate-800"
+			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-stone-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-stone-800"
 		>
 			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none" />
 		</button>
 		<hr
-			class="absolute inset-x-2 top-14 border-slate-200 peer-focus:hidden dark:border-slate-800"
+			class="absolute inset-x-2 top-14 border-stone-200 peer-focus:hidden dark:border-stone-700"
 		/>
 	{/if}
 </div>
