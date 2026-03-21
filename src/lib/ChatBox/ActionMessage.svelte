@@ -32,7 +32,7 @@
 
 			{#if value.data === FunctionState.loading}
 				<svg
-					class="mt-0.5 inline-block h-5 w-5 animate-spin text-slate-400"
+					class="mt-0.5 inline-block h-5 w-5 animate-spin text-stone-400 dark:text-stone-500"
 					xmlns="http://www.w3.org/2000/svg"
 					fill="none"
 					viewBox="0 0 24 24"

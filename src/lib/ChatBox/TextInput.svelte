@@ -134,7 +134,7 @@
 	on:submit|preventDefault={handleLocalSubmit}
 	on:click={focusInput}
 	on:keydown={focusInput}
-	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 text-stone-800 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200 dark:text-stone-200 dark:focus-within:outline-blue-800"
+	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 text-stone-600 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200 dark:text-stone-400 dark:focus-within:outline-blue-800"
 >
 	{#if $input.trim() === '' && $minimized}
 		<button
@@ -142,7 +142,7 @@
 				minimized.set(false);
 				chatOpen.set(true);
 			}}
-			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-slate-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-slate-800"
+			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-stone-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-stone-800"
 		>
 			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none -scale-y-100" />
 		</button>
@@ -159,7 +159,7 @@
 	<div class="relative min-w-0 grow {$minimized ? 'ml-0' : 'mx-2'}">
 		<input
 			placeholder={!$minimized ? 'Message HuntBot' : ''}
-			class="peer w-full bg-transparent focus:outline-none"
+			class="peer w-full bg-transparent text-stone-600 placeholder:text-stone-400 focus:outline-none dark:text-stone-400 dark:placeholder:text-stone-500"
 			bind:value={$input}
 			bind:this={inputElement}
 			inputmode="search"
@@ -171,7 +171,7 @@
 			/>
 		{/if}
 	</div>
-	<hr class="absolute inset-x-2 -top-px border-slate-200 peer-focus:hidden dark:border-slate-800" />
+	<hr class="absolute inset-x-2 -top-px border-stone-200 peer-focus:hidden dark:border-stone-700" />
 
 	{#if $minimized}
 		<Huntbotlogo />

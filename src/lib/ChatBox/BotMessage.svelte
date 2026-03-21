@@ -6,8 +6,11 @@
 	export let isLast: boolean = false;
 	export let onRetry: (() => void) | null = null;
 	export let animate: boolean = true;
+	/** One-line + ellipsis; false for the long intro greeting only */
+	export let singleLine: boolean = true;
 
 	$: updatedVal = value;
+	$: revealSource = singleLine ? value.replace(/\s+/g, ' ').trim() : value;
 
 	let retried = false;
 
@@ -155,14 +158,14 @@
 
 <div
 	in:slide|global
-	class="group relative flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1 text-stone-800 dark:text-stone-200"
+	class="group relative flex w-[calc(full-4rem)] min-w-0 shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1 text-stone-800 dark:text-stone-200"
 >
 	<Huntbotlogo />
 
 	{#if updatedVal === ' '}
 		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
-				class="inline-block h-5 w-5 animate-spin text-slate-400"
+				class="inline-block h-5 w-5 animate-spin text-stone-400 dark:text-stone-500"
 				xmlns="http://www.w3.org/2000/svg"
 				fill="none"
 				viewBox="0 0 24 24"
@@ -177,11 +180,14 @@
 			</svg>
 		</p>
 	{:else}
-		<div class="mr-6 mt-3 grow">
+		<div class="mr-6 mt-3 min-w-0 grow">
 			<p
-				class="whitespace-pre-line font-normal text-stone-600 dark:text-stone-400"
+				class="font-normal text-stone-600 dark:text-stone-400 {singleLine
+					? 'overflow-hidden text-ellipsis whitespace-nowrap'
+					: 'whitespace-pre-line'}"
 				in:slide|global={{ duration: 400 }}
-				use:streamReveal={value}
+				title={singleLine ? revealSource : undefined}
+				use:streamReveal={revealSource}
 			></p>
 			{#if isLast && !retried}
 				<button

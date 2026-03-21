@@ -27,6 +27,7 @@
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		getMessageText,
+		streamingAssistantHasText,
 		SESSION_ID
 	} from './MessageStore.svelte';
 	import type { FunctionMessage } from '$lib/types';
@@ -545,6 +546,7 @@
 			<div class="first:pt-4 {$activeSuggestions.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
 				{#each $messages as message, i}
 					<div
+						class="min-w-0"
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
 						on:introend={() => {
 							scrollToBottom();
@@ -561,13 +563,14 @@
 							isLast={i === $messages.length - 1 && !$isLoading}
 							onRetry={retryLastResponse}
 							animate={shouldAnimate(message.id)}
+							singleLine={message.id !== 'initialmessage'}
 						/>
 					{:else if (message.role as string) === 'data'}
 						<ActionMessage value={message as unknown as FunctionMessage} />
 					{/if}
 					</div>
 				{/each}
-				{#if $isLoading && ($messages[$messages.length - 1].role !== 'assistant' || !getMessageText($messages[$messages.length - 1]).trim())}
+				{#if $isLoading && !streamingAssistantHasText($messages)}
 					<div
 						in:slide|global={{ duration: 400 }}
 						out:fade|global={{ duration: 200 }}
