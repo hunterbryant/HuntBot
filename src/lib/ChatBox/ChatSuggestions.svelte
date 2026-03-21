@@ -71,17 +71,23 @@
 
 {#if suggestions.length > 0}
 	<div
-		class="no-scrollbar flex min-h-[44px] items-center gap-1.5 overflow-x-auto overflow-y-hidden px-4 pb-3 pt-4"
+		class="no-scrollbar flex items-center gap-2 overflow-x-auto overflow-y-hidden px-2 py-2"
 		in:fade|global={{ duration: 150 }}
 	>
-		{#each suggestions as suggestion, i (suggestion)}
+		{#each suggestions as suggestion, i (i + '|' + suggestion)}
 			<button
+				type="button"
 				in:fly={{ y: 8, duration: 200, delay: i * 120 }}
-				out:fade={{ duration: 100 }}
+				out:fade|global={{ duration: 100 }}
 				on:click={() => onSelect(suggestion)}
-				class="flex h-10 shrink-0 items-center whitespace-nowrap rounded-full border border-slate-200 px-3.5 text-sm text-slate-600 transition hover:border-slate-300 hover:bg-slate-100 active:bg-slate-200 dark:border-slate-800 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:bg-slate-900 dark:active:bg-slate-800"
-				use:typeReveal={suggestion}
-			/>
+				aria-label={suggestion}
+				class="inline-flex shrink-0 items-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-left transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 active:bg-stone-100 dark:border-stone-700 dark:bg-black dark:hover:border-stone-600 dark:hover:bg-stone-900/40 dark:active:bg-stone-900"
+			>
+				<span
+					class="whitespace-nowrap text-sm font-normal leading-normal text-stone-500 dark:text-stone-400"
+					use:typeReveal={suggestion}
+				></span>
+			</button>
 		{/each}
 	</div>
 {/if}

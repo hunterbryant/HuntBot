@@ -195,6 +195,22 @@ export function getMessageText(message: UIMessage): string {
 		.join('');
 }
 
+/** True once the in-flight assistant reply has any visible text (hides loading placeholder while still streaming). */
+export function streamingAssistantHasText(messages: UIMessage[]): boolean {
+	let lastUserIdx = -1;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === 'user') {
+			lastUserIdx = i;
+			break;
+		}
+	}
+	for (let i = lastUserIdx + 1; i < messages.length; i++) {
+		const m = messages[i];
+		if (m.role === 'assistant' && getMessageText(m).trim()) return true;
+	}
+	return false;
+}
+
 export const chat = () => {
 	const instance = new Chat({
 		id: 'uniquechatid',
@@ -216,8 +232,20 @@ export const chat = () => {
 		instance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
 	}, 2000);
 
-	// Bridge reactive Chat properties to Svelte stores for backward compat
-	const messages = toStore(() => instance.messages);
+	// Bridge reactive Chat properties to Svelte stores for backward compat.
+	// Deep-read text parts: streaming applies deltas in place on the same message object, so a
+	// shallow `() => instance.messages` does not invalidate `toStore` when tokens arrive.
+	const messages = toStore(() => {
+		const msgs = instance.messages;
+		for (const m of msgs) {
+			for (const p of m.parts) {
+				if (p.type === 'text') {
+					void p.text;
+				}
+			}
+		}
+		return msgs;
+	});
 	const isLoading = toStore(() => instance.status === 'streaming' || instance.status === 'submitted');
 	const input = writable('');
 

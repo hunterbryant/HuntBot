@@ -27,6 +27,7 @@
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		getMessageText,
+		streamingAssistantHasText,
 		SESSION_ID
 	} from './MessageStore.svelte';
 	import type { FunctionMessage } from '$lib/types';
@@ -567,7 +568,7 @@
 					{/if}
 					</div>
 				{/each}
-				{#if $isLoading && ($messages[$messages.length - 1].role !== 'assistant' || !getMessageText($messages[$messages.length - 1]).trim())}
+				{#if $isLoading && !streamingAssistantHasText($messages)}
 					<div
 						in:slide|global={{ duration: 400 }}
 						out:fade|global={{ duration: 200 }}

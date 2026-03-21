@@ -162,7 +162,7 @@
 	{#if updatedVal === ' '}
 		<p class="mr-6 mt-3 grow whitespace-pre-line">
 			<svg
-				class="inline-block h-5 w-5 animate-spin text-slate-400"
+				class="inline-block h-5 w-5 animate-spin text-stone-400 dark:text-stone-500"
 				xmlns="http://www.w3.org/2000/svg"
 				fill="none"
 				viewBox="0 0 24 24"
@@ -177,7 +177,7 @@
 			</svg>
 		</p>
 	{:else}
-		<div class="mr-6 mt-3 grow">
+		<div class="mr-6 mt-3 min-w-0 grow">
 			<p
 				class="whitespace-pre-line font-normal text-stone-600 dark:text-stone-400"
 				in:slide|global={{ duration: 400 }}
