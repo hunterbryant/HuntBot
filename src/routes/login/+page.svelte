@@ -1,20 +1,8 @@
 <script lang="ts">
-	import type { ActionData, ActionResult } from './$types';
-	import { enhance } from '$app/forms';
-	import { goto } from '$app/navigation';
+	import type { ActionData } from './$types';
 	import LockClosed from '$lib/assets/lock-closed.svelte';
 
 	export let form: ActionData;
-
-	function loginEnhance() {
-		return async ({ result, update }: { result: ActionResult; update: () => Promise<void> }) => {
-			if (result.type === 'redirect') {
-				goto(result.location, { replaceState: true });
-			} else {
-				await update();
-			}
-		};
-	}
 </script>
 
 <svelte:head>
@@ -48,7 +36,6 @@
 		</div>
 		<form
 			method="POST"
-			use:enhance={loginEnhance}
 			class="text-stone-800 col-start-1 col-end-6 flex flex-col gap-4 dark:text-stone-200 sm:col-start-4 sm:col-end-7"
 		>
 			<p>To access protected pages, <br /> please enter the password:</p>
