@@ -5,16 +5,15 @@ import jwt from 'jsonwebtoken';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = ({ locals, url }) => {
+	console.log(`[LOGIN LOAD] user=${JSON.stringify(locals.user?.role)} authenticated=${locals.user?.authenticated}`);
+
 	if (!locals.user) return;
 
-	const redirectTo = url.searchParams.get('redirectTo');
-
-	if (locals.user.role === UserRole.USER) {
-		if (redirectTo && redirectTo !== '/admin') {
-			redirect(303, `/${redirectTo.slice(1)}`);
-		}
-		redirect(303, '/');
-	}
+	// If user is already authenticated, redirect them away from login page.
+	// Redirect to '/' instead of redirectTo to avoid redirect loops with /admin hooks check.
+	// The form action (POST) handles post-login redirect to /admin correctly.
+	console.log(`[LOGIN LOAD] Already authenticated as ${locals.user.role}, redirecting to /`);
+	redirect(303, '/');
 };
 
 export const actions = {
@@ -44,7 +43,7 @@ export const actions = {
 			path: '/',
 			httpOnly: true,
 			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
+			secure: url.protocol === 'https:',
 			maxAge: 60 * 60 // 1 hour
 		});
 
