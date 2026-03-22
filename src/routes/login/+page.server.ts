@@ -9,6 +9,10 @@ export const load: PageServerLoad = ({ locals, url }) => {
 
 	const redirectTo = url.searchParams.get('redirectTo');
 
+	if (locals.user.role === UserRole.ADMIN) {
+		redirect(303, redirectTo ?? '/admin');
+	}
+
 	if (locals.user.role === UserRole.USER) {
 		if (redirectTo && redirectTo !== '/admin') {
 			redirect(303, `/${redirectTo.slice(1)}`);
@@ -44,7 +48,7 @@ export const actions = {
 			path: '/',
 			httpOnly: true,
 			sameSite: 'lax',
-			secure: process.env.NODE_ENV === 'production',
+			secure: url.protocol === 'https:',
 			maxAge: 60 * 60 // 1 hour
 		});
 
