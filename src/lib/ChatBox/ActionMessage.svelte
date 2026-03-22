@@ -19,11 +19,11 @@
 				href="https://www.linkedin.com/in/hunterbryant1/"
 				target="_blank"
 				rel="noopener noreferrer"
-				class="text-blue-600 underline decoration-blue-300 hover:text-blue-700 dark:text-blue-400 dark:decoration-blue-700 dark:hover:text-blue-300"
+				class="text-mud-600 underline decoration-mud-300 hover:text-mud-700 dark:text-mud-400 dark:decoration-mud-700 dark:hover:text-mud-300"
 			>LinkedIn</a>
 			<a
 				href="mailto:hunter.bryant2016@gmail.com"
-				class="text-blue-600 underline decoration-blue-300 hover:text-blue-700 dark:text-blue-400 dark:decoration-blue-700 dark:hover:text-blue-300"
+				class="text-mud-600 underline decoration-mud-300 hover:text-mud-700 dark:text-mud-400 dark:decoration-mud-700 dark:hover:text-mud-300"
 			>Email Hunter</a>
 		</div>
 	{:else}

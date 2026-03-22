@@ -291,7 +291,7 @@
 					<div class="flex flex-col gap-1.5">
 						<div class="h-2 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
 							<div
-								class="h-full rounded-full transition-all duration-300 ease-out {notionStatus === 'error' ? 'bg-red-500' : notionStatus === 'done' ? 'bg-green-500' : 'bg-blue-600'}"
+								class="h-full rounded-full transition-all duration-300 ease-out {notionStatus === 'error' ? 'bg-red-500' : notionStatus === 'done' ? 'bg-green-500' : 'bg-mud-600'}"
 								style="width: {notionStatus === 'running' && notionTotal === 0 ? '5' : notionPercent}%"
 							/>
 						</div>
@@ -383,7 +383,7 @@
 						<input
 							type="checkbox"
 							bind:checked={imessageOnlyMe}
-							class="h-4 w-4 rounded border-stone-300 accent-blue-600 dark:border-stone-700"
+							class="h-4 w-4 rounded border-stone-300 accent-mud-600 dark:border-stone-700"
 						/>
 					</label>
 
@@ -449,7 +449,7 @@
 										? 'bg-red-500'
 										: imessageStatus === 'done'
 											? 'bg-green-500'
-											: 'bg-blue-600'}"
+											: 'bg-mud-600'}"
 									style="width: {imessageStatus === 'running' && imessageTotal === 0 ? '5' : imessagePercent}%"
 								/>
 							</div>

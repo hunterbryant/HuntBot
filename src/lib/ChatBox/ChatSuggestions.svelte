@@ -81,7 +81,7 @@
 				out:fade|global={{ duration: 100 }}
 				on:click={() => onSelect(suggestion)}
 				aria-label={suggestion}
-				class="inline-flex shrink-0 items-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-left transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 active:bg-stone-100 dark:border-stone-700 dark:bg-black dark:hover:border-stone-600 dark:hover:bg-stone-900/40 dark:active:bg-stone-900"
+				class="inline-flex shrink-0 items-center rounded-lg border border-stone-200 bg-white px-3 py-2 text-left transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mud-600 active:bg-stone-100 dark:border-stone-700 dark:bg-black dark:hover:border-stone-600 dark:hover:bg-stone-900/40 dark:active:bg-stone-900"
 			>
 				<span
 					class="whitespace-nowrap text-sm font-normal leading-normal text-stone-500 dark:text-stone-400"

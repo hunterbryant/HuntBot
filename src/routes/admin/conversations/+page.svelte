@@ -507,7 +507,7 @@
 
 							<!-- Nav destination badge -->
 							{#if convo.navDest}
-								<p class="text-xs font-medium text-blue-600 dark:text-blue-400">
+								<p class="text-xs font-medium text-mud-600 dark:text-mud-400">
 									→ {convo.navDest}
 								</p>
 							{/if}
