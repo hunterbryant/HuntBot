@@ -1,7 +1,7 @@
 <script lang="ts">
 	import arrowup from '$lib/assets/arrow-up.svg';
 	import caretdown from '$lib/assets/caret-down.svg';
-	import { chatOpen, mobile } from '$lib/nav/navstore';
+	import { chatOpen, mobile, keyboardOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { minimized, scrollSuggestions, hoverSuggestions, loadingContextSuggestions } from './MessageStore.svelte';
 	import type { Writable, Readable } from 'svelte/store';
@@ -134,7 +134,7 @@
 	on:submit|preventDefault={handleLocalSubmit}
 	on:click={focusInput}
 	on:keydown={focusInput}
-	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 text-stone-600 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-blue-200 dark:text-stone-400 dark:focus-within:outline-blue-800"
+	class="relative flex w-[calc(full-4rem)] shrink-0 basis-12 cursor-text flex-row-reverse flex-nowrap items-center gap-1 overflow-visible rounded-md p-1 text-stone-600 outline-2 -outline-offset-2 focus-within:outline focus-within:outline-mud-200 dark:text-stone-400 dark:focus-within:outline-mud-800"
 >
 	{#if $input.trim() === '' && $minimized}
 		<button
@@ -149,7 +149,7 @@
 	{:else}
 		<button
 			type="submit"
-			class="peer aspect-square h-12 basis-12 rounded bg-blue-600 transition hover:bg-blue-700 active:bg-blue-600 disabled:bg-blue-200 dark:bg-blue-500 dark:hover:bg-blue-600 dark:active:bg-blue-500 dark:disabled:bg-blue-900"
+			class="peer aspect-square h-12 basis-12 rounded bg-mud-600 transition hover:bg-mud-700 active:bg-mud-600 disabled:bg-mud-200 dark:bg-mud-500 dark:hover:bg-mud-600 dark:active:bg-mud-500 dark:disabled:bg-mud-900"
 			disabled={$input.trim() === '' || $isLoading}
 		>
 			<img src={arrowup} alt="Up arrow icon" class="m-auto flex-none dark:invert" />
@@ -163,6 +163,8 @@
 			bind:value={$input}
 			bind:this={inputElement}
 			inputmode="search"
+			on:focus={() => { if ($mobile) keyboardOpen.set(true); }}
+			on:blur={() => keyboardOpen.set(false)}
 		/>
 		{#if $minimized && $input.trim() === ''}
 			<span

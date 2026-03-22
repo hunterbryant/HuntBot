@@ -8,7 +8,7 @@
 
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
-	import { navEngaged, delayedNavEngaged, mobile, chatOpen } from '$lib/nav/navstore';
+	import { navEngaged, delayedNavEngaged, mobile, chatOpen, keyboardOpen } from '$lib/nav/navstore';
 	import { botEngaged, chat, minimized } from '$lib/ChatBox/MessageStore.svelte';
 
 	import { send, receive } from '$lib/utilities/transition';
@@ -210,7 +210,7 @@
 						How?
 					</h3>
 					<button
-						class="h-12 rounded bg-blue-600 px-3 pt-0.5 text-stone-50 transition hover:bg-blue-700 active:bg-blue-600 dark:bg-blue-500 dark:text-stone-950 dark:hover:bg-blue-600 dark:active:bg-blue-500"
+						class="h-12 rounded bg-mud-600 px-3 pt-0.5 text-stone-50 transition hover:bg-mud-700 active:bg-mud-600 dark:bg-mud-500 dark:text-stone-950 dark:hover:bg-mud-600 dark:active:bg-mud-500"
 						on:click={engageHuntbot}>Ask HuntBot</button
 					>
 				</div>
@@ -274,7 +274,7 @@
 
 <!-- The slot is nested in a key to detect page changes, causing a page transition -->
 <!-- Look into using the View Transition API as it gains browser support -->
-<div bind:this={slotElement}>
+<div bind:this={slotElement} class="transition-[filter] duration-200 {$keyboardOpen ? 'blur-md' : ''}">
 	{#key data.pathname}
 		<div
 			in:fly|global={{ x: 100, duration: 200, delay: 200 }}
