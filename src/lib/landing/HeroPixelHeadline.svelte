@@ -118,6 +118,9 @@
 		reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 		if (reduceMotion) return;
 
+		// Hide text immediately so it doesn't flash visible before the shader fade-in starts
+		useGpuPaint = true;
+
 		const maskCanvas = document.createElement('canvas');
 		let renderer: ActuallyDitherRenderer | null = null;
 		let raf = 0;
@@ -187,7 +190,10 @@
 		const run = async () => {
 			await tick();
 			if (!canvas || !wrapper || cancelled) return;
-			if (!(await waitForLayout()) || cancelled) return;
+			if (!(await waitForLayout()) || cancelled) {
+				useGpuPaint = false;
+				return;
+			}
 
 			const next = await createActuallyDitherRenderer(
 				canvas,
@@ -201,7 +207,10 @@
 				next?.destroy();
 				return;
 			}
-			if (!next) return;
+			if (!next) {
+				useGpuPaint = false;
+				return;
+			}
 			renderer = next;
 			await document.fonts.ready;
 			if (cancelled) return;
@@ -222,7 +231,6 @@
 				if (cancelled) return;
 				requestAnimationFrame(() => {
 					if (cancelled) return;
-					useGpuPaint = true;
 					canvasOpaque = true;
 					startLoop();
 
