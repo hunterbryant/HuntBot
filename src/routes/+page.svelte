@@ -6,6 +6,7 @@
 	import { components } from '$lib/slices';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
+	import HeroPixelHeadline from '$lib/landing/HeroPixelHeadline.svelte';
 
 	export let data;
 
@@ -55,11 +56,10 @@
 			<!-- Todo: animate title right after scroll -->
 			<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
 				<h1
-					class="absolute -top-[3.09rem] my-auto text-5xl font-medium tracking-tighter text-stone-900 sm:relative sm:top-0 sm:z-40 xl:text-5xl dark:text-stone-100 dark:mix-blend-exclusion"
+					class="absolute -top-[3.09rem] my-auto min-w-0 max-w-full text-5xl font-medium tracking-tighter text-stone-900 sm:relative sm:top-0 sm:z-40 xl:text-5xl dark:text-stone-100 dark:mix-blend-exclusion"
 					bind:this={element}
 				>
-					Let's build the product your users <span class="font-serif italic">actually</span>
-					want
+					<HeroPixelHeadline />
 					<!-- I’m the designer that will build you a product your users really want. -->
 				</h1>
 			</div>
