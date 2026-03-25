@@ -41,10 +41,7 @@ async function resolveDenseVectorName(
 	}
 
 	const now = Date.now();
-	if (
-		vectorNameCache?.collection === collectionName &&
-		now - vectorNameCache.at < CACHE_TTL_MS
-	) {
+	if (vectorNameCache?.collection === collectionName && now - vectorNameCache.at < CACHE_TTL_MS) {
 		return vectorNameCache.name;
 	}
 
@@ -107,9 +104,7 @@ export async function qdrantSimilaritySearchWithScore(
 		return [
 			new Document({
 				metadata:
-					typeof meta === 'object' && meta !== null
-						? (meta as Record<string, unknown>)
-						: {},
+					typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {},
 				pageContent: typeof content === 'string' ? content : ''
 			}),
 			res.score

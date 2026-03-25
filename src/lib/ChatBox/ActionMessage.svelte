@@ -20,11 +20,13 @@
 				target="_blank"
 				rel="noopener noreferrer"
 				class="text-mud-600 underline decoration-mud-300 hover:text-mud-700 dark:text-mud-400 dark:decoration-mud-700 dark:hover:text-mud-300"
-			>LinkedIn</a>
+				>LinkedIn</a
+			>
 			<a
 				href="mailto:hunter.bryant2016@gmail.com"
 				class="text-mud-600 underline decoration-mud-300 hover:text-mud-700 dark:text-mud-400 dark:decoration-mud-700 dark:hover:text-mud-300"
-			>Email Hunter</a>
+				>Email Hunter</a
+			>
 		</div>
 	{:else}
 		<div class="flex flex-row items-center justify-between">

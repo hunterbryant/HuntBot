@@ -28,7 +28,7 @@
 			class="col-start-1 col-end-6 mb-8 mt-12 flex flex-col justify-end rounded sm:col-start-4 sm:col-end-7 sm:mb-16 sm:mt-0 sm:h-[25.5rem] md:col-end-8 lg:col-end-10"
 		>
 			<h2
-				class="text-stone-800 flex items-center gap-2 text-balance text-4xl font-bold tracking-tighter dark:text-stone-200 sm:text-5xl md:gap-2 md:text-6xl lg:gap-2 lg:text-7xl [&_svg]:mb-2 [&_svg]:size-8 sm:[&_svg]:mb-2 sm:[&_svg]:size-10 md:[&_svg]:mb-2 md:[&_svg]:size-12 lg:[&_svg]:mb-3 lg:[&_svg]:size-16"
+				class="flex items-center gap-2 text-balance text-4xl font-bold tracking-tighter text-stone-800 sm:text-5xl md:gap-2 md:text-6xl lg:gap-2 lg:text-7xl dark:text-stone-200 [&_svg]:mb-2 [&_svg]:size-8 sm:[&_svg]:mb-2 sm:[&_svg]:size-10 md:[&_svg]:mb-2 md:[&_svg]:size-12 lg:[&_svg]:mb-3 lg:[&_svg]:size-16"
 			>
 				Protected
 				<LockClosed />
@@ -36,7 +36,7 @@
 		</div>
 		<form
 			method="POST"
-			class="text-stone-800 col-start-1 col-end-6 flex flex-col gap-4 dark:text-stone-200 sm:col-start-4 sm:col-end-7"
+			class="col-start-1 col-end-6 flex flex-col gap-4 text-stone-800 sm:col-start-4 sm:col-end-7 dark:text-stone-200"
 		>
 			<p>To access protected pages, <br /> please enter the password:</p>
 
@@ -44,17 +44,17 @@
 				<input
 					name="password"
 					type="password"
-					class="bg-white min-w-0 flex-1 rounded border px-4 pt-0.5 dark:bg-black {form?.incorrect
+					class="min-w-0 flex-1 rounded border bg-white px-4 pt-0.5 dark:bg-black {form?.incorrect
 						? 'border-red-500'
 						: 'border-stone-300 dark:border-stone-700'}"
 				/>
 				<button
-					class="border-stone-300 rounded border px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 dark:border-stone-700 dark:hover:bg-stone-700"
+					class="rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 dark:border-stone-700 dark:hover:bg-stone-700"
 					>Submit</button
 				>
 			</span>
 			{#if form?.incorrect}
-				<p class="text-red-500 -mt-2 text-xs font-medium uppercase tracking-wider">
+				<p class="-mt-2 text-xs font-medium uppercase tracking-wider text-red-500">
 					Invalid password
 				</p>
 			{/if}

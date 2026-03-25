@@ -1,15 +1,28 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import { logRag } from '$lib/server/rag-debug';
-import { getAvailableRoutes } from '$lib/server/site-nav-routes';
-import { planSupplementalSearches } from '$lib/server/rag-router';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
+import { planSupplementalSearches } from '$lib/server/rag-router';
+import { getAvailableRoutes } from '$lib/server/site-nav-routes';
 import { getContext, searchKnowledgeBase } from '$lib/utilities/context';
-import { json, type RequestHandler } from '@sveltejs/kit';
-import { streamText, tool, convertToModelMessages, stepCountIs } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
+import { json, type RequestHandler } from '@sveltejs/kit';
+import { convertToModelMessages, stepCountIs, streamText, tool } from 'ai';
 import OpenAI from 'openai';
 import { z } from 'zod';
+
+function getChatMessageText(m: {
+	parts?: Array<{ type: string; text?: string }>;
+	content?: string;
+}): string {
+	if (m.parts) {
+		return m.parts
+			.filter((p: { type: string }) => p.type === 'text')
+			.map((p: { text?: string }) => p.text ?? '')
+			.join('');
+	}
+	return m.content ?? '';
+}
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
@@ -32,33 +45,25 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const lastMessage = messages[messages.length - 1];
 
-		// Extract text content from a UIMessage (v6 format uses parts array)
-		function getMessageText(m: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
-			if (m.parts) {
-				return m.parts
-					.filter((p: { type: string }) => p.type === 'text')
-					.map((p: { text?: string }) => p.text ?? '')
-					.join('');
-			}
-			return m.content ?? '';
-		}
-
 		// Extract prior user messages (excluding the current one) to improve retrieval
 		// on follow-up questions like "tell me more" or "what about X?"
 		const priorUserMessages: string[] = messages
 			.slice(0, -1)
 			.filter((m: { role: string }) => m.role === 'user')
-			.map(getMessageText);
+			.map(getChatMessageText);
 
 		const runID = crypto.randomUUID();
 
 		// Get context and available routes in parallel; degrade gracefully if retrieval fails
-		const lastMessageText = getMessageText(lastMessage);
+		const lastMessageText = getChatMessageText(lastMessage);
 
 		const [context, availableRoutes] = await Promise.all([
 			getContext(lastMessageText, priorUserMessages, currentPage).catch(
 				(err: { data?: string; message?: string }) => {
-					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
+					console.warn(
+						'Context retrieval failed, continuing without context:',
+						err?.data ?? err?.message ?? err
+					);
 					return '';
 				}
 			),
@@ -93,9 +98,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		// Build tool definitions with live routes from Prismic
-		const routeEnum = availableRoutes.length > 0
-			? (availableRoutes as [string, ...string[]])
-			: (['/' ] as [string, ...string[]]);
+		const routeEnum =
+			availableRoutes.length > 0
+				? (availableRoutes as [string, ...string[]])
+				: (['/'] as [string, ...string[]]);
 
 		const tools = {
 			minimize_chat: tool({
@@ -113,37 +119,31 @@ export const POST: RequestHandler = async ({ request }) => {
 				description:
 					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
 				inputSchema: z.object({
-					page: z
-						.enum(routeEnum)
-						.describe('The local route path to navigate to.'),
+					page: z.enum(routeEnum).describe('The local route path to navigate to.'),
 					message: z
 						.string()
 						.describe(
-							"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
+							'A brief message about what the user will find on the page (1 sentence, plain text). E.g. "That case study has the full breakdown."'
 						)
 				})
 			}),
 			ask_clarifying_question: tool({
 				description:
-					"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
+					'Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like "tell me about your work" or "what do you do". One question at a time — don\'t list multiple questions.',
 				inputSchema: z.object({
-					question: z
-						.string()
-						.describe('The specific clarifying question to ask the user.')
+					question: z.string().describe('The specific clarifying question to ask the user.')
 				})
 			}),
 			capture_lead_intent: tool({
 				description:
-					"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
+					'Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: "we\'re hiring", "looking for a designer", "want to work with you", "would love to collaborate", "open to freelance?". Acknowledge their interest warmly and surface contact options.',
 				inputSchema: z.object({
 					intent_type: z
 						.enum(['hiring', 'collaboration', 'general'])
 						.describe('The type of interest the visitor has signalled.'),
 					message: z
 						.string()
-						.describe(
-							'A short, warm acknowledgement of their interest (1 sentence, plain text).'
-						)
+						.describe('A short, warm acknowledgement of their interest (1 sentence, plain text).')
 				})
 			}),
 			search_knowledge_base: tool({
@@ -176,7 +176,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		// Build a human-readable page label from the current URL path
 		const pageSlug = currentPage.split('/').pop() || '';
 		const pageLabel = pageSlug
-			? pageSlug.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
+			? pageSlug
+					.split('-')
+					.map((w) => w[0].toUpperCase() + w.slice(1))
+					.join(' ')
 			: 'Home';
 		const pageSection = currentPage.startsWith('/case-studies/')
 			? 'case study page'
@@ -279,9 +282,7 @@ ${contextForModel}`;
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 		// Client injects synthetic UIMessages with role "data" for action UI (route/minimize feedback).
 		// convertToModelMessages only accepts roles the model understands — strip UI-only rows.
-		const messagesForModel = messages.filter(
-			(m: { role: string }) => m.role !== 'data'
-		);
+		const messagesForModel = messages.filter((m: { role: string }) => m.role !== 'data');
 		const modelMessages = await convertToModelMessages(messagesForModel);
 
 		const result = streamText({
@@ -294,7 +295,8 @@ ${contextForModel}`;
 			// Keeps replies brief; raise if answers feel clipped after tool calls
 			maxOutputTokens: 220,
 			onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
-				const callNames = toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
+				const callNames =
+					toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
 				const resultSummary =
 					toolResults?.map((tr) => ('toolName' in tr ? tr.toolName : 'unknown')) ?? [];
 				logRag(`step finish`, {
@@ -322,10 +324,12 @@ ${contextForModel}`;
 						properties: {
 							user_message: lastMessageText,
 							bot_response: text || null,
-							function_call_name: clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
-							function_call_args: clientToolCall && 'input' in clientToolCall
-								? JSON.stringify(clientToolCall.input)
-								: null,
+							function_call_name:
+								clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
+							function_call_args:
+								clientToolCall && 'input' in clientToolCall
+									? JSON.stringify(clientToolCall.input)
+									: null,
 							current_page: currentPage,
 							run_id: runID,
 							session_id: sessionId ?? null

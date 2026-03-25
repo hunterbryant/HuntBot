@@ -5,12 +5,12 @@
 	import GreetingMessage from './GreetingMessage.svelte';
 	import ChatSuggestions from './ChatSuggestions.svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { derived } from 'svelte/store';
+	import { derived, get } from 'svelte/store';
 	import { afterNavigate } from '$app/navigation';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
-	import { navEngaged, chatOpen, mobile } from '$lib/nav/navstore';
+	import { navEngaged, mobile } from '$lib/nav/navstore';
 	import { page } from '$app/stores';
 	import ActionMessage from './ActionMessage.svelte';
 	import {
@@ -23,18 +23,19 @@
 		loadingContextSuggestions,
 		cancelContextFetches,
 		fetchSuggestions,
-		fetchScrollSuggestions,
-		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		getMessageText,
 		streamingAssistantHasText,
 		SESSION_ID
 	} from './MessageStore.svelte';
+	import { createPageSuggestionObservers } from './pageSuggestionObservers';
 	import type { FunctionMessage } from '$lib/types';
 	import { captureEvent } from '$lib/analytics';
 	import LoadingStream from './LoadingStream.svelte';
 
 	const { messages, isLoading, handleSubmit, input, append } = chat();
+
+	const pageObservers = createPageSuggestionObservers(() => get(mobile));
 
 	const animatedMessageIds = new Set<string>();
 
@@ -49,6 +50,10 @@
 	let scrolledToBottom = false;
 
 	export let greeting: string = "Hi, I'm HuntBot";
+
+	let messageScrollTimer: ReturnType<typeof setTimeout> | null = null;
+	let suggestionChipScrollTimer: ReturnType<typeof setTimeout> | null = null;
+	let postResponseSuggestTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// Check if scrolled to the bottom
 	function checkScrolledDown() {
@@ -71,16 +76,22 @@
 		}
 	};
 
-	messages.subscribe(() => {
+	const unsubMessages = messages.subscribe(() => {
 		scrollToBottom();
-		setTimeout(() => {
+		if (messageScrollTimer) clearTimeout(messageScrollTimer);
+		messageScrollTimer = setTimeout(() => {
 			scrollToBottom();
+			messageScrollTimer = null;
 		}, 400);
 	});
 
 	// Scroll down when new suggestion chips appear so they don't push content out of view
 	$: if (!$minimized && ($suggestions.length > 0 || $hoverSuggestions.length > 0)) {
-		setTimeout(() => scrollToBottom(), 200);
+		if (suggestionChipScrollTimer) clearTimeout(suggestionChipScrollTimer);
+		suggestionChipScrollTimer = setTimeout(() => {
+			scrollToBottom();
+			suggestionChipScrollTimer = null;
+		}, 200);
 	}
 
 	// Gate: hold back all pre-conversation suggestions until the greeting has been read
@@ -99,6 +110,7 @@
 		} else if (greetingLoaded && !readyForSuggestions) {
 			if (!greetingReadTimer) {
 				greetingReadTimer = setTimeout(() => {
+					greetingReadTimer = null;
 					readyForSuggestions = true;
 					fetchSuggestions($messages, $page.url.pathname);
 				}, 3000);
@@ -143,7 +155,11 @@
 		if (prevLoading && !$isLoading) {
 			const hasUserMessages = $messages.some((m) => m.role === 'user');
 			if (hasUserMessages) {
-				setTimeout(() => fetchSuggestions($messages, $page.url.pathname), 2000);
+				if (postResponseSuggestTimer) clearTimeout(postResponseSuggestTimer);
+				postResponseSuggestTimer = setTimeout(() => {
+					postResponseSuggestTimer = null;
+					fetchSuggestions($messages, $page.url.pathname);
+				}, 2000);
 			}
 		}
 		prevLoading = $isLoading ?? false;
@@ -168,6 +184,7 @@
 			lastProactivePage = path;
 			if (proactiveTimer) clearTimeout(proactiveTimer);
 			proactiveTimer = setTimeout(() => {
+				proactiveTimer = null;
 				// Re-check at fire time — the user may have sent a message during the delay
 				if ($messages.some((m) => m.role === 'user')) return;
 				triggerProactiveOpener($messages, path);
@@ -176,299 +193,27 @@
 			// Reset when navigating away so it can fire again on the next project page
 			lastProactivePage = '';
 			if (proactiveTimer) clearTimeout(proactiveTimer);
+			proactiveTimer = null;
 		}
-	}
-
-	// --- Scroll-aware suggestions via IntersectionObserver + scroll-depth fallback ---
-	// Primary: observes h1–h4 headings and first heading within Prismic slice containers.
-	// Fallback: on heading-sparse pages (e.g. one big TextBlock), fires at scroll-depth
-	// milestones (25%, 50%, 75%) so long-form content still gets fresh suggestions.
-	// Both share the same fetch budget (max 5 per page, 3s dwell before firing).
-
-	const DWELL_MS = 3000;
-	const MAX_FETCHES = 5;
-	const MIN_OBSERVABLE = 3;
-	const DEPTH_MILESTONES = [25, 50, 75];
-
-	let dwellTimer: ReturnType<typeof setTimeout> | null = null;
-	let sectionObserver: IntersectionObserver | null = null;
-	let fetchedHeadings = new Set<string>();
-	let fetchCount = 0;
-
-	let scrollFallbackTimer: ReturnType<typeof setTimeout> | null = null;
-	let scrollFallbackHandler: (() => void) | null = null;
-	let milestonesFired = new Set<number>();
-
-	function getScrollDepth(): number {
-		const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-		const docHeight = document.documentElement.scrollHeight - viewportHeight;
-		return docHeight > 0 ? Math.round((window.scrollY / docHeight) * 100) : 0;
-	}
-
-	function canFetchScroll(): boolean {
-		if (fetchCount >= MAX_FETCHES) return false;
-		return true;
-	}
-
-	function getObservableElements(): Element[] {
-		const seen = new Set<Element>();
-		const results: Element[] = [];
-
-		document.querySelectorAll('h1, h2, h3, h4').forEach((el) => {
-			seen.add(el);
-			results.push(el);
-		});
-
-		document.querySelectorAll('[data-slice-type]').forEach((slice) => {
-			const heading = slice.querySelector('h1, h2, h3, h4, h5');
-			if (heading && !seen.has(heading)) {
-				seen.add(heading);
-				results.push(heading);
-			}
-		});
-
-		return results;
-	}
-
-	function setupScrollDepthFallback(pathname: string) {
-		if (scrollFallbackHandler) window.removeEventListener('scroll', scrollFallbackHandler);
-
-		scrollFallbackHandler = () => {
-			if (scrollFallbackTimer) clearTimeout(scrollFallbackTimer);
-			scrollFallbackTimer = setTimeout(() => {
-				const depth = getScrollDepth();
-				for (const milestone of DEPTH_MILESTONES) {
-					if (depth >= milestone && !milestonesFired.has(milestone) && canFetchScroll()) {
-						milestonesFired.add(milestone);
-						fetchCount++;
-						fetchScrollSuggestions(pathname, depth, null);
-						break;
-					}
-				}
-			}, DWELL_MS);
-		};
-
-		window.addEventListener('scroll', scrollFallbackHandler, { passive: true });
-	}
-
-	function setupHeadingObserver(pathname: string) {
-		if (sectionObserver) sectionObserver.disconnect();
-
-		const observables = getObservableElements();
-
-		// Heading-sparse page — use scroll-depth milestones instead
-		if (observables.length < MIN_OBSERVABLE) {
-			setupScrollDepthFallback(pathname);
-		}
-
-		sectionObserver = new IntersectionObserver(
-			(entries) => {
-				for (const entry of entries) {
-					const heading = entry.target.textContent?.trim() ?? null;
-					if (!heading) continue;
-
-					if (entry.isIntersecting && !fetchedHeadings.has(heading)) {
-						if (dwellTimer) clearTimeout(dwellTimer);
-						dwellTimer = setTimeout(() => {
-							if (!canFetchScroll()) return;
-							fetchedHeadings.add(heading);
-							fetchCount++;
-							fetchScrollSuggestions(pathname, getScrollDepth(), heading);
-						}, DWELL_MS);
-					} else if (!entry.isIntersecting && dwellTimer) {
-						clearTimeout(dwellTimer);
-						dwellTimer = null;
-					}
-				}
-			},
-			{ threshold: 0.5 }
-		);
-
-		observables.forEach((el) => sectionObserver!.observe(el));
-	}
-
-	function resetScrollState() {
-		if (sectionObserver) sectionObserver.disconnect();
-		if (dwellTimer) clearTimeout(dwellTimer);
-		dwellTimer = null;
-		if (scrollFallbackTimer) clearTimeout(scrollFallbackTimer);
-		scrollFallbackTimer = null;
-		if (scrollFallbackHandler) {
-			window.removeEventListener('scroll', scrollFallbackHandler);
-			scrollFallbackHandler = null;
-		}
-		fetchedHeadings.clear();
-		milestonesFired.clear();
-		fetchCount = 0;
-		scrollSuggestions.set([]);
-		teardownHoverObserver();
-	}
-
-	// --- Hover-aware suggestions (desktop only) ---
-	// When the visitor dwells on a content block for 2s, fetch suggestions
-	// specific to that passage. Clears after 15s of no hover activity.
-
-	const HOVER_DWELL_MS = 2000;
-	const HOVER_DECAY_MS = 15000;
-	const HOVER_COOLDOWN_MS = 3000;
-	const MAX_HOVER_FETCHES = 3;
-
-	let hoverDwellTimer: ReturnType<typeof setTimeout> | null = null;
-	let hoverDecayTimer: ReturnType<typeof setTimeout> | null = null;
-	let hoverFetchCount = 0;
-	let lastHoverFetchTime = 0;
-	let hoveredFingerprints = new Set<string>();
-	let hoverCleanups: (() => void)[] = [];
-
-	function flashContextOverlay(el: Element) {
-		const htmlEl = el as HTMLElement;
-
-		const isDark =
-			document.documentElement.classList.contains('dark') ||
-			window.matchMedia('(prefers-color-scheme: dark)').matches;
-		const highlight = isDark ? '#292524' : '#57534e';
-		const textColor = getComputedStyle(htmlEl).color;
-
-		const styledProps = [
-			'background-image',
-			'background-size',
-			'background-position',
-			'background-clip',
-			'-webkit-background-clip',
-			'-webkit-text-fill-color',
-			'color',
-			'transition'
-		];
-		const saved = new Map<string, string>();
-		styledProps.forEach((p) => saved.set(p, htmlEl.style.getPropertyValue(p)));
-
-		htmlEl.style.setProperty(
-			'background-image',
-			`linear-gradient(90deg, ${textColor} 0%, ${textColor} 35%, ${highlight} 50%, ${textColor} 65%, ${textColor} 100%)`
-		);
-		htmlEl.style.setProperty('background-size', '300% 100%');
-		htmlEl.style.setProperty('background-position', '100% 0');
-		htmlEl.style.setProperty('-webkit-background-clip', 'text');
-		htmlEl.style.setProperty('background-clip', 'text');
-		htmlEl.style.setProperty('-webkit-text-fill-color', 'transparent');
-		htmlEl.style.setProperty('color', 'transparent');
-
-		void htmlEl.offsetHeight;
-
-		htmlEl.style.setProperty('transition', 'background-position 1400ms ease-in-out');
-		htmlEl.style.setProperty('background-position', '0% 0');
-
-		let cleaned = false;
-		const cleanup = () => {
-			if (cleaned) return;
-			cleaned = true;
-			htmlEl.removeEventListener('transitionend', cleanup);
-			styledProps.forEach((p) => {
-				const orig = saved.get(p)!;
-				if (orig) htmlEl.style.setProperty(p, orig);
-				else htmlEl.style.removeProperty(p);
-			});
-		};
-
-		htmlEl.addEventListener('transitionend', cleanup, { once: true });
-		setTimeout(cleanup, 1600);
-	}
-
-	function extractHoverContext(el: Element): string {
-		const own = el.textContent?.trim() ?? '';
-		const prev = el.previousElementSibling?.textContent?.trim() ?? '';
-		const next = el.nextElementSibling?.textContent?.trim() ?? '';
-		const parts = [prev, own, next].filter(Boolean);
-		return parts.join(' ').slice(0, 500);
-	}
-
-	function fingerprint(text: string): string {
-		return text.slice(0, 80);
-	}
-
-	function setupHoverObserver(pathname: string) {
-		teardownHoverObserver();
-
-		if ($mobile) return;
-
-		const targets = document.querySelectorAll(
-			'[data-slice-type] p, [data-slice-type] blockquote, [data-slice-type] figcaption'
-		);
-
-		targets.forEach((el) => {
-			const onEnter = () => {
-				if (hoverDecayTimer) {
-					clearTimeout(hoverDecayTimer);
-					hoverDecayTimer = null;
-				}
-				if (hoverDwellTimer) clearTimeout(hoverDwellTimer);
-
-				hoverDwellTimer = setTimeout(() => {
-					if (hoverFetchCount >= MAX_HOVER_FETCHES) return;
-					if (Date.now() - lastHoverFetchTime < HOVER_COOLDOWN_MS) return;
-					const context = extractHoverContext(el);
-					const fp = fingerprint(context);
-					if (hoveredFingerprints.has(fp)) return;
-					hoveredFingerprints.add(fp);
-					hoverFetchCount++;
-					lastHoverFetchTime = Date.now();
-					flashContextOverlay(el);
-					fetchHoverSuggestions(pathname, context);
-				}, HOVER_DWELL_MS);
-			};
-
-			const onLeave = () => {
-				if (hoverDwellTimer) {
-					clearTimeout(hoverDwellTimer);
-					hoverDwellTimer = null;
-				}
-				if (hoverDecayTimer) clearTimeout(hoverDecayTimer);
-				hoverDecayTimer = setTimeout(() => {
-					hoverSuggestions.set([]);
-				}, HOVER_DECAY_MS);
-			};
-
-			el.addEventListener('mouseenter', onEnter);
-			el.addEventListener('mouseleave', onLeave);
-			hoverCleanups.push(() => {
-				el.removeEventListener('mouseenter', onEnter);
-				el.removeEventListener('mouseleave', onLeave);
-			});
-		});
-	}
-
-	function teardownHoverObserver() {
-		hoverCleanups.forEach((fn) => fn());
-		hoverCleanups = [];
-		if (hoverDwellTimer) clearTimeout(hoverDwellTimer);
-		hoverDwellTimer = null;
-		if (hoverDecayTimer) clearTimeout(hoverDecayTimer);
-		hoverDecayTimer = null;
-		hoverFetchCount = 0;
-		hoveredFingerprints.clear();
-		hoverSuggestions.set([]);
 	}
 
 	onMount(() => {
-		if (canFetchScroll()) {
-			fetchCount++;
-			fetchScrollSuggestions($page.url.pathname, getScrollDepth(), null);
-		}
-		setupHeadingObserver($page.url.pathname);
-		setupHoverObserver($page.url.pathname);
+		pageObservers.mount($page.url.pathname);
 	});
 
 	onDestroy(() => {
-		resetScrollState();
+		unsubMessages();
+		if (messageScrollTimer) clearTimeout(messageScrollTimer);
+		if (suggestionChipScrollTimer) clearTimeout(suggestionChipScrollTimer);
+		if (postResponseSuggestTimer) clearTimeout(postResponseSuggestTimer);
+		if (greetingReadTimer) clearTimeout(greetingReadTimer);
+		if (proactiveTimer) clearTimeout(proactiveTimer);
+		pageObservers.reset();
 	});
 
 	afterNavigate(({ to }) => {
 		const path = to?.url.pathname ?? $page.url.pathname;
-		resetScrollState();
-		setTimeout(() => {
-			setupHeadingObserver(path);
-			setupHoverObserver(path);
-		}, 300);
+		pageObservers.rescheduleAfterNavigate(path);
 	});
 
 	async function selectSuggestion(suggestion: string) {
@@ -543,7 +288,11 @@
 				</div>
 			{/if}
 			<!-- Render the chat messages -->
-			<div class="first:pt-4 {$activeSuggestions.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
+			<div
+				class="first:pt-4 {$activeSuggestions.length > 0 && !$isLoading && $input.trim() === ''
+					? ''
+					: 'last:pb-6'}"
+			>
 				{#each $messages as message, i}
 					<div
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
@@ -554,18 +303,18 @@
 							}, 400);
 						}}
 					>
-					{#if message.role === 'user'}
-						<UserMessage value={getMessageText(message)} />
-					{:else if message.role === 'assistant' && getMessageText(message).trim()}
-						<BotMessage
-							value={getMessageText(message)}
-							isLast={i === $messages.length - 1 && !$isLoading}
-							onRetry={retryLastResponse}
-							animate={shouldAnimate(message.id)}
-						/>
-					{:else if (message.role as string) === 'data'}
-						<ActionMessage value={message as unknown as FunctionMessage} />
-					{/if}
+						{#if message.role === 'user'}
+							<UserMessage value={getMessageText(message)} />
+						{:else if message.role === 'assistant' && getMessageText(message).trim()}
+							<BotMessage
+								value={getMessageText(message)}
+								isLast={i === $messages.length - 1 && !$isLoading}
+								onRetry={retryLastResponse}
+								animate={shouldAnimate(message.id)}
+							/>
+						{:else if (message.role as string) === 'data'}
+							<ActionMessage value={message as unknown as FunctionMessage} />
+						{/if}
 					</div>
 				{/each}
 				{#if $isLoading && !streamingAssistantHasText($messages)}
@@ -591,6 +340,12 @@
 		</div>
 	{/if}
 	{#if $botEngaged}
-		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} onPlaceholderSelect={selectSuggestion} />
+		<TextInput
+			{isLoading}
+			{handleSubmit}
+			{input}
+			currentPage={$page.url.pathname}
+			onPlaceholderSelect={selectSuggestion}
+		/>
 	{/if}
 </div>

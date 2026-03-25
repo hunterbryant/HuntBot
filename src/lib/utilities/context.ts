@@ -1,12 +1,12 @@
-import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import type { Document } from '@langchain/core/documents';
-import { compile } from 'html-to-text';
-import { getImessageEnabled } from '$lib/server/imessage-config';
-import { logRag, shouldLogRag } from '$lib/server/rag-debug';
-import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import { rewriteRetrievalQuery } from '$lib/rewrite';
+import { getImessageEnabled } from '$lib/server/imessage-config';
+import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
+import { logRag, shouldLogRag } from '$lib/server/rag-debug';
+import type { Document } from '@langchain/core/documents';
+import { OpenAIEmbeddings } from '@langchain/openai';
+import { compile } from 'html-to-text';
+import { createHash } from 'node:crypto';
 
 export type Metadata = {
 	url: string;

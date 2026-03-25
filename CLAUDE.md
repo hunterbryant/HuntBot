@@ -10,24 +10,25 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | SvelteKit 2 + Svelte 4 |
-| Language | TypeScript (strict) |
-| Styling | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants) |
-| CMS | Prismic (Slice Machine) |
-| LLM | OpenAI `gpt-3.5-turbo` via the `openai` npm package |
-| Vector DB | Qdrant Cloud (free tier, 1GB) |
-| Embeddings | OpenAI `text-embedding-3-small`, 512 dimensions |
-| RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`) |
-| Streaming | Vercel AI SDK (`ai` package) — `OpenAIStream` + `StreamingTextResponse` |
-| Observability | LangSmith (`langsmith`) for tracing RAG pipeline runs |
-| Analytics | Vercel Analytics + Speed Insights |
-| Auth | JWT (`jsonwebtoken`) stored as a cookie |
-| Package manager | pnpm |
-| Node version | 20.x (required, see `engines` in `package.json`) |
-| Deployment | Vercel (`@sveltejs/adapter-vercel`) |
-| Dev runner | `mprocs` — runs SvelteKit dev server + Slice Machine UI concurrently |
+| Layer           | Technology                                                              |
+| --------------- | ----------------------------------------------------------------------- |
+| Framework       | SvelteKit 2 + Svelte 5                                                  |
+| Language        | TypeScript (strict)                                                     |
+| Styling         | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants)          |
+| CMS             | Prismic (Slice Machine)                                                 |
+| LLM             | OpenAI `gpt-3.5-turbo` via the `openai` npm package                     |
+| Vector DB       | Qdrant Cloud (free tier, 1GB)                                           |
+| Embeddings      | OpenAI `text-embedding-3-small`, 512 dimensions                         |
+| RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`)                 |
+| Streaming       | Vercel AI SDK (`ai` package) — `OpenAIStream` + `StreamingTextResponse` |
+| Observability   | LangSmith (`langsmith`) for tracing RAG pipeline runs                   |
+| Analytics       | Vercel Analytics + Speed Insights                                       |
+| Auth            | JWT (`jsonwebtoken`) stored as a cookie                                 |
+| Package manager | pnpm                                                                    |
+| Node version    | 20.x (required, see `engines` in `package.json`)                        |
+| Deployment      | Vercel (`@sveltejs/adapter-vercel`)                                     |
+| Dev runner      | `mprocs` — runs SvelteKit dev server + Slice Machine UI concurrently    |
+| Unit tests      | Vitest (`pnpm test`) — pure helpers in `src/**/*.test.ts`               |
 
 ---
 
@@ -47,6 +48,7 @@ HuntBot/
 │   │   ├── prismicio.ts      # Prismic client factory + route config
 │   │   ├── types.ts          # Core shared types (SupportedRoutes, SupportedActions, etc.)
 │   │   ├── ChatBox/          # HuntBot chat UI components + state
+│   │   ├── landing/          # Home hero headline + GPU uniform/mask helpers
 │   │   │   ├── ChatBox.svelte        # Root chat widget
 │   │   │   ├── MessageStore.ts       # Svelte stores + Vercel AI SDK useChat() setup
 │   │   │   ├── TextInput.svelte
@@ -118,6 +120,7 @@ pnpm dev
 ```
 
 This uses `mprocs` to start two processes in parallel:
+
 - `vite dev` — SvelteKit dev server
 - `start-slicemachine` — Prismic Slice Machine UI (for content modeling)
 
@@ -128,6 +131,8 @@ pnpm build           # Production build
 pnpm preview         # Preview production build locally
 pnpm check           # TypeScript + Svelte type checking
 pnpm check:watch     # Watch mode type checking
+pnpm test            # Vitest (unit tests)
+pnpm test:watch      # Vitest watch mode
 pnpm lint            # Prettier check + ESLint
 pnpm format          # Auto-format with Prettier
 pnpm slicemachine    # Start Slice Machine UI only
@@ -136,6 +141,11 @@ pnpm slicemachine    # Start Slice Machine UI only
 ### Type checking is important
 
 Always run `pnpm check` before committing. The project has strict TypeScript. The Prismic type definitions in `src/prismicio-types.d.ts` are auto-generated — do not edit manually.
+
+### Claude Code and Cursor
+
+- **Claude Code** picks up project skills from [`.claude/skills/`](.claude/skills/) (workflows plus scoped skills aligned with [`.cursor/rules/`](.cursor/rules/)).
+- **Cursor** uses [`.cursor/rules/`](.cursor/rules/) and [`.cursor/skills/`](.cursor/skills/). When you change shared conventions, update the matching `.mdc` / `.claude/skills/*/SKILL.md` so both tools stay aligned.
 
 ---
 
@@ -184,9 +194,9 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 
 The LLM can invoke two functions:
 
-| Function | Effect |
-|---|---|
-| `minimize_chat` | Minimizes the chat widget |
+| Function        | Effect                                                        |
+| --------------- | ------------------------------------------------------------- |
+| `minimize_chat` | Minimizes the chat widget                                     |
 | `route_to_page` | Navigates the browser to a site page via SvelteKit's `goto()` |
 
 All valid route destinations are defined in `src/lib/types.ts` as the `SupportedRoutes` enum. **When adding new pages to the site, add the route to `SupportedRoutes` so HuntBot can navigate to it.**
@@ -206,14 +216,15 @@ The Qdrant vector collection is the knowledge base for HuntBot. It is populated 
 
 ### Embedding sources
 
-| Endpoint | Source | Notes |
-|---|---|---|
-| `GET /api/embed/urls` | Recursive web crawl of `hunterbryant.io` | Max depth 3 |
-| `GET /api/embed/notion-url` | Notion pages via API | Uses `NOTION_INTEGRATION_TOKEN` |
-| `GET /api/embed/notion-file` | Local `local_files/notion_export/` directory | Dev-only button in admin UI |
-| `GET /api/embed/texts` | Local text/CSV files | Dev-only button in admin UI |
+| Endpoint                     | Source                                       | Notes                           |
+| ---------------------------- | -------------------------------------------- | ------------------------------- |
+| `GET /api/embed/urls`        | Recursive web crawl of `hunterbryant.io`     | Max depth 3                     |
+| `GET /api/embed/notion-url`  | Notion pages via API                         | Uses `NOTION_INTEGRATION_TOKEN` |
+| `GET /api/embed/notion-file` | Local `local_files/notion_export/` directory | Dev-only button in admin UI     |
+| `GET /api/embed/texts`       | Local text/CSV files                         | Dev-only button in admin UI     |
 
 All embedders use:
+
 - Model: `text-embedding-3-small`
 - Dimensions: `512`
 - Chunk size: `1000` characters, overlap: `200`
@@ -226,6 +237,7 @@ All embedders use:
 ### How content is structured
 
 Pages are composed of **slices** — modular content blocks defined in `src/lib/slices/`. Each slice has:
+
 - `index.svelte` — the Svelte component
 - `model.json` — the Prismic data model schema
 - `mocks.json` — mock data for Slice Machine simulator
@@ -240,13 +252,13 @@ Pages are composed of **slices** — modular content blocks defined in `src/lib/
 
 ### Route types in Prismic
 
-| Prismic type | SvelteKit route |
-|---|---|
-| `home` | `/` |
-| `case_study` | `/case-studies/:uid` |
-| `information` | `/information` |
-| `other_projects` | `/projects` |
-| `project` | `/projects/:uid` |
+| Prismic type     | SvelteKit route      |
+| ---------------- | -------------------- |
+| `home`           | `/`                  |
+| `case_study`     | `/case-studies/:uid` |
+| `information`    | `/information`       |
+| `other_projects` | `/projects`          |
+| `project`        | `/projects/:uid`     |
 
 ---
 
@@ -275,16 +287,19 @@ The site uses a simple cookie-based JWT auth system:
 ## Key Conventions
 
 ### SvelteKit patterns used
+
 - `+page.server.ts` for data loading (Prismic queries run server-side)
 - `+layout.server.ts` for auth state passed to all pages
 - `$lib/` alias maps to `src/lib/`
 - `$env/dynamic/private` for all server-side environment variables (never `process.env`)
 
 ### TypeScript
+
 - Enums in `src/lib/types.ts` are the source of truth for function call names and valid routes
 - Prismic types in `src/prismicio-types.d.ts` are auto-generated — always regenerate after schema changes
 
 ### Do not
+
 - Use `process.env` — use `$env/dynamic/private` instead
 - Edit `src/prismicio-types.d.ts` manually
 - Add hardcoded route strings without updating `SupportedRoutes` in `types.ts`

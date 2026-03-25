@@ -67,11 +67,7 @@ export function formatNavPagesForPrompt(pages: NavPage[], currentPage: string): 
 		.filter((p) => p.path !== currentPage)
 		.map((p) => {
 			const kind =
-				p.category === 'case_study'
-					? 'case study'
-					: p.category === 'project'
-						? 'project'
-						: 'page';
+				p.category === 'case_study' ? 'case study' : p.category === 'project' ? 'project' : 'page';
 			return `- "${p.displayTitle}" (${kind}) → ${p.path}`;
 		})
 		.join('\n');

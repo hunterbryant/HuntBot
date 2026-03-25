@@ -20,9 +20,7 @@
 	class="col-span-full mb-4 flex flex-col items-start gap-2 sm:col-span-3 sm:col-start-4 sm:mb-8 md:col-end-8 lg:col-end-9"
 >
 	{#if slice.variation === 'default'}
-		<figure
-			class="m-0 {slice.primary.caption ? '' : 'mb-4'} flex flex-col items-start gap-0 p-0"
-		>
+		<figure class="m-0 {slice.primary.caption ? '' : 'mb-4'} flex flex-col items-start gap-0 p-0">
 			<PrismicImage
 				field={slice.primary.image}
 				class="rounded border border-black/10 dark:border-white/10 {slice.primary.caption
@@ -31,7 +29,7 @@
 			/>
 			{#if slice.primary.caption}
 				<figcaption
-					class="text-stone-600 mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide dark:text-stone-400"
+					class="mb-2 w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-600 dark:text-stone-400"
 				>
 					{slice.primary.caption}
 				</figcaption>
@@ -49,7 +47,7 @@
 							class="h-full max-h-56 w-full overflow-hidden rounded border border-black/10 object-cover  sm:max-h-96 dark:border-white/10 "
 						/>
 						<figcaption
-							class="text-stone-600 w-0 min-w-full text-balance text-left text-sm tracking-wide dark:text-stone-400"
+							class="w-0 min-w-full text-balance text-left text-sm tracking-wide text-stone-600 dark:text-stone-400"
 						>
 							{#if item.caption}
 								{item.caption}

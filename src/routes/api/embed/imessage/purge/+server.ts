@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
-import { json, type RequestHandler } from '@sveltejs/kit';
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { json, type RequestHandler } from '@sveltejs/kit';
 
 export const POST: RequestHandler = async () => {
 	try {

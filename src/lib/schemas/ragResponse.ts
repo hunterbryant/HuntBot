@@ -14,10 +14,14 @@ export const ragReflectionSchema = z.object({
 		.array(
 			z.object({
 				chunkId: z.string().describe('Chunk id from CONTEXT, e.g. CHUNK-site-...'),
-				quote: z.string().describe('Short quote or paraphrase from that chunk supporting a claim in the reply.')
+				quote: z
+					.string()
+					.describe('Short quote or paraphrase from that chunk supporting a claim in the reply.')
 			})
 		)
-		.describe('Chunks that substantiate the assistant reply. Empty if reply is non-factual or context was empty.'),
+		.describe(
+			'Chunks that substantiate the assistant reply. Empty if reply is non-factual or context was empty.'
+		),
 	confidence: z
 		.enum(['high', 'medium', 'low', 'insufficient_context'])
 		.describe('How well CONTEXT supported the assistant reply.')

@@ -12,7 +12,9 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// Debug logging for auth redirect issues
 	if (path.startsWith('/admin') || path.startsWith('/login')) {
-		console.log(`[AUTH] ${event.request.method} ${path} | cookie=${hasAuthCookie} role=${userRole}`);
+		console.log(
+			`[AUTH] ${event.request.method} ${path} | cookie=${hasAuthCookie} role=${userRole}`
+		);
 	}
 
 	if (path.startsWith('/admin') && userRole !== UserRole.ADMIN) {

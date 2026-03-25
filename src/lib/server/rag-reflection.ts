@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
+import { ragReflectionSchema } from '$lib/schemas/ragResponse';
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateObject, zodSchema } from 'ai';
-import { ragReflectionSchema } from '$lib/schemas/ragResponse';
 
 const CONTEXT_EXCERPT_MAX = 12_000;
 

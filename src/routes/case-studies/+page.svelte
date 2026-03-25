@@ -2,7 +2,7 @@
 	import thumbnail from '$lib/assets/case-studies.jpg';
 	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
 	import { isFilled, type DateField, documentToLinkField } from '@prismicio/client';
-	import type { AffiliationDocument, CaseStudyDocument } from '../../prismicio-types.js';
+	import type { AffiliationDocumentData, CaseStudyDocument } from '../../prismicio-types.js';
 	import LockClosed from '$lib/assets/lock-closed.svelte';
 
 	export let data;
@@ -12,14 +12,10 @@
 		return dateObj.getFullYear();
 	}
 
-	// Silence ts warnings about the affiliation type
-	function typeAffliation(caseStudy: CaseStudyDocument) {
-		if (
-			isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-				caseStudy.data.affiliation
-			)
-		) {
-			return caseStudy.data.affiliation;
+	function typeAffliation(caseStudy: CaseStudyDocument): AffiliationDocumentData | undefined {
+		const rel = caseStudy.data.affiliation;
+		if (isFilled.contentRelationship(rel)) {
+			return rel.data as AffiliationDocumentData;
 		}
 	}
 </script>
@@ -100,7 +96,7 @@
 							<p
 								class="col-span-2 col-start-2 row-start-1 whitespace-nowrap text-xs uppercase tracking-wider text-stone-900 dark:text-stone-100"
 							>
-								{typeAffliation(caseStudy)?.data?.title}
+								{typeAffliation(caseStudy)?.title}
 							</p>
 							<p
 								class="col-span-2 col-start-2 row-start-2 whitespace-nowrap text-xs uppercase tracking-wider text-stone-900 dark:text-stone-100"

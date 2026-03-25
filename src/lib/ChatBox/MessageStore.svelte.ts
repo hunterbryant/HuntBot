@@ -2,10 +2,12 @@ import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
-import { generateId, DefaultChatTransport } from 'ai';
+import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
+import { stripTrailingAssistantToolTurns } from './messageUtils';
 
 // Re-export UIMessage as Message for backward compat with consuming code
+export { getMessageText, streamingAssistantHasText } from './messageUtils';
 export type { UIMessage as Message };
 
 function getOrCreateSessionId(): string {
@@ -187,31 +189,7 @@ let chatInstance: Chat | null = null;
 export const botEngaged = writable(false);
 export const minimized = writable(true);
 
-// Helper to extract text from a UIMessage's parts
-export function getMessageText(message: UIMessage): string {
-	return message.parts
-		.filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-		.map((p) => p.text)
-		.join('');
-}
-
-/** True once the in-flight assistant reply has any visible text (hides loading placeholder while still streaming). */
-export function streamingAssistantHasText(messages: UIMessage[]): boolean {
-	let lastUserIdx = -1;
-	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i].role === 'user') {
-			lastUserIdx = i;
-			break;
-		}
-	}
-	for (let i = lastUserIdx + 1; i < messages.length; i++) {
-		const m = messages[i];
-		if (m.role === 'assistant' && getMessageText(m).trim()) return true;
-	}
-	return false;
-}
-
-export const chat = () => {
+function createSharedChatContext() {
 	const instance = new Chat({
 		id: 'uniquechatid',
 		messages: [initMessage],
@@ -220,8 +198,11 @@ export const chat = () => {
 			body: { sessionId: SESSION_ID }
 		}),
 		onToolCall: async ({ toolCall }) => {
-			// In v6, tool call has toolName + input (not args)
-			const tc = toolCall as unknown as { toolCallId: string; toolName: string; input: Record<string, unknown> };
+			const tc = toolCall as unknown as {
+				toolCallId: string;
+				toolName: string;
+				input: Record<string, unknown>;
+			};
 			handleToolCall({ toolCallId: tc.toolCallId, toolName: tc.toolName, args: tc.input });
 		}
 	});
@@ -232,9 +213,6 @@ export const chat = () => {
 		instance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
 	}, 2000);
 
-	// Bridge reactive Chat properties to Svelte stores for backward compat.
-	// Deep-read text parts: streaming applies deltas in place on the same message object, so a
-	// shallow `() => instance.messages` does not invalidate `toStore` when tokens arrive.
 	const messages = toStore(() => {
 		const msgs = instance.messages;
 		for (const m of msgs) {
@@ -246,13 +224,18 @@ export const chat = () => {
 		}
 		return msgs;
 	});
-	const isLoading = toStore(() => instance.status === 'streaming' || instance.status === 'submitted');
+	const isLoading = toStore(
+		() => instance.status === 'streaming' || instance.status === 'submitted'
+	);
 	const input = writable('');
 
 	function handleSubmit(event?: { preventDefault?: () => void }) {
 		event?.preventDefault?.();
 		let value = '';
-		input.update((v) => { value = v; return ''; });
+		input.update((v) => {
+			value = v;
+			return '';
+		});
 		if (value.trim()) {
 			instance.sendMessage({ text: value.trim() });
 		}
@@ -269,38 +252,25 @@ export const chat = () => {
 	}
 
 	return { messages, isLoading, handleSubmit, input, append, setMessages };
-};
-
-/** True for UI tool parts in AI SDK v6 (`tool-*`, `dynamic-tool`) and legacy `tool-invocation`. */
-function partLooksLikeToolInvocation(p: { type: string }): boolean {
-	return (
-		p.type === 'tool-invocation' ||
-		p.type === 'dynamic-tool' ||
-		(typeof p.type === 'string' && p.type.startsWith('tool-'))
-	);
 }
 
-/**
- * Remove trailing assistant rows that still contain tool-call UI parts.
- * Client-side tools are handled by replacing the turn with synthetic messages (no addToolOutput).
- * Leaving SDK tool rows in history sends dangling tool_calls to the model without tool results,
- * which often yields empty assistant text on the next turn (spinner stops, no bubble).
- */
-function stripTrailingAssistantToolTurns(messages: UIMessage[]): UIMessage[] {
-	const out = [...messages];
-	while (out.length > 0) {
-		const last = out[out.length - 1];
-		if (last.role !== 'assistant') break;
-		const hasToolPart = last.parts.some((p) => partLooksLikeToolInvocation(p));
-		if (!hasToolPart) break;
-		out.pop();
+type SharedChatContext = ReturnType<typeof createSharedChatContext>;
+
+let sharedChatContext: SharedChatContext | null = null;
+
+/** Single shared chat session for the whole app (survives mobile/desktop ChatBox remounts). */
+export function chat(): SharedChatContext {
+	if (!sharedChatContext) {
+		sharedChatContext = createSharedChatContext();
 	}
-	return out;
+	return sharedChatContext;
 }
 
-function handleToolCall(
-	toolCall: { toolCallId: string; toolName: string; args: Record<string, unknown> }
-) {
+function handleToolCall(toolCall: {
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+}) {
 	if (!chatInstance) {
 		console.error('Chat instance not initialized.');
 		return;
@@ -367,7 +337,12 @@ function handleToolCall(
 			{
 				id: generateId(),
 				role: 'assistant',
-				parts: [{ type: 'text', text: args.question ?? "Could you tell me a bit more about what you're looking for?" }]
+				parts: [
+					{
+						type: 'text',
+						text: args.question ?? "Could you tell me a bit more about what you're looking for?"
+					}
+				]
 			}
 		];
 	} else if (toolCall.toolName === 'capture_lead_intent') {

@@ -12,7 +12,9 @@ export const ragRouterSchema = z.object({
 					.string()
 					.min(1)
 					.max(500)
-					.describe('Focused search query — entities, topics, or rephrasings not well covered below.'),
+					.describe(
+						'Focused search query — entities, topics, or rephrasings not well covered below.'
+					),
 				source_filter: z
 					.enum(['all', 'imessage', 'site'])
 					.describe(

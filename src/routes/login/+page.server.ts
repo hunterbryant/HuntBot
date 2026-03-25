@@ -4,8 +4,10 @@ import { fail, redirect } from '@sveltejs/kit';
 import jwt from 'jsonwebtoken';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = ({ locals, url }) => {
-	console.log(`[LOGIN LOAD] user=${JSON.stringify(locals.user?.role)} authenticated=${locals.user?.authenticated}`);
+export const load: PageServerLoad = ({ locals }) => {
+	console.log(
+		`[LOGIN LOAD] user=${JSON.stringify(locals.user?.role)} authenticated=${locals.user?.authenticated}`
+	);
 
 	if (!locals.user) return;
 

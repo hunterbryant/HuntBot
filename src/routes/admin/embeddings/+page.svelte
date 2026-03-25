@@ -81,9 +81,13 @@
 		const decoder = new TextDecoder();
 		let buffer = '';
 
-		while (true) {
+		let streamDone = false;
+		while (!streamDone) {
 			const { done, value } = await reader.read();
-			if (done) break;
+			if (done) {
+				streamDone = true;
+				break;
+			}
 
 			buffer += decoder.decode(value, { stream: true });
 			const lines = buffer.split('\n');
@@ -145,7 +149,8 @@
 			days: String(imessageDays),
 			onlyMe: String(imessageOnlyMe)
 		});
-		if (imessageExcludeContacts.trim()) params.set('excludeContacts', imessageExcludeContacts.trim());
+		if (imessageExcludeContacts.trim())
+			params.set('excludeContacts', imessageExcludeContacts.trim());
 		if (imessageContactAliases.trim()) params.set('contactAliases', imessageContactAliases.trim());
 
 		const response = await fetch(`/api/embed/imessage?${params}`);
@@ -159,9 +164,13 @@
 		const decoder = new TextDecoder();
 		let buffer = '';
 
-		while (true) {
+		let imessageStreamDone = false;
+		while (!imessageStreamDone) {
 			const { done, value } = await reader.read();
-			if (done) break;
+			if (done) {
+				imessageStreamDone = true;
+				break;
+			}
 
 			buffer += decoder.decode(value, { stream: true });
 			const lines = buffer.split('\n');
@@ -270,7 +279,9 @@
 			</span>
 
 			<!-- Notion -->
-			<p class="mt-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
+			<p
+				class="mt-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400"
+			>
 				Notion
 			</p>
 
@@ -291,9 +302,16 @@
 					<div class="flex flex-col gap-1.5">
 						<div class="h-2 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
 							<div
-								class="h-full rounded-full transition-all duration-300 ease-out {notionStatus === 'error' ? 'bg-red-500' : notionStatus === 'done' ? 'bg-green-500' : 'bg-mud-600'}"
-								style="width: {notionStatus === 'running' && notionTotal === 0 ? '5' : notionPercent}%"
-							/>
+								class="h-full rounded-full transition-all duration-300 ease-out {notionStatus ===
+								'error'
+									? 'bg-red-500'
+									: notionStatus === 'done'
+										? 'bg-green-500'
+										: 'bg-mud-600'}"
+								style="width: {notionStatus === 'running' && notionTotal === 0
+									? '5'
+									: notionPercent}%"
+							></div>
 						</div>
 						<div class="flex items-center justify-between">
 							<p class="truncate text-xs text-stone-400 dark:text-stone-500">
@@ -320,7 +338,11 @@
 					disabled={notionFileStatus === 'running'}
 					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
 				>
-					{notionFileStatus === 'running' ? 'Indexing...' : notionFileStatus === 'done' ? 'Done' : 'Index'}
+					{notionFileStatus === 'running'
+						? 'Indexing...'
+						: notionFileStatus === 'done'
+							? 'Done'
+							: 'Index'}
 				</button>
 			</span>
 
@@ -337,7 +359,9 @@
 
 			<!-- iMessage -->
 			<div class="mt-4 border-t border-stone-200 pt-6 dark:border-stone-700">
-				<p class="mb-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
+				<p
+					class="mb-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400"
+				>
 					iMessage
 				</p>
 
@@ -345,8 +369,10 @@
 				<span class="flex h-12 items-center justify-between gap-4 align-middle">
 					<span class="flex items-center gap-2">
 						<span
-							class="inline-block h-2 w-2 rounded-full {imessageToggle ? 'bg-green-500' : 'bg-stone-400'}"
-						/>
+							class="inline-block h-2 w-2 rounded-full {imessageToggle
+								? 'bg-green-500'
+								: 'bg-stone-400'}"
+						></span>
 						Include iMessage context in retrieval
 					</span>
 					<button
@@ -411,7 +437,7 @@
 							placeholder="+15551234567=Work Nickname, anon@example.com=Friend"
 							bind:value={imessageContactAliases}
 							class="rounded border border-stone-300 bg-transparent px-3 py-1.5 text-sm leading-relaxed dark:border-stone-700"
-						/>
+						></textarea>
 						<p class="text-xs text-stone-400 dark:text-stone-500">
 							Names are auto-resolved from your macOS Contacts. Add overrides here only for contacts
 							not in your address book or where you want a different name.
@@ -445,13 +471,16 @@
 						<div class="flex flex-col gap-1.5">
 							<div class="h-2 w-full overflow-hidden rounded-full bg-stone-200 dark:bg-stone-700">
 								<div
-									class="h-full rounded-full transition-all duration-300 ease-out {imessageStatus === 'error'
+									class="h-full rounded-full transition-all duration-300 ease-out {imessageStatus ===
+									'error'
 										? 'bg-red-500'
 										: imessageStatus === 'done'
 											? 'bg-green-500'
 											: 'bg-mud-600'}"
-									style="width: {imessageStatus === 'running' && imessageTotal === 0 ? '5' : imessagePercent}%"
-								/>
+									style="width: {imessageStatus === 'running' && imessageTotal === 0
+										? '5'
+										: imessagePercent}%"
+								></div>
 							</div>
 							<p class="text-xs text-stone-400 dark:text-stone-500">
 								{imessageMessage}

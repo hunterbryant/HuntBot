@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
-import { compile } from 'html-to-text';
 import { json, type RequestHandler } from '@sveltejs/kit';
+import { compile } from 'html-to-text';
 import OpenAI from 'openai';
 
 const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });

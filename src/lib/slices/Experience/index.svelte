@@ -1,25 +1,24 @@
 <script lang="ts">
-	import { isFilled, type Content, LinkType, asLink } from '@prismicio/client';
-	import type { AffiliationDocument, ExperienceSliceDefaultItem } from '../../../prismicio-types';
-	import { PrismicImage, PrismicLink, PrismicRichText } from '@prismicio/svelte';
+	import { isFilled, type Content, asLink } from '@prismicio/client';
+	import type {
+		AffiliationDocumentData,
+		ExperienceSliceDefaultItem
+	} from '../../../prismicio-types';
+	import { PrismicImage, PrismicRichText } from '@prismicio/svelte';
 
 	export let slice: Content.ExperienceSlice;
 
 	//Silences runtime svelte unused prop warnings
 	$$restProps;
 
-	// Silence ts warnings about the affiliation type
-	function typeAffliation(experience: ExperienceSliceDefaultItem) {
-		if (
-			isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-				experience.affiliation
-			)
-		) {
-			if (isFilled.link(experience.affiliation.data?.link)) {
-				if (experience.affiliation.data.link.url !== undefined) {
-					return experience.affiliation;
-				}
-			}
+	function typeAffliation(
+		experience: ExperienceSliceDefaultItem
+	): AffiliationDocumentData | undefined {
+		const rel = experience.affiliation;
+		if (!isFilled.contentRelationship(rel)) return undefined;
+		const data = rel.data as AffiliationDocumentData;
+		if (isFilled.link(data.link) && data.link.url !== undefined) {
+			return data;
 		}
 	}
 </script>
@@ -46,17 +45,17 @@
 					<div
 						class="flex flex-row items-center justify-stretch gap-4 lg:flex-col lg:items-start [&>img]:opacity-90 dark:[&>img]:invert"
 					>
-						<PrismicImage field={typeAffliation(item)?.data?.logo} />
+						<PrismicImage field={typeAffliation(item)?.logo} />
 						<div>
 							<h3 class="font-bold leading-tight text-stone-800 dark:text-stone-200">
 								{item.title}
 							</h3>
 
 							<a
-								href={asLink(typeAffliation(item)?.data?.link)}
+								href={asLink(typeAffliation(item)?.link)}
 								class=" text-stone-600 decoration-slate-400 decoration-2 underline-offset-2 transition-all hover:underline dark:text-stone-400 dark:decoration-slate-600"
 							>
-								{typeAffliation(item)?.data?.verbose_title ?? typeAffliation(item)?.data?.title} ↗
+								{typeAffliation(item)?.verbose_title ?? typeAffliation(item)?.title} ↗
 							</a>
 						</div>
 					</div>

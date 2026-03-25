@@ -2,12 +2,12 @@ import { env } from '$env/dynamic/private';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
 import { QdrantClient } from '@qdrant/js-client-rest';
+import Database from 'better-sqlite3';
+import { existsSync, readdirSync } from 'fs';
 import { Document } from 'langchain/document';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
-import Database from 'better-sqlite3';
 import { homedir } from 'os';
 import { join } from 'path';
-import { readdirSync, existsSync } from 'fs';
 
 const CHAT_DB_PATH = join(homedir(), 'Library', 'Messages', 'chat.db');
 
@@ -33,13 +33,7 @@ interface ABEmail {
 
 function findAddressBookDb(): string | null {
 	// macOS stores the AB database under Sources/<uuid>/AddressBook-v22.abcddb
-	const sourcesDir = join(
-		homedir(),
-		'Library',
-		'Application Support',
-		'AddressBook',
-		'Sources'
-	);
+	const sourcesDir = join(homedir(), 'Library', 'Application Support', 'AddressBook', 'Sources');
 	try {
 		if (existsSync(sourcesDir)) {
 			for (const source of readdirSync(sourcesDir)) {
@@ -92,9 +86,10 @@ function buildContactsMap(): Map<string, string> {
 			const nickname = c.ZNICKNAME?.trim() || null;
 			// If a nickname exists (e.g. "Mom"), embed as "Mom (Liz Bryant)" so both
 			// the relational label and the real name are searchable in the same chunk.
-			const name = nickname && fullName
-				? `${nickname} (${fullName})`
-				: nickname || fullName || c.ZORGANIZATION;
+			const name =
+				nickname && fullName
+					? `${nickname} (${fullName})`
+					: nickname || fullName || c.ZORGANIZATION;
 			if (name) nameById.set(c.Z_PK, name);
 		}
 
@@ -175,7 +170,10 @@ function extractTextFromAttributedBody(buf: Buffer | null): string {
 
 	if (textLen <= 0 || textStart + textLen > buf.length) return '';
 
-	return buf.slice(textStart, textStart + textLen).toString('utf8').trim();
+	return buf
+		.slice(textStart, textStart + textLen)
+		.toString('utf8')
+		.trim();
 }
 
 /** Strip lone surrogates and other characters that break JSON serialization.
@@ -233,7 +231,7 @@ function buildQuery(days: number, onlyMe: boolean, excludeContacts: string[]): s
 function groupByChat(rows: MessageRow[]): Map<string, MessageRow[]> {
 	const groups = new Map<string, MessageRow[]>();
 	for (const row of rows) {
-		const key = row.chat_id != null ? String(row.chat_id) : row.contact ?? 'unknown';
+		const key = row.chat_id != null ? String(row.chat_id) : (row.contact ?? 'unknown');
 		let group = groups.get(key);
 		if (!group) {
 			group = [];
@@ -318,9 +316,7 @@ export async function GET({ url }) {
 				try {
 					db = new Database(CHAT_DB_PATH, { readonly: true, fileMustExist: true });
 				} catch (err) {
-					throw new Error(
-						`Cannot open chat.db — grant Full Disk Access to your terminal. ${err}`
-					);
+					throw new Error(`Cannot open chat.db — grant Full Disk Access to your terminal. ${err}`);
 				}
 
 				send('status', { stage: 'querying', message: 'Querying messages...' });
@@ -347,37 +343,37 @@ export async function GET({ url }) {
 				const groups = groupByChat(rows);
 				const documents: Document[] = [];
 
-			for (const [chatKey, chatRows] of groups) {
-				const participants = resolveParticipants(chatRows, aliasMap);
-				if (participants.length === 0) continue;
+				for (const [chatKey, chatRows] of groups) {
+					const participants = resolveParticipants(chatRows, aliasMap);
+					if (participants.length === 0) continue;
 
-				const isGroupChat = participants.length > 1;
-				// Primary contact is the first (or only) participant — used as a terse label
-				const primaryContact = participants[0];
+					const isGroupChat = participants.length > 1;
+					// Primary contact is the first (or only) participant — used as a terse label
+					const primaryContact = participants[0];
 
-				const text = formatMessages(chatRows, participants, aliasMap);
-				if (!text.trim()) continue;
+					const text = formatMessages(chatRows, participants, aliasMap);
+					if (!text.trim()) continue;
 
-				// Parse year from the last message date ("YYYY-MM-DD ..." or similar)
-				const lastDate = chatRows[chatRows.length - 1]?.message_date ?? '';
-				const year = parseInt(lastDate.slice(0, 4), 10) || null;
+					// Parse year from the last message date ("YYYY-MM-DD ..." or similar)
+					const lastDate = chatRows[chatRows.length - 1]?.message_date ?? '';
+					const year = parseInt(lastDate.slice(0, 4), 10) || null;
 
-				documents.push(
-					new Document({
-						pageContent: text,
-						metadata: {
-							source: 'imessage',
-							contact: primaryContact,
-							participants: participants.join(', '),
-							isGroupChat: isGroupChat ? 1 : 0,
-							chatId: chatKey,
-							year,
-							messageCount: chatRows.length,
-							dateRange: `${chatRows[0]?.message_date} to ${lastDate}`
-						}
-					})
-				);
-			}
+					documents.push(
+						new Document({
+							pageContent: text,
+							metadata: {
+								source: 'imessage',
+								contact: primaryContact,
+								participants: participants.join(', '),
+								isGroupChat: isGroupChat ? 1 : 0,
+								chatId: chatKey,
+								year,
+								messageCount: chatRows.length,
+								dateRange: `${chatRows[0]?.message_date} to ${lastDate}`
+							}
+						})
+					);
+				}
 
 				send('status', {
 					stage: 'chunking',
@@ -425,7 +421,10 @@ export async function GET({ url }) {
 					}
 
 					const windowStart = Math.max(0, chunkStart - 5000);
-					const windowEnd = Math.min(parentText.length, chunkStart + chunk.pageContent.length + 5000);
+					const windowEnd = Math.min(
+						parentText.length,
+						chunkStart + chunk.pageContent.length + 5000
+					);
 					chunk.metadata.expandedContext = sanitizeText(parentText.slice(windowStart, windowEnd));
 				}
 
@@ -436,9 +435,7 @@ export async function GET({ url }) {
 				});
 
 				if (!env.QDRANT_URL?.startsWith('http')) {
-					throw new Error(
-						`QDRANT_URL is missing or invalid: "${env.QDRANT_URL}"`
-					);
+					throw new Error(`QDRANT_URL is missing or invalid: "${env.QDRANT_URL}"`);
 				}
 				if (!env.QDRANT_API_KEY) throw new Error('QDRANT_API_KEY is not set');
 				if (!env.QDRANT_COLLECTION) throw new Error('QDRANT_COLLECTION is not set');
@@ -485,10 +482,7 @@ export async function GET({ url }) {
 					const batch = chunks.slice(i, i + BATCH_SIZE);
 
 					if (!vectorStore) {
-						vectorStore = await QdrantVectorStore.fromExistingCollection(
-							embeddings,
-							qdrantConfig
-						);
+						vectorStore = await QdrantVectorStore.fromExistingCollection(embeddings, qdrantConfig);
 					}
 					await vectorStore.addDocuments(batch);
 

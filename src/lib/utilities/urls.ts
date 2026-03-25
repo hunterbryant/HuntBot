@@ -1,6 +1,6 @@
 import { SupportedRoutes } from '$lib/types';
 
-let urlList = [
+const baseUrls = [
 	{
 		url: 'https://www.hunterbryant.io/information',
 		title: 'About Hunter',
@@ -45,13 +45,11 @@ let urlList = [
 	}
 ];
 
-Object.values(SupportedRoutes).forEach((route) => {
-	urlList.push({
-		url: `https://www.hunterbryant.io${route}`,
-		title: route,
-		seeded: false,
-		loading: false
-	});
-});
+const routeUrls = Object.values(SupportedRoutes).map((route) => ({
+	url: `https://www.hunterbryant.io${route}`,
+	title: route,
+	seeded: false,
+	loading: false
+}));
 
-export const urls = urlList;
+export const urls = [...baseUrls, ...routeUrls];

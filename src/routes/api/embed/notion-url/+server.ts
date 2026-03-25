@@ -177,7 +177,9 @@ export async function GET() {
 
 				// 2. Validate env vars before touching any pages — fail fast instead of skipping everything
 				if (!env.QDRANT_URL?.startsWith('http')) {
-					throw new Error(`QDRANT_URL is missing or invalid: "${env.QDRANT_URL}". Must start with https://`);
+					throw new Error(
+						`QDRANT_URL is missing or invalid: "${env.QDRANT_URL}". Must start with https://`
+					);
 				}
 				if (!env.QDRANT_API_KEY) throw new Error('QDRANT_API_KEY is not set');
 				if (!env.QDRANT_COLLECTION) throw new Error('QDRANT_COLLECTION is not set');

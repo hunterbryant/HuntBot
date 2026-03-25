@@ -1,8 +1,8 @@
 import { env } from '$env/dynamic/private';
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateObject, zodSchema } from 'ai';
 import { ragRouterSchema, type RagRouterPlan } from '$lib/schemas/ragRouter';
 import { logRag } from '$lib/server/rag-debug';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateObject, zodSchema } from 'ai';
 
 const CONTEXT_PREVIEW_MAX = 14_000;
 

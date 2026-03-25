@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { isFilled, type Content } from '@prismicio/client';
 	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
-	import type { ProjectDocument, ProjectDocumentData } from '../../../prismicio-types';
+	import type { ProjectDocumentData } from '../../../prismicio-types';
 
 	export let slice: Content.ProjectLinkSlice;
 
@@ -9,12 +9,9 @@
 	$$restProps;
 
 	let project: ProjectDocumentData;
-	let color: string;
 
 	// Silence ts warnings about the affiliation type
-	if (
-		isFilled.contentRelationship<'project', string, ProjectDocument['data']>(slice.primary.project)
-	) {
+	if (isFilled.contentRelationship(slice.primary.project)) {
 		project = slice.primary.project.data as ProjectDocumentData;
 	}
 </script>

@@ -133,7 +133,7 @@
 		convoError = '';
 		chatOpenedCount = 0;
 
-		const cacheMode: RequestCache = force ? 'no-cache' : 'default';
+		const cacheMode = force ? 'no-cache' : 'default';
 
 		// Fire core and meta fetches simultaneously — do not await one before the other
 		const corePromise = fetch(`/api/admin/conversations?days=${convoDays}`, {
@@ -279,8 +279,12 @@
 				<div class="flex gap-1">
 					{#each [1, 7, 30, 90] as d}
 						<button
-							on:click={() => { convoDays = d; fetchConversations(true); }}
-							class="rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:pointer-events-none {convoDays === d
+							on:click={() => {
+								convoDays = d;
+								fetchConversations(true);
+							}}
+							class="rounded-full px-3 py-1 text-xs font-medium transition-colors disabled:pointer-events-none {convoDays ===
+							d
 								? 'bg-stone-800 text-stone-100 dark:bg-stone-200 dark:text-stone-800'
 								: 'text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300'}"
 						>
@@ -292,7 +296,9 @@
 				<div class="flex items-center gap-3">
 					{#if convoFetchedAt && convoStatus !== 'loading'}
 						<p class="text-xs text-stone-400 dark:text-stone-500">
-							{conversations.length} session{conversations.length !== 1 ? 's' : ''} · {formatTime(convoFetchedAt)}
+							{conversations.length} session{conversations.length !== 1 ? 's' : ''} · {formatTime(
+								convoFetchedAt
+							)}
 						</p>
 					{/if}
 					<button
@@ -356,8 +362,15 @@
 					<div class="flex flex-wrap gap-1">
 						{#each [{ val: 'recent', label: 'Recent' }, { val: 'messages', label: 'Messages' }, { val: 'duration', label: 'Duration' }] as opt}
 							<button
-								on:click={() => (sortBy = opt.val === 'messages' ? 'messages' : opt.val === 'duration' ? 'duration' : 'recent')}
-								class="rounded-full px-3 py-1 text-xs font-medium transition-colors {sortBy === opt.val
+								on:click={() =>
+									(sortBy =
+										opt.val === 'messages'
+											? 'messages'
+											: opt.val === 'duration'
+												? 'duration'
+												: 'recent')}
+								class="rounded-full px-3 py-1 text-xs font-medium transition-colors {sortBy ===
+								opt.val
 									? 'bg-stone-800 text-stone-100 dark:bg-stone-200 dark:text-stone-800'
 									: 'text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:text-stone-500 dark:hover:bg-stone-800 dark:hover:text-stone-300'}"
 							>
@@ -368,36 +381,56 @@
 				</div>
 
 				<!-- Stats bar -->
-				<div class="grid grid-cols-3 gap-x-4 gap-y-3 py-1 sm:flex sm:flex-wrap sm:gap-x-6 sm:gap-y-3">
+				<div
+					class="grid grid-cols-3 gap-x-4 gap-y-3 py-1 sm:flex sm:flex-wrap sm:gap-x-6 sm:gap-y-3"
+				>
 					<!-- Sessions -->
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Sessions</span>
-						<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">{filtered.length}</span>
+						<span
+							class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500"
+							>Sessions</span
+						>
+						<span class="text-sm font-semibold text-stone-800 dark:text-stone-200"
+							>{filtered.length}</span
+						>
 					</div>
 
 					<!-- Messages -->
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Messages</span>
+						<span
+							class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500"
+							>Messages</span
+						>
 						<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
 							{totalMessages}
-							<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{avgMessages} avg</span>
+							<span class="text-xs font-normal text-stone-400 dark:text-stone-500"
+								>{avgMessages} avg</span
+							>
 						</span>
 					</div>
 
 					<!-- Via suggestions -->
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Via suggestions</span>
+						<span
+							class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500"
+							>Via suggestions</span
+						>
 						<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
 							{totalSuggestionClicks}
 							{#if suggestionsPct !== null}
-								<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{suggestionsPct}%</span>
+								<span class="text-xs font-normal text-stone-400 dark:text-stone-500"
+									>{suggestionsPct}%</span
+								>
 							{/if}
 						</span>
 					</div>
 
 					<!-- Navigated -->
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Navigated</span>
+						<span
+							class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500"
+							>Navigated</span
+						>
 						<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
 							{navCount}
 							<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{navPct}%</span>
@@ -406,16 +439,23 @@
 
 					<!-- Opened chat -->
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Opened chat</span>
+						<span
+							class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500"
+							>Opened chat</span
+						>
 						{#if metaStatus === 'loading'}
 							<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
-								<span class="inline-block h-3.5 w-8 animate-pulse rounded bg-stone-200 align-middle dark:bg-stone-700" />
+								<span
+									class="inline-block h-3.5 w-8 animate-pulse rounded bg-stone-200 align-middle dark:bg-stone-700"
+								></span>
 							</span>
 						{:else}
 							<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
 								{chatOpenedCount}
 								{#if openPct !== null}
-									<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{openPct}% messaged</span>
+									<span class="text-xs font-normal text-stone-400 dark:text-stone-500"
+										>{openPct}% messaged</span
+									>
 								{:else}
 									<span class="text-xs font-normal text-stone-400 dark:text-stone-500">—</span>
 								{/if}
@@ -425,11 +465,22 @@
 
 					<!-- Not helpful -->
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Not helpful</span>
-						<span class="text-sm font-semibold {notHelpfulCount > 0 ? 'text-red-500 dark:text-red-400' : 'text-stone-800 dark:text-stone-200'}">
+						<span
+							class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500"
+							>Not helpful</span
+						>
+						<span
+							class="text-sm font-semibold {notHelpfulCount > 0
+								? 'text-red-500 dark:text-red-400'
+								: 'text-stone-800 dark:text-stone-200'}"
+						>
 							{notHelpfulCount}
 							{#if filtered.length > 0}
-								<span class="text-xs font-normal text-stone-400 dark:text-stone-500">{Math.round((filtered.filter(c => c.hasNotHelpful).length / filtered.length) * 100)}% of sessions</span>
+								<span class="text-xs font-normal text-stone-400 dark:text-stone-500"
+									>{Math.round(
+										(filtered.filter((c) => c.hasNotHelpful).length / filtered.length) * 100
+									)}% of sessions</span
+								>
 							{/if}
 						</span>
 					</div>
@@ -439,13 +490,13 @@
 			<!-- Loading skeleton -->
 			{#if convoStatus === 'loading'}
 				<div class="flex flex-col gap-3">
-					{#each [1, 2, 3, 4, 5] as _}
+					{#each [1, 2, 3, 4, 5] as skeletonIndex (skeletonIndex)}
 						<div class="animate-pulse rounded border border-stone-200 p-4 dark:border-stone-700">
 							<div class="flex items-center gap-2">
-								<div class="h-3 w-24 rounded bg-stone-200 dark:bg-stone-700" />
-								<div class="h-3 w-12 rounded bg-stone-200 dark:bg-stone-700" />
+								<div class="h-3 w-24 rounded bg-stone-200 dark:bg-stone-700"></div>
+								<div class="h-3 w-12 rounded bg-stone-200 dark:bg-stone-700"></div>
 							</div>
-							<div class="mt-2 h-3 w-48 rounded bg-stone-100 dark:bg-stone-800" />
+							<div class="mt-2 h-3 w-48 rounded bg-stone-100 dark:bg-stone-800"></div>
 						</div>
 					{/each}
 				</div>
@@ -461,231 +512,271 @@
 
 			<!-- Conversation cards -->
 			{#if convoStatus !== 'loading'}
-			{#each sorted as convo (convo.sessionId)}
-				{@const expanded = expandedSessions.has(convo.sessionId)}
-				{@const loc = locationLabel(convo.userMeta)}
-				{@const suggPct = convo.userMsgCount > 0 ? Math.round((convo.suggestionClickCount / convo.userMsgCount) * 100) : null}
+				{#each sorted as convo (convo.sessionId)}
+					{@const expanded = expandedSessions.has(convo.sessionId)}
+					{@const loc = locationLabel(convo.userMeta)}
+					{@const suggPct =
+						convo.userMsgCount > 0
+							? Math.round((convo.suggestionClickCount / convo.userMsgCount) * 100)
+							: null}
 
-				<div class="rounded border border-stone-200 dark:border-stone-700">
-					<!-- Collapsed row -->
-					<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-					<div
-						on:click={() => toggleSession(convo.sessionId)}
-						class="flex w-full cursor-pointer items-start justify-between gap-3 p-4 text-left transition-colors hover:bg-stone-50 dark:hover:bg-stone-800/50"
-					>
-						<div class="flex min-w-0 flex-col gap-1.5">
-							<!-- Date + message count + duration -->
-							<div class="flex items-center gap-2">
-								<span class="text-xs text-stone-400 dark:text-stone-500">
-									{formatTime(convo.startedAt)}
-								</span>
-								<span
-									class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500 dark:bg-stone-800 dark:text-stone-400"
-								>
-									{convo.msgCount} msg{convo.msgCount !== 1 ? 's' : ''}
-								</span>
-								{#if convo.hasNavigation}
-									<span class="rounded bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">tool call</span>
+					<div class="rounded border border-stone-200 dark:border-stone-700">
+						<!-- Collapsed row -->
+						<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+						<div
+							on:click={() => toggleSession(convo.sessionId)}
+							class="flex w-full cursor-pointer items-start justify-between gap-3 p-4 text-left transition-colors hover:bg-stone-50 dark:hover:bg-stone-800/50"
+						>
+							<div class="flex min-w-0 flex-col gap-1.5">
+								<!-- Date + message count + duration -->
+								<div class="flex items-center gap-2">
+									<span class="text-xs text-stone-400 dark:text-stone-500">
+										{formatTime(convo.startedAt)}
+									</span>
+									<span
+										class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-500 dark:bg-stone-800 dark:text-stone-400"
+									>
+										{convo.msgCount} msg{convo.msgCount !== 1 ? 's' : ''}
+									</span>
+									{#if convo.hasNavigation}
+										<span
+											class="rounded bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400"
+											>tool call</span
+										>
+									{/if}
+									{#if convo.hasNotHelpful}
+										<span
+											class="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/40 dark:text-red-400"
+											>not helpful</span
+										>
+									{/if}
+									<span class="text-xs text-stone-400 dark:text-stone-500">
+										{formatDuration(convo.durationMs)}
+									</span>
+									{#if suggPct !== null}
+										<span class="text-xs text-stone-400 dark:text-stone-500"
+											>{suggPct}% suggested</span
+										>
+									{/if}
+								</div>
+
+								<!-- Pages visited -->
+								{#if convo.pagesVisited}
+									<p class="truncate text-xs text-stone-500 dark:text-stone-400">
+										{convo.pagesVisited}
+									</p>
 								{/if}
+
+								<!-- Nav destination badge -->
+								{#if convo.navDest}
+									<p class="text-xs font-medium text-mud-600 dark:text-mud-400">
+										→ {convo.navDest}
+									</p>
+								{/if}
+
+								<!-- Not helpful badge -->
 								{#if convo.hasNotHelpful}
-									<span class="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-600 dark:bg-red-900/40 dark:text-red-400">not helpful</span>
+									<div
+										class="flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="11"
+											height="11"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2.5"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										>
+											<path
+												d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"
+											/>
+											<path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
+										</svg>
+										Not helpful
+									</div>
 								{/if}
-								<span class="text-xs text-stone-400 dark:text-stone-500">
-									{formatDuration(convo.durationMs)}
-								</span>
-								{#if suggPct !== null}
-									<span class="text-xs text-stone-400 dark:text-stone-500">{suggPct}% suggested</span>
+
+								<!-- Meta pills -->
+								{#if loc || convo.userMeta.timezone}
+									<div class="flex flex-wrap gap-1.5">
+										{#if loc}
+											<span
+												class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500"
+											>
+												{loc}
+											</span>
+										{/if}
+										{#if convo.userMeta.timezone}
+											<span
+												class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500"
+											>
+												{convo.userMeta.timezone}
+											</span>
+										{/if}
+									</div>
 								{/if}
 							</div>
 
-							<!-- Pages visited -->
-							{#if convo.pagesVisited}
-								<p class="truncate text-xs text-stone-500 dark:text-stone-400">
-									{convo.pagesVisited}
-								</p>
-							{/if}
-
-							<!-- Nav destination badge -->
-							{#if convo.navDest}
-								<p class="text-xs font-medium text-mud-600 dark:text-mud-400">
-									→ {convo.navDest}
-								</p>
-							{/if}
-
-							<!-- Not helpful badge -->
-							{#if convo.hasNotHelpful}
-								<div class="flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400">
-									<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-										<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z" />
-										<path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />
-									</svg>
-									Not helpful
-								</div>
-							{/if}
-
-							<!-- Meta pills -->
-							{#if loc || convo.userMeta.timezone}
-								<div class="flex flex-wrap gap-1.5">
-									{#if loc}
-										<span
-											class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500"
-										>
-											{loc}
-										</span>
-									{/if}
-									{#if convo.userMeta.timezone}
-										<span
-											class="rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500"
-										>
-											{convo.userMeta.timezone}
-										</span>
-									{/if}
-								</div>
-							{/if}
-						</div>
-
-						<!-- Right-side actions -->
-						<div class="mt-0.5 flex shrink-0 items-center gap-2">
-							<button
-								on:click|stopPropagation={() => copySession(convo)}
-								title="Copy conversation as JSON"
-								class="rounded px-1.5 py-0.5 font-mono text-xs transition-colors {copiedSession === convo.sessionId
-									? 'text-green-500 dark:text-green-400'
-									: 'text-stone-300 hover:text-stone-500 dark:text-stone-600 dark:hover:text-stone-400'}"
-							>
-								{copiedSession === convo.sessionId ? 'copied' : convo.sessionId.slice(0, 8)}
-							</button>
-							<span
-								class="text-stone-400 transition-transform dark:text-stone-500 {expanded
-									? 'rotate-90'
-									: ''}"
-							>
-								›
-							</span>
-						</div>
-					</div>
-
-					<!-- Expanded content -->
-					{#if expanded}
-						{@const sessionEvents = eventsMap[convo.sessionId] ?? []}
-						<div class="border-t border-stone-200 px-4 pb-4 pt-3 dark:border-stone-700">
-							<!-- User meta block -->
-							{#if loc || convo.userMeta.timezone || convo.userMeta.ip}
-								<div
-									class="mb-4 flex flex-col gap-1 rounded bg-stone-50 p-3 text-xs text-stone-400 dark:bg-stone-800/50 dark:text-stone-500"
+							<!-- Right-side actions -->
+							<div class="mt-0.5 flex shrink-0 items-center gap-2">
+								<button
+									on:click|stopPropagation={() => copySession(convo)}
+									title="Copy conversation as JSON"
+									class="rounded px-1.5 py-0.5 font-mono text-xs transition-colors {copiedSession ===
+									convo.sessionId
+										? 'text-green-500 dark:text-green-400'
+										: 'text-stone-300 hover:text-stone-500 dark:text-stone-600 dark:hover:text-stone-400'}"
 								>
-									{#if loc}
-										<div class="flex gap-3">
-											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Location</span>
-											<span>
-												{[convo.userMeta.city, convo.userMeta.region, convo.userMeta.country]
-													.filter(Boolean)
-													.join(', ')}
-											</span>
-										</div>
-									{/if}
-									{#if convo.userMeta.timezone}
-										<div class="flex gap-3">
-											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Timezone</span>
-											<span>{convo.userMeta.timezone}</span>
-										</div>
-									{/if}
-									{#if convo.userMeta.lat && convo.userMeta.lon}
-										<div class="flex gap-3">
-											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Coords</span>
-											<span>{convo.userMeta.lat.toFixed(4)}, {convo.userMeta.lon.toFixed(4)}</span>
-										</div>
-									{/if}
-									{#if convo.userMeta.ip}
-										<div class="flex gap-3">
-											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">IP</span>
-											<span class="font-mono">{convo.userMeta.ip}</span>
-										</div>
-									{/if}
-								</div>
-							{/if}
+									{copiedSession === convo.sessionId ? 'copied' : convo.sessionId.slice(0, 8)}
+								</button>
+								<span
+									class="text-stone-400 transition-transform dark:text-stone-500 {expanded
+										? 'rotate-90'
+										: ''}"
+								>
+									›
+								</span>
+							</div>
+						</div>
 
-							<!-- Events transcript -->
-							<div class="flex flex-col gap-3">
-								{#each sessionEvents as event, i}
-									{#if event.type === 'chat_message'}
-										{@const responseKey = `${convo.sessionId}-${i}`}
-										{@const resolved = resolveEvent(event)}
-										{@const isLong = (resolved.responseText?.length ?? 0) > 300}
-										{@const showFull = expandedBotResponses.has(responseKey)}
-										<div
-											class="flex flex-col gap-2 {i > 0
-												? 'border-t border-stone-100 pt-3 dark:border-stone-800'
-												: ''}"
-										>
-											{#if event.currentPage}
+						<!-- Expanded content -->
+						{#if expanded}
+							{@const sessionEvents = eventsMap[convo.sessionId] ?? []}
+							<div class="border-t border-stone-200 px-4 pb-4 pt-3 dark:border-stone-700">
+								<!-- User meta block -->
+								{#if loc || convo.userMeta.timezone || convo.userMeta.ip}
+									<div
+										class="mb-4 flex flex-col gap-1 rounded bg-stone-50 p-3 text-xs text-stone-400 dark:bg-stone-800/50 dark:text-stone-500"
+									>
+										{#if loc}
+											<div class="flex gap-3">
 												<span
-													class="w-fit rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500"
+													class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400"
+													>Location</span
 												>
-													{event.currentPage}
+												<span>
+													{[convo.userMeta.city, convo.userMeta.region, convo.userMeta.country]
+														.filter(Boolean)
+														.join(', ')}
 												</span>
-											{/if}
-											{#if event.userMessage}
-												<p class="text-sm font-medium text-stone-800 dark:text-stone-200">
-													{event.userMessage}
-												</p>
-											{/if}
-
-											<!-- Tool call — styled like ActionMessage -->
-											{#if resolved.fnName}
-												<div class="flex items-center justify-between gap-2 rounded-2xl border border-stone-200 bg-stone-100 py-1 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300">
-													<span>{fnLabel(resolved.fnName, resolved.fnArgs)}</span>
-												</div>
-											{/if}
-
-											{#if resolved.responseText}
-												<p class="text-sm text-stone-500 dark:text-stone-400">
-													{isLong && !showFull
-														? resolved.responseText.slice(0, 300) + '…'
-														: resolved.responseText}
-												</p>
-												{#if isLong}
-													<button
-														on:click={() => toggleBotResponse(responseKey)}
-														class="self-start text-xs text-stone-400 underline hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
-													>
-														{showFull ? 'show less' : 'show more'}
-													</button>
-												{/if}
-											{/if}
-										</div>
-
-									{:else if event.type === 'suggestions_shown'}
-										{#if showSuggestionsShown && event.suggestionsShown?.length}
-											<!-- Suggestion list — styled like ChatSuggestions chips -->
-											<div class="flex flex-wrap items-center gap-1.5 pl-1">
-												<span class="text-xs text-stone-400 dark:text-stone-500">suggested</span>
-												{#each event.suggestionsShown as s}
-													<span
-														class="rounded-full border border-slate-200 px-3.5 py-1 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-500"
-													>
-														{s}
-													</span>
-												{/each}
 											</div>
 										{/if}
-									{:else if event.type === 'suggestion_clicked'}
-										<!-- Clicked chip — same style but highlighted -->
-										<div class="flex items-center gap-1.5 pl-1">
-											<span class="text-xs text-stone-400 dark:text-stone-500">clicked</span>
-											<span
-												class="rounded-full border border-slate-300 bg-slate-50 px-3.5 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+										{#if convo.userMeta.timezone}
+											<div class="flex gap-3">
+												<span
+													class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400"
+													>Timezone</span
+												>
+												<span>{convo.userMeta.timezone}</span>
+											</div>
+										{/if}
+										{#if convo.userMeta.lat && convo.userMeta.lon}
+											<div class="flex gap-3">
+												<span
+													class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400"
+													>Coords</span
+												>
+												<span>{convo.userMeta.lat.toFixed(4)}, {convo.userMeta.lon.toFixed(4)}</span
+												>
+											</div>
+										{/if}
+										{#if convo.userMeta.ip}
+											<div class="flex gap-3">
+												<span
+													class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400"
+													>IP</span
+												>
+												<span class="font-mono">{convo.userMeta.ip}</span>
+											</div>
+										{/if}
+									</div>
+								{/if}
+
+								<!-- Events transcript -->
+								<div class="flex flex-col gap-3">
+									{#each sessionEvents as event, i}
+										{#if event.type === 'chat_message'}
+											{@const responseKey = `${convo.sessionId}-${i}`}
+											{@const resolved = resolveEvent(event)}
+											{@const isLong = (resolved.responseText?.length ?? 0) > 300}
+											{@const showFull = expandedBotResponses.has(responseKey)}
+											<div
+												class="flex flex-col gap-2 {i > 0
+													? 'border-t border-stone-100 pt-3 dark:border-stone-800'
+													: ''}"
 											>
-												{event.suggestionText}
-											</span>
-										</div>
-									{/if}
-								{/each}
+												{#if event.currentPage}
+													<span
+														class="w-fit rounded bg-stone-100 px-1.5 py-0.5 text-xs text-stone-400 dark:bg-stone-800 dark:text-stone-500"
+													>
+														{event.currentPage}
+													</span>
+												{/if}
+												{#if event.userMessage}
+													<p class="text-sm font-medium text-stone-800 dark:text-stone-200">
+														{event.userMessage}
+													</p>
+												{/if}
+
+												<!-- Tool call — styled like ActionMessage -->
+												{#if resolved.fnName}
+													<div
+														class="flex items-center justify-between gap-2 rounded-2xl border border-stone-200 bg-stone-100 py-1 pl-3 pr-1.5 text-xs font-medium uppercase tracking-wider text-stone-700 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300"
+													>
+														<span>{fnLabel(resolved.fnName, resolved.fnArgs)}</span>
+													</div>
+												{/if}
+
+												{#if resolved.responseText}
+													<p class="text-sm text-stone-500 dark:text-stone-400">
+														{isLong && !showFull
+															? resolved.responseText.slice(0, 300) + '…'
+															: resolved.responseText}
+													</p>
+													{#if isLong}
+														<button
+															on:click={() => toggleBotResponse(responseKey)}
+															class="self-start text-xs text-stone-400 underline hover:text-stone-600 dark:text-stone-500 dark:hover:text-stone-300"
+														>
+															{showFull ? 'show less' : 'show more'}
+														</button>
+													{/if}
+												{/if}
+											</div>
+										{:else if event.type === 'suggestions_shown'}
+											{#if showSuggestionsShown && event.suggestionsShown?.length}
+												<!-- Suggestion list — styled like ChatSuggestions chips -->
+												<div class="flex flex-wrap items-center gap-1.5 pl-1">
+													<span class="text-xs text-stone-400 dark:text-stone-500">suggested</span>
+													{#each event.suggestionsShown as s}
+														<span
+															class="rounded-full border border-slate-200 px-3.5 py-1 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-500"
+														>
+															{s}
+														</span>
+													{/each}
+												</div>
+											{/if}
+										{:else if event.type === 'suggestion_clicked'}
+											<!-- Clicked chip — same style but highlighted -->
+											<div class="flex items-center gap-1.5 pl-1">
+												<span class="text-xs text-stone-400 dark:text-stone-500">clicked</span>
+												<span
+													class="rounded-full border border-slate-300 bg-slate-50 px-3.5 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+												>
+													{event.suggestionText}
+												</span>
+											</div>
+										{/if}
+									{/each}
+								</div>
 							</div>
-						</div>
-					{/if}
-				</div>
-			{/each}
+						{/if}
+					</div>
+				{/each}
 			{/if}
 		</div>
 	</div>

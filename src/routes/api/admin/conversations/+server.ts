@@ -205,9 +205,7 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 				const userMsgCount = events.filter(
 					(e) => e.type === 'chat_message' && e.userMessage
 				).length;
-				const suggestionClickCount = events.filter(
-					(e) => e.type === 'suggestion_clicked'
-				).length;
+				const suggestionClickCount = events.filter((e) => e.type === 'suggestion_clicked').length;
 
 				// Pre-compute pages visited
 				const pages = [...new Set(events.map((e) => e.currentPage).filter(Boolean))] as string[];
@@ -255,7 +253,7 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 						if (e.functionCallName !== null) return true;
 						if (e.botResponse) {
 							try {
-								return !!(JSON.parse(e.botResponse).function_call?.name);
+								return !!JSON.parse(e.botResponse).function_call?.name;
 							} catch {
 								/* */
 							}

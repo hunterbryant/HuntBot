@@ -3,10 +3,7 @@
 	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
 	import type {
 		AffiliationDocumentData,
-		AffiliationDocument,
-		CaseStudyDocument,
 		CaseStudyDocumentData,
-		ProjectDocument,
 		ProjectDocumentData
 	} from '../../../prismicio-types';
 	import { Application } from '@splinetool/runtime';
@@ -16,7 +13,8 @@
 	$$restProps;
 	export let slice: Content.ContentHighlightSlice;
 
-	type Highlightable<T> = T & { type: string; responsibilities: [any] };
+	type ResponsibilityRow = { skill: string };
+	type Highlightable<T> = T & { type: string; responsibilities: readonly ResponsibilityRow[] };
 
 	let project: Highlightable<CaseStudyDocumentData | ProjectDocumentData>;
 	let affiliation: AffiliationDocumentData;
@@ -26,13 +24,7 @@
 	let bgImage: string;
 
 	// This section is to accept the content relationship fields as the proper type (for now it can only be case_study)
-	if (
-		isFilled.contentRelationship<
-			'case_study' | 'project',
-			string,
-			CaseStudyDocument['data'] | ProjectDocument['data']
-		>(slice.primary.project)
-	) {
+	if (isFilled.contentRelationship(slice.primary.project)) {
 		if (slice.primary.project.type === 'case_study') {
 			project = slice.primary.project.data as Highlightable<CaseStudyDocumentData>;
 			bgImage = project.highlight_image.url as string;
@@ -42,11 +34,7 @@
 			project.type = 'case_study';
 
 			// Repeat the content relationship check for the project affiliation
-			if (
-				isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-					project.affiliation
-				)
-			) {
+			if (isFilled.contentRelationship(project.affiliation)) {
 				affiliation = project.affiliation.data as AffiliationDocumentData;
 			}
 		} else if (slice.primary.project.type === 'project') {
@@ -67,7 +55,7 @@
 </script>
 
 <article
-	class="mb-8 grid grow grid-cols-5 items-stretch gap-2 sm:mb-0 sm:h-96 sm:grid-cols-6 sm:gap-4 md:grid-cols-7 lg:grid-cols-9"
+	class="mb-8 grid grow grid-cols-5 items-stretch gap-x-4 gap-y-2 sm:mb-0 sm:h-96 sm:grid-cols-6 sm:gap-y-4 md:grid-cols-7 lg:grid-cols-9"
 	data-slice-type={slice.slice_type}
 	data-slice-variation={slice.variation}
 >

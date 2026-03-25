@@ -1,7 +1,7 @@
 import { createClient } from '$lib/prismicio';
 import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
 import type { ProjectDocument } from '../../../prismicio-types';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const client = createClient();

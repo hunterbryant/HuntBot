@@ -11,7 +11,10 @@ module.exports = {
 	parserOptions: {
 		sourceType: 'module',
 		ecmaVersion: 2020,
-		extraFileExtensions: ['.svelte']
+		extraFileExtensions: ['.svelte'],
+		// TypeScript is often newer than @typescript-eslint/typescript-estree’s supported range;
+		// parsing still works — avoid the “unsupported TypeScript version” lint noise.
+		warnOnUnsupportedTypeScriptVersion: false
 	},
 	env: {
 		browser: true,

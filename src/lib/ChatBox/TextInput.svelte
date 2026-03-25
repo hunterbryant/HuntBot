@@ -3,7 +3,12 @@
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen, mobile, keyboardOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { minimized, scrollSuggestions, hoverSuggestions, loadingContextSuggestions } from './MessageStore.svelte';
+	import {
+		minimized,
+		scrollSuggestions,
+		hoverSuggestions,
+		loadingContextSuggestions
+	} from './MessageStore.svelte';
 	import type { Writable, Readable } from 'svelte/store';
 
 	export let input: Writable<string>;
@@ -15,7 +20,9 @@
 	let inputElement: HTMLInputElement;
 
 	$: placeholder = $minimized
-		? $loadingContextSuggestions && $hoverSuggestions.length === 0 && $scrollSuggestions.length === 0
+		? $loadingContextSuggestions &&
+			$hoverSuggestions.length === 0 &&
+			$scrollSuggestions.length === 0
 			? 'Generating questions...'
 			: $hoverSuggestions.length > 0
 				? $hoverSuggestions[0]
@@ -163,14 +170,16 @@
 			bind:value={$input}
 			bind:this={inputElement}
 			inputmode="search"
-			on:focus={() => { if ($mobile) keyboardOpen.set(true); }}
+			on:focus={() => {
+				if ($mobile) keyboardOpen.set(true);
+			}}
 			on:blur={() => keyboardOpen.set(false)}
 		/>
 		{#if $minimized && $input.trim() === ''}
 			<span
 				class="pointer-events-none absolute inset-0 flex items-center overflow-x-hidden overflow-y-visible whitespace-nowrap text-stone-400 dark:text-stone-500"
 				use:typeReveal={placeholder}
-			/>
+			></span>
 		{/if}
 	</div>
 	<hr class="absolute inset-x-2 -top-px border-stone-200 peer-focus:hidden dark:border-stone-700" />

@@ -188,7 +188,7 @@
 					on:click={handleRetry}
 					title="This wasn't helpful"
 					transition:fade={{ duration: 150 }}
-					class="mt-1 flex items-center gap-1 text-xs text-stone-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-stone-600 dark:text-stone-600 dark:hover:text-stone-400"
+					class="mt-1 flex items-center gap-1 text-xs text-stone-400 opacity-0 transition-opacity hover:text-stone-600 group-hover:opacity-100 dark:text-stone-600 dark:hover:text-stone-400"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"

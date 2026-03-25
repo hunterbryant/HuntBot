@@ -8,7 +8,7 @@ import { compile } from 'html-to-text';
 import { RecursiveUrlLoader } from 'langchain/document_loaders/web/recursive_url';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
 
-export async function GET(event) {
+export async function GET() {
 	console.log('Server url list embed API endpoint hit');
 
 	const entryURL = 'https://www.hunterbryant.io/';

@@ -42,8 +42,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const { messages, currentPage, scrollDepth, sectionHeading, hoveredContent } =
 			await request.json();
 
-		const path =
-			typeof currentPage === 'string' && currentPage.startsWith('/') ? currentPage : '/';
+		const path = typeof currentPage === 'string' && currentPage.startsWith('/') ? currentPage : '/';
 
 		let navAppendix = '';
 		try {
@@ -55,20 +54,17 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const hasUserMessages = messages.some((m: { role: string }) => m.role === 'user');
 
-		const scrollContext =
-			!hasUserMessages
-				? [
-						typeof scrollDepth === 'number'
-							? `Scroll depth: ${scrollDepth}% through the page.`
-							: '',
-						sectionHeading ? `Visible section: "${sectionHeading}"` : '',
-						typeof scrollDepth === 'number' && scrollDepth > 60
-							? "The visitor has scrolled deeply — they're engaged."
-							: ''
-					]
-						.filter(Boolean)
-						.join(' ')
-				: '';
+		const scrollContext = !hasUserMessages
+			? [
+					typeof scrollDepth === 'number' ? `Scroll depth: ${scrollDepth}% through the page.` : '',
+					sectionHeading ? `Visible section: "${sectionHeading}"` : '',
+					typeof scrollDepth === 'number' && scrollDepth > 60
+						? "The visitor has scrolled deeply — they're engaged."
+						: ''
+				]
+					.filter(Boolean)
+					.join(' ')
+			: '';
 
 		let systemPrompt: string;
 

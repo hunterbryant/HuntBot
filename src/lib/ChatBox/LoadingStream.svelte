@@ -95,8 +95,22 @@
 <style>
 	.shimmer {
 		color: #a8a29e; /* stone-400 */
-		-webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.4) 20%, rgba(0,0,0,1) 50%, rgba(0,0,0,0.4) 80%, rgba(0,0,0,0.4) 100%);
-		mask-image: linear-gradient(90deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.4) 20%, rgba(0,0,0,1) 50%, rgba(0,0,0,0.4) 80%, rgba(0,0,0,0.4) 100%);
+		-webkit-mask-image: linear-gradient(
+			90deg,
+			rgba(0, 0, 0, 0.4) 0%,
+			rgba(0, 0, 0, 0.4) 20%,
+			rgba(0, 0, 0, 1) 50%,
+			rgba(0, 0, 0, 0.4) 80%,
+			rgba(0, 0, 0, 0.4) 100%
+		);
+		mask-image: linear-gradient(
+			90deg,
+			rgba(0, 0, 0, 0.4) 0%,
+			rgba(0, 0, 0, 0.4) 20%,
+			rgba(0, 0, 0, 1) 50%,
+			rgba(0, 0, 0, 0.4) 80%,
+			rgba(0, 0, 0, 0.4) 100%
+		);
 		-webkit-mask-size: 300% 100%;
 		mask-size: 300% 100%;
 		animation: shimmer-sweep 2s ease-in-out infinite;
@@ -107,7 +121,13 @@
 	}
 
 	@keyframes shimmer-sweep {
-		0%   { -webkit-mask-position: 150% 0; mask-position: 150% 0; }
-		100% { -webkit-mask-position: -50% 0; mask-position: -50% 0; }
+		0% {
+			-webkit-mask-position: 150% 0;
+			mask-position: 150% 0;
+		}
+		100% {
+			-webkit-mask-position: -50% 0;
+			mask-position: -50% 0;
+		}
 	}
 </style>
