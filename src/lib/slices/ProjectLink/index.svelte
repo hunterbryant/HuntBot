@@ -12,9 +12,7 @@
 	let color: string;
 
 	// Silence ts warnings about the affiliation type
-	if (
-		isFilled.contentRelationship<'project', string, ProjectDocument['data']>(slice.primary.project)
-	) {
+	if (isFilled.contentRelationship(slice.primary.project)) {
 		project = slice.primary.project.data as ProjectDocumentData;
 	}
 </script>

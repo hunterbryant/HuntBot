@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { isFilled, type Content, LinkType, asLink } from '@prismicio/client';
+	import { isFilled, type Content, LinkType, asLink, type FilledContentRelationshipField } from '@prismicio/client';
 	import type { AffiliationDocument, ExperienceSliceDefaultItem } from '../../../prismicio-types';
 	import { PrismicImage, PrismicLink, PrismicRichText } from '@prismicio/svelte';
 
@@ -10,14 +10,15 @@
 
 	// Silence ts warnings about the affiliation type
 	function typeAffliation(experience: ExperienceSliceDefaultItem) {
-		if (
-			isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-				experience.affiliation
-			)
-		) {
-			if (isFilled.link(experience.affiliation.data?.link)) {
-				if (experience.affiliation.data.link.url !== undefined) {
-					return experience.affiliation;
+		if (isFilled.contentRelationship(experience.affiliation)) {
+			const filled = experience.affiliation as FilledContentRelationshipField<
+				'affiliation',
+				string,
+				AffiliationDocument['data']
+			>;
+			if (isFilled.link(filled.data?.link)) {
+				if (filled.data.link.url !== undefined) {
+					return filled;
 				}
 			}
 		}
