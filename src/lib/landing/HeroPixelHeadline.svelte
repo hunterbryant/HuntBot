@@ -35,14 +35,14 @@
 	const MAX_WORDS = 12;
 	const CYCLE_INTERVAL_MS = 14000;
 
-	/** Pseudo-random shuffle (Fisher-Yates) seeded by timestamp, first phrase always index 0 */
+	/** Pseudo-random shuffle (Fisher-Yates) of all phrase indices */
 	function shuffledOrder(): number[] {
-		const rest = Array.from({ length: PHRASES.length - 1 }, (_, i) => i + 1);
-		for (let i = rest.length - 1; i > 0; i--) {
+		const arr = Array.from({ length: PHRASES.length }, (_, i) => i);
+		for (let i = arr.length - 1; i > 0; i--) {
 			const j = Math.floor(Math.random() * (i + 1));
-			[rest[i], rest[j]] = [rest[j]!, rest[i]!];
+			[arr[i], arr[j]] = [arr[j]!, arr[i]!];
 		}
-		return [0, ...rest];
+		return arr;
 	}
 
 	let phraseOrder = shuffledOrder();
@@ -52,7 +52,7 @@
 
 	let wrapper: HTMLSpanElement;
 	let canvas: HTMLCanvasElement;
-	let useGpuPaint = false;
+	let gpuFailed = false;
 	let canvasOpaque = false;
 
 	const boundsScratch = new Float32Array(MAX_WORDS * 4);
@@ -117,9 +117,6 @@
 		if (!browser) return;
 		reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 		if (reduceMotion) return;
-
-		// Hide text immediately so it doesn't flash visible before the shader fade-in starts
-		useGpuPaint = true;
 
 		const maskCanvas = document.createElement('canvas');
 		let renderer: ActuallyDitherRenderer | null = null;
@@ -191,7 +188,7 @@
 			await tick();
 			if (!canvas || !wrapper || cancelled) return;
 			if (!(await waitForLayout()) || cancelled) {
-				useGpuPaint = false;
+				gpuFailed = true;
 				return;
 			}
 
@@ -208,7 +205,7 @@
 				return;
 			}
 			if (!next) {
-				useGpuPaint = false;
+				gpuFailed = true;
 				return;
 			}
 			renderer = next;
@@ -278,7 +275,6 @@
 			cancelAnimationFrame(raf);
 			renderer?.destroy();
 			renderer = null;
-			useGpuPaint = false;
 			canvasOpaque = false;
 		};
 		mq.addEventListener('change', onReduce);
@@ -294,7 +290,6 @@
 			mq.removeEventListener('change', onReduce);
 			renderer?.destroy();
 			renderer = null;
-			useGpuPaint = false;
 			canvasOpaque = false;
 		};
 	});
@@ -303,7 +298,7 @@
 <span
 	bind:this={wrapper}
 	class="relative inline-block w-full min-w-0 max-w-full overflow-visible align-baseline pr-[0.12em] pb-[0.18em] text-balance"
-	class:text-transparent={useGpuPaint}
+	class:gpu-failed={gpuFailed}
 	role="marquee"
 	aria-live="polite"
 	on:mouseenter={() => (cyclePaused = true)}
@@ -321,3 +316,21 @@
 		aria-hidden="true"
 	></canvas>
 </span>
+
+<style>
+	/*
+	 * Hide the headline text before JavaScript initialises the GPU dither animation.
+	 * This prevents a flash where the plain text appears, disappears, then re-animates in.
+	 * The media query ensures reduced-motion users always see readable text immediately.
+	 * `color: transparent` keeps the text in the DOM for screen readers.
+	 * The `gpu-failed` class restores visibility when the GPU renderer cannot initialise.
+	 */
+	@media (prefers-reduced-motion: no-preference) {
+		span[role='marquee'] {
+			color: transparent;
+		}
+		span[role='marquee'].gpu-failed {
+			color: inherit;
+		}
+	}
+</style>

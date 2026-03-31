@@ -26,13 +26,7 @@
 	let bgImage: string;
 
 	// This section is to accept the content relationship fields as the proper type (for now it can only be case_study)
-	if (
-		isFilled.contentRelationship<
-			'case_study' | 'project',
-			string,
-			CaseStudyDocument['data'] | ProjectDocument['data']
-		>(slice.primary.project)
-	) {
+	if (isFilled.contentRelationship(slice.primary.project)) {
 		if (slice.primary.project.type === 'case_study') {
 			project = slice.primary.project.data as Highlightable<CaseStudyDocumentData>;
 			bgImage = project.highlight_image.url as string;
@@ -42,11 +36,7 @@
 			project.type = 'case_study';
 
 			// Repeat the content relationship check for the project affiliation
-			if (
-				isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-					project.affiliation
-				)
-			) {
+			if (isFilled.contentRelationship(project.affiliation)) {
 				affiliation = project.affiliation.data as AffiliationDocumentData;
 			}
 		} else if (slice.primary.project.type === 'project') {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import thumbnail from '$lib/assets/case-studies.jpg';
 	import { PrismicImage, PrismicLink } from '@prismicio/svelte';
-	import { isFilled, type DateField, documentToLinkField } from '@prismicio/client';
+	import { isFilled, type DateField, documentToLinkField, type FilledContentRelationshipField } from '@prismicio/client';
 	import type { AffiliationDocument, CaseStudyDocument } from '../../prismicio-types.js';
 	import LockClosed from '$lib/assets/lock-closed.svelte';
 
@@ -14,12 +14,12 @@
 
 	// Silence ts warnings about the affiliation type
 	function typeAffliation(caseStudy: CaseStudyDocument) {
-		if (
-			isFilled.contentRelationship<'affiliation', string, AffiliationDocument['data']>(
-				caseStudy.data.affiliation
-			)
-		) {
-			return caseStudy.data.affiliation;
+		if (isFilled.contentRelationship(caseStudy.data.affiliation)) {
+			return caseStudy.data.affiliation as FilledContentRelationshipField<
+				'affiliation',
+				string,
+				AffiliationDocument['data']
+			>;
 		}
 	}
 </script>
