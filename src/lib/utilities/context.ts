@@ -7,6 +7,7 @@ import { getImessageEnabled } from '$lib/server/imessage-config';
 import { logRag, shouldLogRag } from '$lib/server/rag-debug';
 import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import { rewriteRetrievalQuery } from '$lib/rewrite';
+import { rerankChunks } from '$lib/server/rerank';
 
 export type Metadata = {
 	url: string;
@@ -21,8 +22,9 @@ const SITE_ORIGIN = 'https://www.hunterbryant.io';
 const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']);
 
 // Qdrant top-k per branch (main + iMessage); vector similarity floor
-const QDRANT_TOP_K = 8;
+const QDRANT_TOP_K = 16;
 const MIN_VECTOR_SCORE = 0.3;
+const RERANK_TOP_K = 5;
 
 type ScoredDoc = { doc: Document; vectorScore: number };
 
@@ -94,6 +96,55 @@ async function similaritySearchWithScore(
 	return qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
 }
 
+/**
+ * Extract a person name from the query for entity-aware search.
+ * Returns null if no person-lookup pattern is detected.
+ */
+function extractPersonName(query: string): string | null {
+	const patterns = [
+		/who\s+is\s+(\w+(?:\s+\w+)?)/i,
+		/tell\s+me\s+about\s+(\w+(?:\s+\w+)?)/i,
+		/what\s+(?:does|did|is|about)\s+(\w+(?:\s+\w+)?)\s/i,
+		/(\w+(?:\s+\w+)?)[''']s\s+(?:project|work|job|life|texts?|messages?)/i
+	];
+	for (const p of patterns) {
+		const m = query.match(p);
+		if (m?.[1] && m[1].length > 2) {
+			logRag('entity extraction', { name: m[1] });
+			return m[1];
+		}
+	}
+	return null;
+}
+
+/**
+ * Limit chunks per source to improve diversity.
+ * Keeps only the first `maxPerSource` chunks from each unique source URL.
+ */
+function diversifyBySource(docs: Document[], maxPerSource: number = 2): Document[] {
+	const counts = new Map<string, number>();
+	return docs.filter((doc) => {
+		const src = doc.metadata?.source ?? '';
+		const count = counts.get(src) ?? 0;
+		if (count >= maxPerSource) return false;
+		counts.set(src, count + 1);
+		return true;
+	});
+}
+
+/** Apply reranking if enabled, otherwise truncate to top K. */
+async function maybeRerank(
+	query: string,
+	docs: Document[],
+	topK: number
+): Promise<Document[]> {
+	const shouldRerank = env.RERANK_ENABLED !== '0';
+	if (shouldRerank) {
+		return rerankChunks(query, docs, topK);
+	}
+	return docs.slice(0, topK);
+}
+
 export const getContext = async (
 	message: string,
 	conversationHistory: string[] = [],
@@ -114,14 +165,32 @@ export const getContext = async (
 		must: [{ key: 'metadata.source', match: { value: 'imessage' } }]
 	};
 
-	const [mainResults, imessageResults] = await Promise.all([
+	// Entity-aware search: if the query mentions a person, run a filtered search
+	const personName = extractPersonName(retrievalQuery);
+	const personFilter = personName
+		? {
+				should: [
+					{ key: 'metadata.contact', match: { text: personName } },
+					{ key: 'metadata.participants', match: { text: personName } }
+				]
+			}
+		: null;
+
+	const [mainResults, imessageResults, personResults] = await Promise.all([
 		similaritySearchWithScore(retrievalQuery, QDRANT_TOP_K, mainFilter),
 		imessageEnabled
 			? similaritySearchWithScore(retrievalQuery, QDRANT_TOP_K, imessageFilter)
+			: Promise.resolve([] as [Document, number][]),
+		personFilter
+			? similaritySearchWithScore(retrievalQuery, 8, personFilter)
 			: Promise.resolve([] as [Document, number][])
 	]);
 
-	let combined = [...scoredFromResults(mainResults), ...scoredFromResults(imessageResults)];
+	let combined = [
+		...scoredFromResults(mainResults),
+		...scoredFromResults(imessageResults),
+		...scoredFromResults(personResults)
+	];
 
 	combined = combined.filter((s) => s.vectorScore >= MIN_VECTOR_SCORE);
 
@@ -131,7 +200,11 @@ export const getContext = async (
 	}
 
 	const deduped = dedupeScoredDocs(combined);
-	const docs = deduped.sort((a, b) => b.vectorScore - a.vectorScore).map((s) => s.doc);
+	const sorted = deduped.sort((a, b) => b.vectorScore - a.vectorScore).map((s) => s.doc);
+
+	// Rerank, then diversify by source
+	const reranked = await maybeRerank(retrievalQuery, sorted, RERANK_TOP_K);
+	const docs = diversifyBySource(reranked);
 
 	const MAX_IMESSAGE_CHUNKS_PER_CHAT = 2;
 	const siteUrls = new Map<string, string>();
@@ -257,7 +330,12 @@ export async function searchKnowledgeBase(
 		scored = scoredFromResults([raw[0]]);
 	}
 
-	const ranked = dedupeScoredDocs(scored).sort((a, b) => b.vectorScore - a.vectorScore);
+	const deduped = dedupeScoredDocs(scored).sort((a, b) => b.vectorScore - a.vectorScore);
+	const docs = deduped.map((s) => s.doc);
+
+	// Rerank and diversify
+	const reranked = await maybeRerank(query, docs, RERANK_TOP_K);
+	const ranked = diversifyBySource(reranked);
 
 	if (ranked.length === 0) {
 		return 'No relevant results found for this query.';
@@ -265,8 +343,7 @@ export async function searchKnowledgeBase(
 
 	let nSeq = 0;
 	return ranked
-		.map((s) => {
-			const doc = s.doc;
+		.map((doc) => {
 			const source = doc.metadata?.source ?? 'unknown';
 			const label = doc.metadata?.title || doc.metadata?.contact || source;
 			let cid: string;
@@ -277,7 +354,9 @@ export async function searchKnowledgeBase(
 			} else {
 				cid = chunkIdForNotes(doc, nSeq++);
 			}
-			const vs = s.vectorScore.toFixed(3);
+			// Find the original score from deduped array
+			const scoredEntry = deduped.find((s) => s.doc === doc);
+			const vs = scoredEntry ? scoredEntry.vectorScore.toFixed(3) : '—';
 			return `[${cid}] ${label} (vector: ${vs})\n${doc.pageContent}`;
 		})
 		.join('\n\n---\n\n');

@@ -92,6 +92,32 @@ export const POST: RequestHandler = async ({ request }) => {
 			contextForModel = `${context}\n\n========\n\n### PRE-RUN VECTOR SEARCHES (router — same grounding rules as CONTEXT)\n${supplementalBlocks.join('\n\n---\n\n')}`;
 		}
 
+		// Pre-generation confidence check: if context is thin/empty, run a fallback search
+		if (env.SELF_CRITIQUE !== '0') {
+			const chunkCount = (contextForModel.match(/\[CHUNK-/g) || []).length;
+			const confidence =
+				!contextForModel.trim() || chunkCount === 0
+					? 'empty'
+					: contextForModel.length < 200 || chunkCount <= 1
+						? 'thin'
+						: 'sufficient';
+
+			if (confidence !== 'sufficient') {
+				logRag('context insufficient, running fallback search', { confidence, chunkCount });
+				try {
+					const fallback = await searchKnowledgeBase(
+						`${lastMessageText} Hunter Bryant portfolio design`,
+						'all'
+					);
+					if (fallback && !fallback.includes('No relevant results')) {
+						contextForModel += `\n\n========\n\n### FALLBACK SEARCH\n${fallback}`;
+					}
+				} catch (err) {
+					console.warn('Fallback search failed:', err);
+				}
+			}
+		}
+
 		// Build tool definitions with live routes from Prismic
 		const routeEnum = availableRoutes.length > 0
 			? (availableRoutes as [string, ...string[]])
@@ -290,7 +316,7 @@ ${contextForModel}`;
 			messages: modelMessages,
 			tools,
 			stopWhen: stepCountIs(3),
-			temperature: 0.4,
+			temperature: 0,
 			// Keeps replies brief; raise if answers feel clipped after tool calls
 			maxOutputTokens: 220,
 			onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
