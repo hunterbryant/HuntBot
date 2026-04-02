@@ -174,7 +174,7 @@ export async function fetchSuggestions(messages: UIMessage[], currentPage: strin
 }
 
 const greetingResponse: string =
-	"I know, another chatbot. But I'm wired into Hunter's site — ask me about his work, design philosophy, or life.\nNot interested? Minimize me up to your right↗";
+	"Yeah, another chatbot — I know. But I'm wired into Hunter's site, so I can actually talk about the work. Ask me anything.\nNot interested? Minimize me up top ↗";
 
 const initMessage: UIMessage = {
 	id: 'initialmessage',

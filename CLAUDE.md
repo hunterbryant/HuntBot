@@ -297,6 +297,13 @@ The site uses a simple cookie-based JWT auth system:
 - Enums in `src/lib/types.ts` are the source of truth for function call names and valid routes
 - Prismic types in `src/prismicio-types.d.ts` are auto-generated — always regenerate after schema changes
 
+### HuntBot voice
+- System prompt includes contrastive few-shot examples that define Hunter's speaking style
+- Temperature is set to 0.1 for natural variation while maintaining persona consistency
+- Responses default to 1-3 sentences, plain text, no markdown
+- Anti-patterns (corporate jargon, chatbot pleasantries) are explicitly banned in the prompt
+- See the `## How Hunter talks` and `## Voice examples` sections in the system prompt for the full voice spec
+
 ### Do not
 - Use `process.env` — use `$env/dynamic/private` instead
 - Edit `src/prismicio-types.d.ts` manually
