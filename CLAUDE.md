@@ -59,7 +59,14 @@ HuntBot/
 │   │   │   ├── Links.svelte          # Nav link list
 │   │   │   └── navstore.ts           # Svelte stores for nav/chat state
 │   │   ├── server/
-│   │   │   └── auth.ts               # JWT cookie verification helper
+│   │   │   ├── auth.ts               # JWT cookie verification helper
+│   │   │   ├── rerank.ts             # LLM-based chunk reranking (over-retrieve → rerank → top K)
+│   │   │   ├── rag-router.ts         # Supplemental search planning via structured LLM call
+│   │   │   ├── rag-reflection.ts     # Post-hoc grounding audit for PostHog
+│   │   │   ├── rag-debug.ts          # RAG logging helpers
+│   │   │   ├── qdrant-search.ts      # Low-level Qdrant client + vector search
+│   │   │   ├── imessage-config.ts    # iMessage feature toggle (cached in Qdrant)
+│   │   │   └── site-nav-routes.ts    # Prismic route catalog with caching
 │   │   ├── slices/                   # Prismic Slice Machine components
 │   │   │   ├── index.ts              # Slice registry (maps slice names → components)
 │   │   │   ├── ContentHighlight/
@@ -158,6 +165,8 @@ NOTION_INTEGRATION_TOKEN= # Notion integration token for content embedding
 RAG_DEBUG=               # Set to 1 to log RAG / agent tool steps in production (dev logs them by default)
 RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_reflection` event: thinking, citations, confidence)
 RAG_ROUTER=              # Set to 0 to skip the pre-turn structured router (saves one small LLM call per message; default = router on)
+RERANK_ENABLED=          # Set to 0 to disable LLM reranking of retrieved chunks (default: on). When enabled, 16 chunks are fetched and reranked to top 5.
+SELF_CRITIQUE=           # Set to 0 to disable pre-generation context sufficiency check and fallback search (default: on)
 ```
 
 The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repository name used (useful for staging environments).
@@ -170,15 +179,19 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 
 1. Client sends `POST /api/chat` with the full message history
 2. Server uses `getContext()` (`src/lib/utilities/context.ts`) to retrieve relevant docs:
-   - **Query rewrite** (`src/lib/rewrite.ts`) for multi-turn: standalone search query via AI SDK `generateText`
-   - Embeds with `text-embedding-3-small` (512 dims) and queries Qdrant (`k=8` per branch: main site + optional iMessage), deduped and ordered by vector score
+   - **Query rewrite + HyDE expansion** (`src/lib/rewrite.ts`): standalone search query via AI SDK `generateText`, then HyDE (Hypothetical Document Embeddings) generates a brief hypothetical answer and concatenates it with the query to improve vector similarity for vague questions
+   - Embeds with `text-embedding-3-small` (512 dims) and queries Qdrant (`k=16` per branch: main site + optional iMessage + optional entity-filtered search), deduped and ordered by vector score
+   - **LLM reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored by GPT-4.1-mini for relevance and reduced to top 5. Disable with `RERANK_ENABLED=0`.
+   - **Source diversity filter**: max 2 chunks per unique source URL to avoid redundant context
+   - **Entity-aware search**: queries mentioning a person name trigger an additional Qdrant search filtered on `metadata.contact` / `metadata.participants`
    - CONTEXT chunks are labeled with `[CHUNK-...]` ids for grounding
    - **Qdrant vector naming**: Retrieval uses `src/lib/server/qdrant-search.ts`, which matches LangChain’s embed shape. It reads the collection config and uses a **named** vector (`{ name, vector }`) when the collection defines named dense vectors (common for Qdrant Cloud / dashboard-created collections). Set `QDRANT_VECTOR_NAME` if auto-detection picks the wrong vector on multi-vector collections.
 3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-4o-mini` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
-4. Retrieved context (including any pre-run searches) is injected into the system prompt alongside the full message history
-5. OpenAI `gpt-4.1-mini` is called with streaming + tools (Vercel AI SDK `streamText`)
-6. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`
-7. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
+4. **Context sufficiency check**: if CONTEXT has zero or one chunk, a fallback `searchKnowledgeBase` call appends broader results. Disable with `SELF_CRITIQUE=0`.
+5. Retrieved context (including any pre-run and fallback searches) is injected into the system prompt alongside the full message history
+6. OpenAI `gpt-4.1-mini` is called with streaming + tools (Vercel AI SDK `streamText`, `temperature: 0`)
+7. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`
+8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
 
 ### Function calling
 
@@ -283,6 +296,13 @@ The site uses a simple cookie-based JWT auth system:
 ### TypeScript
 - Enums in `src/lib/types.ts` are the source of truth for function call names and valid routes
 - Prismic types in `src/prismicio-types.d.ts` are auto-generated — always regenerate after schema changes
+
+### HuntBot voice
+- System prompt includes contrastive few-shot examples that define Hunter's speaking style
+- Temperature is set to 0.1 for natural variation while maintaining persona consistency
+- Responses default to 1-3 sentences, plain text, no markdown
+- Anti-patterns (corporate jargon, chatbot pleasantries) are explicitly banned in the prompt
+- See the `## How Hunter talks` and `## Voice examples` sections in the system prompt for the full voice spec
 
 ### Do not
 - Use `process.env` — use `$env/dynamic/private` instead
