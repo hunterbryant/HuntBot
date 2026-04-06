@@ -6,6 +6,7 @@
 	import { components } from '$lib/slices';
 	import { onMount } from 'svelte';
 	import { beforeNavigate } from '$app/navigation';
+	import { fade } from 'svelte/transition';
 	import HeroPixelHeadline from '$lib/landing/HeroPixelHeadline.svelte';
 
 	export let data;
@@ -14,6 +15,8 @@
 	let mobileElement: HTMLElement;
 	let onScreen = true;
 	let debounced = false;
+	let statusText: string | null = null;
+	let showStatus = false;
 
 	// Logic to start scroll onberver
 	$: if (debounced && typeof onScreen !== 'undefined') {
@@ -25,6 +28,20 @@
 		setTimeout(() => {
 			debounced = true;
 		}, 500);
+
+		// Fetch current status for easter egg
+		fetch('/api/status')
+			.then((r) => r.json())
+			.then((d) => {
+				if (d.text) {
+					statusText = d.text;
+					// Delay reveal for a subtle discovery feel
+					setTimeout(() => {
+						showStatus = true;
+					}, 1500);
+				}
+			})
+			.catch(() => {});
 	});
 
 	// Similar to the above problem, avoid multiple scroll events when DOM is deconstructed
@@ -54,7 +71,15 @@
 			class="relative grid h-[calc(50svh-3rem)] grow grid-cols-5 grid-rows-1 gap-4 pt-4 sm:h-[calc(calc(50svh-64px)-0.5rem)] md:grid-cols-7 lg:grid-cols-9"
 		>
 			<!-- Todo: animate title right after scroll -->
-			<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex sm:col-span-4 lg:col-span-5">
+			<div class="col-span-5 col-start-1 row-span-1 row-start-1 flex flex-col sm:col-span-4 lg:col-span-5">
+				{#if showStatus && statusText}
+					<p
+						transition:fade={{ duration: 600 }}
+						class="absolute -top-[4.35rem] text-xs font-medium uppercase tracking-wider text-stone-400 sm:relative sm:top-0 sm:mb-2 dark:text-stone-500"
+					>
+						{statusText}
+					</p>
+				{/if}
 				<h1
 					class="absolute -top-[3.09rem] my-auto min-w-0 max-w-full text-5xl font-medium tracking-tighter text-stone-900 sm:relative sm:top-0 sm:z-40 xl:text-5xl dark:text-stone-100 dark:mix-blend-exclusion"
 					bind:this={element}
