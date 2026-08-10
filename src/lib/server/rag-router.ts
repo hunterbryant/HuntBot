@@ -39,7 +39,7 @@ export async function planSupplementalSearches(options: {
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 		const { object } = await generateObject({
-			model: openai('gpt-4o-mini'),
+			model: openai('gpt-5.6-terra'),
 			schema: zodSchema(ragRouterSchema),
 			temperature: 0.1,
 			prompt: `You route retrieval for HuntBot (Hunter Bryant's portfolio + Notion notes + optional iMessage chunks).
