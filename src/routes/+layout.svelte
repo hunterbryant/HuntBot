@@ -13,7 +13,7 @@
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 
 	inject({ mode: dev ? 'development' : 'production' });
@@ -109,14 +109,10 @@
 				navEngaged.set(true);
 				closeMenu();
 			}
+			// Reset scroll before the page transition starts, not after, so the
+			// fly transition doesn't play on top of a still-animating scroll jump.
+			window.scrollTo({ top: 0, behavior: 'instant' });
 		}
-	});
-
-	afterNavigate(() => {
-		window.scrollTo({
-			top: 0,
-			behavior: 'smooth'
-		});
 	});
 
 	// Halt window scrolling when mobile menu is active
