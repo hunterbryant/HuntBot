@@ -1,6 +1,13 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
+import { CALENDAR_TIMEZONE, formatEventTime, getCalendarEvents } from '$lib/server/calendar';
+import {
+	getRecentCommits,
+	getRepoInfo,
+	readRepoFile,
+	searchRepoCode
+} from '$lib/server/github-repo';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
@@ -282,21 +289,129 @@ export const POST: RequestHandler = async ({ request }) => {
 								.describe('Filter results by source type.')
 						}),
 						execute: async ({ query, source_filter }) => {
+							reportStatus('Searching Hunter’s notes…');
 							logRag('tool search_knowledge_base', {
 								query: query.slice(0, 200),
 								source_filter
 							});
 							return await searchKnowledgeBase(query, source_filter);
 						}
+					}),
+					read_github_file: tool({
+						description:
+							"Read a file live from Hunter's HuntBot GitHub repo (hunterbryant/huntbot) to answer technical questions about how the site/bot itself is built — tech stack, architecture, RAG pipeline, etc. Defaults to CLAUDE.md (the full architecture/tech-stack doc) if no path is given — start there for general questions. Other useful paths: README.md; package.json (dependencies/tech stack); src/routes/api/chat/+server.ts (this chat endpoint + its tools); src/lib/utilities/context.ts (RAG retrieval pipeline); src/lib/server/rerank.ts (chunk reranking); src/lib/server/rag-router.ts (supplemental search planning). If you don't know the right path, use search_repo_code first to find it. Only call this for genuinely technical/meta questions about HuntBot's own implementation — not for questions about Hunter's design work.",
+						inputSchema: z.object({
+							path: z
+								.string()
+								.default('CLAUDE.md')
+								.describe('Repo-relative file path, e.g. "src/lib/server/rerank.ts".')
+						}),
+						execute: async ({ path }) => {
+							reportStatus(`Reading ${path}…`);
+							logRag('tool read_github_file', { path });
+							const file = await readRepoFile(path);
+							if (!file) return `No file found at "${path}" in the repo.`;
+							return file.truncated ? `${file.content}\n\n[...truncated]` : file.content;
+						}
+					}),
+					get_recent_commits: tool({
+						description:
+							'Get the most recent commits to Hunter\'s HuntBot GitHub repo (hunterbryant/huntbot, main branch) — message, author, and date. Use this for questions like "what was the last commit" or "what have you been working on in the code lately".',
+						inputSchema: z.object({
+							limit: z
+								.number()
+								.int()
+								.min(1)
+								.max(10)
+								.default(5)
+								.describe('How many recent commits to fetch.')
+						}),
+						execute: async ({ limit }) => {
+							reportStatus('Checking recent commits…');
+							logRag('tool get_recent_commits', { limit });
+							const commits = await getRecentCommits(limit);
+							if (!commits || commits.length === 0) return 'Could not fetch recent commits.';
+							return commits
+								.map((c) => `${c.sha} — ${c.message} (${c.author}, ${c.date})`)
+								.join('\n');
+						}
+					}),
+					get_repo_info: tool({
+						description:
+							'Get high-level facts about the HuntBot GitHub repo — when it was created, when it was last pushed to, size, star count, open issue count, and a language breakdown (e.g. "80% TypeScript, 15% Svelte"). Use for questions like "how old is this project", "how big is the codebase", or "what languages is this written in".',
+						inputSchema: z.object({}),
+						execute: async () => {
+							reportStatus('Looking up repo info…');
+							logRag('tool get_repo_info', {});
+							const info = await getRepoInfo();
+							if (!info) return 'Could not fetch repo info.';
+							const langs = info.languages.map((l) => `${l.name} ${l.percent}%`).join(', ');
+							return [
+								`Created: ${info.createdAt}`,
+								`Last pushed: ${info.pushedAt}`,
+								`Size: ${info.sizeKb} KB`,
+								`Stars: ${info.stars}`,
+								`Open issues: ${info.openIssues}`,
+								`Default branch: ${info.defaultBranch}`,
+								langs ? `Languages: ${langs}` : null
+							]
+								.filter(Boolean)
+								.join('\n');
+						}
+					}),
+					search_repo_code: tool({
+						description:
+							'Search file paths/contents across the HuntBot GitHub repo for a keyword or symbol (e.g. a function name, a term like "rerank" or "promptCacheKey"). Returns matching file paths — use read_github_file afterward to read the actual content of a promising match. Use this when you need to find where something lives in the code and don\'t already know the path.',
+						inputSchema: z.object({
+							query: z.string().describe('Keyword, symbol, or filename fragment to search for.')
+						}),
+						execute: async ({ query }) => {
+							reportStatus('Searching my code…');
+							logRag('tool search_repo_code', { query });
+							const results = await searchRepoCode(query);
+							if (!results || results.length === 0) return `No code matches found for "${query}".`;
+							return results.map((r) => r.path).join('\n');
+						}
+					}),
+					get_calendar_events: tool({
+						description:
+							'Get Hunter\'s calendar events for a date or date range, to answer questions like "what was Hunter up to on March 3rd" or "what does he have going on this week". Resolve relative dates ("yesterday", "next Tuesday") yourself using today\'s date from the live details before calling — this tool only accepts exact dates. Returns event titles and times only, nothing else.',
+						inputSchema: z.object({
+							date: z.string().describe('Start date, YYYY-MM-DD.'),
+							end_date: z
+								.string()
+								.optional()
+								.describe('End date, YYYY-MM-DD, inclusive. Omit for a single day.')
+						}),
+						execute: async ({ date, end_date }) => {
+							reportStatus('Checking the calendar…');
+							logRag('tool get_calendar_events', { date, end_date });
+							const events = await getCalendarEvents(date, end_date);
+							if (events === null) return 'Calendar is not connected.';
+							if (events.length === 0) {
+								const range = end_date && end_date !== date ? `${date} to ${end_date}` : date;
+								return `No events found for ${range}.`;
+							}
+							return events
+								.map((e) =>
+									e.allDay
+										? `${e.title} (all day)`
+										: `${formatEventTime(e.start)}–${formatEventTime(e.end)} ${e.title}`
+								)
+								.join('\n');
+						}
 					})
 				};
 
 				const today = new Date().toLocaleDateString('en-US', {
+					timeZone: CALENDAR_TIMEZONE,
 					weekday: 'long',
 					year: 'numeric',
 					month: 'long',
 					day: 'numeric'
 				});
+				// Explicit YYYY-MM-DD, same timezone as the calendar tool, for reliable relative-date math.
+				const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: CALENDAR_TIMEZONE });
 
 				// Build a human-readable page label from the current URL path
 				const pageSlug = currentPage.split('/').pop() || '';
@@ -428,6 +543,8 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces contact links automatically, so don't repeat contact info in your message.
+- Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code only for technical/meta questions about how HuntBot itself is built or what's changed in its code recently — never for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
+- Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
 
 ## Navigation
 When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
@@ -452,7 +569,7 @@ Date ranges and message counts in iMessage labels tell you how recent and extens
 
 ## Live details (turn-specific — everything above this line is static)
 
-Today is ${today}. Use CONTEXT dates when present; prefer specific months/years over vague "recently".
+Today is ${today} (${todayISO}). Use CONTEXT dates when present; prefer specific months/years over vague "recently". When calling get_calendar_events with a relative date ("yesterday", "next Tuesday"), compute it from ${todayISO}.
 
 The visitor is on: ${pageContext}. On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
 

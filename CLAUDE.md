@@ -165,6 +165,11 @@ QDRANT_COLLECTION=       # Name of the Qdrant collection to use (e.g., huntbot)
 QDRANT_VECTOR_NAME=      # Optional: dense vector name if the collection uses named vectors (fixes "Not existing vector name" from Qdrant). Auto-detected from collection config when unset.
 CRON_SECRET=             # Random 16+ char secret authorizing Vercel Cron requests to /api/cron/* — set in the Vercel dashboard, Vercel auto-sends it as the cron job's Authorization header
 NOTION_INTEGRATION_TOKEN= # Notion integration token for content embedding
+GOOGLE_CALENDAR_CLIENT_ID=     # OAuth 2.0 client ID (Google Cloud Console — Calendar API enabled)
+GOOGLE_CALENDAR_CLIENT_SECRET= # OAuth 2.0 client secret, same client as above
+GOOGLE_CALENDAR_REFRESH_TOKEN= # Long-lived refresh token for Hunter's Google account, obtained once via an OAuth consent flow (e.g. OAuth 2.0 Playground) with the https://www.googleapis.com/auth/calendar.readonly scope
+GOOGLE_CALENDAR_ID=            # Optional: calendar ID to query (default: "primary")
+GOOGLE_CALENDAR_TIMEZONE=      # Optional: IANA timezone for resolving "today"/relative dates and displaying event times (default: "America/Los_Angeles")
 RAG_DEBUG=               # Set to 1 to log RAG / agent tool steps in production (dev logs them by default)
 RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_reflection` event: thinking, citations, confidence)
 RAG_ROUTER=              # Set to 0 to skip the pre-turn structured router (saves one small LLM call per message; default = router on)
@@ -206,6 +211,10 @@ The LLM can invoke two functions:
 | `route_to_page` | Navigates the browser to a site page via SvelteKit's `goto()` |
 
 All valid route destinations are defined in `src/lib/types.ts` as the `SupportedRoutes` enum. **When adding new pages to the site, add the route to `SupportedRoutes` so HuntBot can navigate to it.**
+
+Beyond the two client-visible actions above, the model also has server-executed tools it can call mid-turn (not surfaced in the UI as actions): `search_knowledge_base` (additional Qdrant lookups) and four GitHub self-awareness tools backed by `src/lib/server/github-repo.ts` — `read_github_file` reads a file live from the `hunterbryant/huntbot` repo via unauthenticated `raw.githubusercontent.com` (defaulting to `CLAUDE.md`); `get_recent_commits` fetches the latest commits (message/author/date); `get_repo_info` fetches repo age/size/stars/language breakdown; and `search_repo_code` searches file paths/contents for a keyword to find the right file before reading it. The commit/info/search tools go through GitHub's unauthenticated REST API (`api.github.com`, ~60 req/hr limit; code search is a tighter ~10 req/min). Together they let HuntBot answer technical questions about its own architecture and recent changes without a separate embedding/re-indexing step. Each tool's `execute` reports a specific `data-status` label (e.g. "Searching my code…", "Reading CLAUDE.md…") so the chat loading indicator reflects exactly what it's doing instead of a generic "thinking" phrase.
+
+A fifth server-executed tool, `get_calendar_events` (`src/lib/server/calendar.ts`), answers "what was Hunter up to on [date]" style questions by querying Hunter's Google Calendar live via OAuth2 (refresh-token flow, no user login involved — see `GOOGLE_CALENDAR_*` env vars). It intentionally returns only event titles and times, never attendees, locations, or descriptions, since results are exposed to anonymous site visitors. Requires a one-time OAuth consent flow to mint `GOOGLE_CALENDAR_REFRESH_TOKEN`; without it configured, the tool degrades gracefully ("Calendar is not connected.") rather than erroring.
 
 ### Client-side chat state (`MessageStore.ts`)
 
