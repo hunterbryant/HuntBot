@@ -28,6 +28,7 @@
 		triggerProactiveOpener,
 		getMessageText,
 		streamingAssistantHasText,
+		getStreamingStatus,
 		SESSION_ID
 	} from './MessageStore.svelte';
 	import type { FunctionMessage } from '$lib/types';
@@ -579,7 +580,7 @@
 							}, 400);
 						}}
 					>
-						<LoadingStream />
+						<LoadingStream status={getStreamingStatus($messages)} />
 					</div>
 				{/if}
 			</div>

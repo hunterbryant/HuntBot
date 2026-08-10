@@ -211,6 +211,32 @@ export function streamingAssistantHasText(messages: UIMessage[]): boolean {
 	return false;
 }
 
+/**
+ * Reads the server's live pipeline-stage label off the in-flight assistant message
+ * (a `data-status` part the chat endpoint pushes as it works through retrieval/generation).
+ * Used to show real progress in the loading indicator instead of canned phrases.
+ */
+export function getStreamingStatus(messages: UIMessage[]): string | undefined {
+	let lastUserIdx = -1;
+	for (let i = messages.length - 1; i >= 0; i--) {
+		if (messages[i].role === 'user') {
+			lastUserIdx = i;
+			break;
+		}
+	}
+	for (let i = lastUserIdx + 1; i < messages.length; i++) {
+		const m = messages[i];
+		if (m.role !== 'assistant') continue;
+		for (const p of m.parts) {
+			if (p.type === 'data-status') {
+				const label = (p as { data?: { label?: string } }).data?.label;
+				if (label) return label;
+			}
+		}
+	}
+	return undefined;
+}
+
 export const chat = () => {
 	const instance = new Chat({
 		id: 'uniquechatid',

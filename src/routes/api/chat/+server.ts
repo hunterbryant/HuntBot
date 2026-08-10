@@ -4,221 +4,295 @@ import { logRag } from '$lib/server/rag-debug';
 import { getAvailableRoutes } from '$lib/server/site-nav-routes';
 import { planSupplementalSearches } from '$lib/server/rag-router';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
-import { getContext, searchKnowledgeBase } from '$lib/utilities/context';
+import { getContext, searchKnowledgeBase, type StatusReporter } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { streamText, tool, convertToModelMessages, stepCountIs } from 'ai';
+import {
+	streamText,
+	tool,
+	convertToModelMessages,
+	stepCountIs,
+	createUIMessageStream,
+	createUIMessageStreamResponse,
+	type UIMessage
+} from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import type { RagRouterPlan } from '$lib/schemas/ragRouter';
+
+// Short acknowledgements/greetings that never need knowledge-base grounding —
+// skipping retrieval for these is most of the perceived "why is this slow" latency.
+const TRIVIAL_MESSAGE_RE =
+	/^(hi|hey|hello|hiya|yo|sup|thanks|thank you|thx|ty|ok|okay|k|kk|cool|nice|great|awesome|got it|gotcha|bet|word|lol|haha|lmao|no worries|np|sounds good|sounds great|cheers|bye|goodbye|see ya|later|good morning|good night|nvm|never mind)[.!?~]*$/i;
+
+function isTrivialMessage(text: string): boolean {
+	const trimmed = text.trim();
+	if (!trimmed || trimmed.length > 24) return false;
+	return TRIVIAL_MESSAGE_RE.test(trimmed);
+}
+
+type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
+
+/** Cheap heuristic (chunk count + length) reused to decide whether the router / fallback
+ *  search LLM calls are worth their round trip, without invoking a model. */
+function assessConfidence(contextText: string): ContextConfidence {
+	const chunkCount = (contextText.match(/\[CHUNK-/g) || []).length;
+	if (!contextText.trim() || chunkCount === 0) return 'empty';
+	if (contextText.length < 200 || chunkCount === 1) return 'thin';
+	if (chunkCount >= 3 && contextText.length >= 400) return 'strong';
+	return 'moderate';
+}
 
 export const POST: RequestHandler = async ({ request }) => {
+	let body: { messages: UIMessage[]; sessionId?: string; currentPage?: string };
 	try {
-		const body = await request.json();
-		const { messages, sessionId } = body;
+		body = await request.json();
+	} catch {
+		return json({ error: 'Invalid request body' }, { status: 400 });
+	}
 
-		// Derive current page from the Referer header — the browser sets this automatically
-		// to the actual URL of the page that made the request, which is more reliable than
-		// passing it through the client-side body (which can be stale or default to '/').
-		// Fall back to the body value if Referer is absent (e.g. curl, test clients).
-		let currentPage: string = body.currentPage || '/';
-		const referer = request.headers.get('referer');
-		if (referer) {
+	const { messages, sessionId } = body;
+
+	// Derive current page from the Referer header — the browser sets this automatically
+	// to the actual URL of the page that made the request, which is more reliable than
+	// passing it through the client-side body (which can be stale or default to '/').
+	// Fall back to the body value if Referer is absent (e.g. curl, test clients).
+	let currentPage: string = body.currentPage || '/';
+	const referer = request.headers.get('referer');
+	if (referer) {
+		try {
+			currentPage = new URL(referer).pathname;
+		} catch {
+			// keep body value
+		}
+	}
+
+	const lastMessage = messages[messages.length - 1];
+
+	// Extract text content from a UIMessage (v6 format uses parts array)
+	function getMessageText(m: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
+		if (m.parts) {
+			return m.parts
+				.filter((p: { type: string }) => p.type === 'text')
+				.map((p: { text?: string }) => p.text ?? '')
+				.join('');
+		}
+		return m.content ?? '';
+	}
+
+	// Extract prior user messages (excluding the current one) to improve retrieval
+	// on follow-up questions like "tell me more" or "what about X?"
+	const priorUserMessages: string[] = messages
+		.slice(0, -1)
+		.filter((m: { role: string }) => m.role === 'user')
+		.map(getMessageText);
+
+	const runID = crypto.randomUUID();
+	const lastMessageText = getMessageText(lastMessage);
+	const fastPath = isTrivialMessage(lastMessageText);
+
+	const stream = createUIMessageStream<UIMessage>({
+		execute: async ({ writer }) => {
+			const reportStatus: StatusReporter = (label) =>
+				writer.write({ type: 'data-status', id: 'status', data: { label } });
+
+			// Graceful degradation: if anything in the pipeline throws, still send the
+			// visitor a real reply instead of leaving the loading indicator stuck.
+			function writeFallbackReply(text: string) {
+				const id = crypto.randomUUID();
+				writer.write({ type: 'start' });
+				writer.write({ type: 'start-step' });
+				writer.write({ type: 'text-start', id });
+				writer.write({ type: 'text-delta', id, delta: text });
+				writer.write({ type: 'text-end', id });
+				writer.write({ type: 'finish-step' });
+				writer.write({ type: 'finish' });
+			}
+
 			try {
-				currentPage = new URL(referer).pathname;
-			} catch {
-				// keep body value
-			}
-		}
+				reportStatus('Reading your question…');
 
-		const lastMessage = messages[messages.length - 1];
+				// Get context and available routes in parallel; degrade gracefully if retrieval fails.
+				// Trivial acknowledgements ("thanks", "ok") skip retrieval entirely — there's nothing
+				// to ground and running the full pipeline just adds latency for no benefit.
+				const [context, availableRoutes] = await Promise.all([
+					fastPath
+						? Promise.resolve('')
+						: getContext(lastMessageText, priorUserMessages, currentPage, reportStatus).catch(
+								(err: { data?: string; message?: string }) => {
+									console.warn(
+										'Context retrieval failed, continuing without context:',
+										err?.data ?? err?.message ?? err
+									);
+									return '';
+								}
+							),
+					getAvailableRoutes()
+				]);
 
-		// Extract text content from a UIMessage (v6 format uses parts array)
-		function getMessageText(m: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
-			if (m.parts) {
-				return m.parts
-					.filter((p: { type: string }) => p.type === 'text')
-					.map((p: { text?: string }) => p.text ?? '')
-					.join('');
-			}
-			return m.content ?? '';
-		}
-
-		// Extract prior user messages (excluding the current one) to improve retrieval
-		// on follow-up questions like "tell me more" or "what about X?"
-		const priorUserMessages: string[] = messages
-			.slice(0, -1)
-			.filter((m: { role: string }) => m.role === 'user')
-			.map(getMessageText);
-
-		const runID = crypto.randomUUID();
-
-		// Get context and available routes in parallel; degrade gracefully if retrieval fails
-		const lastMessageText = getMessageText(lastMessage);
-
-		const [context, availableRoutes] = await Promise.all([
-			getContext(lastMessageText, priorUserMessages, currentPage).catch(
-				(err: { data?: string; message?: string }) => {
-					console.warn('Context retrieval failed, continuing without context:', err?.data ?? err?.message ?? err);
-					return '';
-				}
-			),
-			getAvailableRoutes()
-		]);
-
-		const routerPlan = await planSupplementalSearches({
-			userMessage: lastMessageText,
-			priorUserMessages,
-			contextText: context
-		});
-
-		const seenSearchKeys = new Set<string>();
-		const supplementalBlocks: string[] = [];
-		for (const s of routerPlan.supplemental_searches) {
-			const key = `${s.query.trim().toLowerCase()}|${s.source_filter}`;
-			if (seenSearchKeys.has(key)) continue;
-			seenSearchKeys.add(key);
-			try {
-				const result = await searchKnowledgeBase(s.query, s.source_filter);
-				supplementalBlocks.push(
-					`### Supplemental search (${s.source_filter}): "${s.query}"\n${result}`
-				);
-			} catch (e) {
-				console.warn('Supplemental search failed:', s.query, e);
-			}
-		}
-
-		let contextForModel = context;
-		if (supplementalBlocks.length > 0) {
-			contextForModel = `${context}\n\n========\n\n### PRE-RUN VECTOR SEARCHES (router — same grounding rules as CONTEXT)\n${supplementalBlocks.join('\n\n---\n\n')}`;
-		}
-
-		// Pre-generation confidence check: if context is thin/empty, run a fallback search
-		if (env.SELF_CRITIQUE !== '0') {
-			const chunkCount = (contextForModel.match(/\[CHUNK-/g) || []).length;
-			const confidence =
-				!contextForModel.trim() || chunkCount === 0
-					? 'empty'
-					: contextForModel.length < 200 || chunkCount <= 1
-						? 'thin'
-						: 'sufficient';
-
-			if (confidence !== 'sufficient') {
-				logRag('context insufficient, running fallback search', { confidence, chunkCount });
-				try {
-					const fallback = await searchKnowledgeBase(
-						`${lastMessageText} Hunter Bryant portfolio design`,
-						'all'
-					);
-					if (fallback && !fallback.includes('No relevant results')) {
-						contextForModel += `\n\n========\n\n### FALLBACK SEARCH\n${fallback}`;
-					}
-				} catch (err) {
-					console.warn('Fallback search failed:', err);
-				}
-			}
-		}
-
-		// Build tool definitions with live routes from Prismic
-		const routeEnum = availableRoutes.length > 0
-			? (availableRoutes as [string, ...string[]])
-			: (['/' ] as [string, ...string[]]);
-
-		const tools = {
-			minimize_chat: tool({
-				description:
-					'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
-				inputSchema: z.object({
-					message: z
-						.string()
-						.describe(
-							'A brief, friendly sign-off message (1 sentence, plain text). E.g. "No worries, I\'ll be here if you need me."'
-						)
-				})
-			}),
-			route_to_page: tool({
-				description:
-					"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
-				inputSchema: z.object({
-					page: z
-						.enum(routeEnum)
-						.describe('The local route path to navigate to.'),
-					message: z
-						.string()
-						.describe(
-							"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
-						)
-				})
-			}),
-			ask_clarifying_question: tool({
-				description:
-					"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
-				inputSchema: z.object({
-					question: z
-						.string()
-						.describe('The specific clarifying question to ask the user.')
-				})
-			}),
-			capture_lead_intent: tool({
-				description:
-					"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
-				inputSchema: z.object({
-					intent_type: z
-						.enum(['hiring', 'collaboration', 'general'])
-						.describe('The type of interest the visitor has signalled.'),
-					message: z
-						.string()
-						.describe(
-							'A short, warm acknowledgement of their interest (1 sentence, plain text).'
-						)
-				})
-			}),
-			search_knowledge_base: tool({
-				description:
-					"Search Hunter's knowledge base for additional information. The server may have already run targeted searches (see PRE-RUN VECTOR SEARCHES in CONTEXT). Use this only if you still lack grounded material after reading CONTEXT, or the user shifts topic mid-thread.",
-				inputSchema: z.object({
-					query: z.string().describe('The search query to look up in the knowledge base.'),
-					source_filter: z
-						.enum(['all', 'imessage', 'site'])
-						.default('all')
-						.describe('Filter results by source type.')
-				}),
-				execute: async ({ query, source_filter }) => {
-					logRag('tool search_knowledge_base', {
-						query: query.slice(0, 200),
-						source_filter
+				// RAG router: only worth a full LLM round trip when initial retrieval isn't already
+				// a confident match. Most well-covered questions land here and skip it outright.
+				let routerPlan: RagRouterPlan = { supplemental_searches: [], assistant_hint: null };
+				if (!fastPath && assessConfidence(context) !== 'strong') {
+					reportStatus('Checking if I need more info…');
+					routerPlan = await planSupplementalSearches({
+						userMessage: lastMessageText,
+						priorUserMessages,
+						contextText: context
 					});
-					return await searchKnowledgeBase(query, source_filter);
 				}
-			})
-		};
 
-		const today = new Date().toLocaleDateString('en-US', {
-			weekday: 'long',
-			year: 'numeric',
-			month: 'long',
-			day: 'numeric'
-		});
+				const seenSearchKeys = new Set<string>();
+				const uniqueSearches = routerPlan.supplemental_searches.filter((s) => {
+					const key = `${s.query.trim().toLowerCase()}|${s.source_filter}`;
+					if (seenSearchKeys.has(key)) return false;
+					seenSearchKeys.add(key);
+					return true;
+				});
 
-		// Build a human-readable page label from the current URL path
-		const pageSlug = currentPage.split('/').pop() || '';
-		const pageLabel = pageSlug
-			? pageSlug.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
-			: 'Home';
-		const pageSection = currentPage.startsWith('/case-studies/')
-			? 'case study page'
-			: currentPage.startsWith('/projects/')
-				? 'project page'
-				: currentPage === '/information'
-					? 'about page'
-					: currentPage === '/case-studies'
-						? 'case studies listing'
-						: currentPage === '/projects'
-							? 'projects listing'
-							: 'home';
-		const isListingPage = ['/', '/case-studies', '/projects', '/information'].includes(currentPage);
-		const pageContext = isListingPage ? pageSection : `${pageLabel} (${pageSection})`;
+				let supplementalBlocks: string[] = [];
+				if (uniqueSearches.length > 0) {
+					reportStatus('Running a follow-up search…');
+					const results = await Promise.all(
+						uniqueSearches.map(async (s) => {
+							try {
+								const result = await searchKnowledgeBase(s.query, s.source_filter);
+								return `### Supplemental search (${s.source_filter}): "${s.query}"\n${result}`;
+							} catch (e) {
+								console.warn('Supplemental search failed:', s.query, e);
+								return null;
+							}
+						})
+					);
+					supplementalBlocks = results.filter((r): r is string => r !== null);
+				}
 
-		const systemPrompt = `## CRITICAL GROUNDING (highest priority)
+				let contextForModel = context;
+				if (supplementalBlocks.length > 0) {
+					contextForModel = `${context}\n\n========\n\n### PRE-RUN VECTOR SEARCHES (router — same grounding rules as CONTEXT)\n${supplementalBlocks.join('\n\n---\n\n')}`;
+				}
+
+				// Pre-generation confidence check: if context is thin/empty, run a fallback search
+				if (!fastPath && env.SELF_CRITIQUE !== '0') {
+					const confidence = assessConfidence(contextForModel);
+					if (confidence === 'empty' || confidence === 'thin') {
+						reportStatus('Widening the search a bit…');
+						logRag('context insufficient, running fallback search', { confidence });
+						try {
+							const fallback = await searchKnowledgeBase(
+								`${lastMessageText} Hunter Bryant portfolio design`,
+								'all'
+							);
+							if (fallback && !fallback.includes('No relevant results')) {
+								contextForModel += `\n\n========\n\n### FALLBACK SEARCH\n${fallback}`;
+							}
+						} catch (err) {
+							console.warn('Fallback search failed:', err);
+						}
+					}
+				}
+
+				// Build tool definitions with live routes from Prismic
+				const routeEnum = availableRoutes.length > 0
+					? (availableRoutes as [string, ...string[]])
+					: (['/' ] as [string, ...string[]]);
+
+				const tools = {
+					minimize_chat: tool({
+						description:
+							'Minimize the chat interface. Call this when the user says they want to close, hide, or minimize the chat.',
+						inputSchema: z.object({
+							message: z
+								.string()
+								.describe(
+									'A brief, friendly sign-off message (1 sentence, plain text). E.g. "No worries, I\'ll be here if you need me."'
+								)
+						})
+					}),
+					route_to_page: tool({
+						description:
+							"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
+						inputSchema: z.object({
+							page: z
+								.enum(routeEnum)
+								.describe('The local route path to navigate to.'),
+							message: z
+								.string()
+								.describe(
+									"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
+								)
+						})
+					}),
+					ask_clarifying_question: tool({
+						description:
+							"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
+						inputSchema: z.object({
+							question: z
+								.string()
+								.describe('The specific clarifying question to ask the user.')
+						})
+					}),
+					capture_lead_intent: tool({
+						description:
+							"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
+						inputSchema: z.object({
+							intent_type: z
+								.enum(['hiring', 'collaboration', 'general'])
+								.describe('The type of interest the visitor has signalled.'),
+							message: z
+								.string()
+								.describe(
+									'A short, warm acknowledgement of their interest (1 sentence, plain text).'
+								)
+						})
+					}),
+					search_knowledge_base: tool({
+						description:
+							"Search Hunter's knowledge base for additional information. The server may have already run targeted searches (see PRE-RUN VECTOR SEARCHES in CONTEXT). Use this only if you still lack grounded material after reading CONTEXT, or the user shifts topic mid-thread.",
+						inputSchema: z.object({
+							query: z.string().describe('The search query to look up in the knowledge base.'),
+							source_filter: z
+								.enum(['all', 'imessage', 'site'])
+								.default('all')
+								.describe('Filter results by source type.')
+						}),
+						execute: async ({ query, source_filter }) => {
+							logRag('tool search_knowledge_base', {
+								query: query.slice(0, 200),
+								source_filter
+							});
+							return await searchKnowledgeBase(query, source_filter);
+						}
+					})
+				};
+
+				const today = new Date().toLocaleDateString('en-US', {
+					weekday: 'long',
+					year: 'numeric',
+					month: 'long',
+					day: 'numeric'
+				});
+
+				// Build a human-readable page label from the current URL path
+				const pageSlug = currentPage.split('/').pop() || '';
+				const pageLabel = pageSlug
+					? pageSlug.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
+					: 'Home';
+				const pageSection = currentPage.startsWith('/case-studies/')
+					? 'case study page'
+					: currentPage.startsWith('/projects/')
+						? 'project page'
+						: currentPage === '/information'
+							? 'about page'
+							: currentPage === '/case-studies'
+								? 'case studies listing'
+								: currentPage === '/projects'
+									? 'projects listing'
+									: 'home';
+				const isListingPage = ['/', '/case-studies', '/projects', '/information'].includes(currentPage);
+				const pageContext = isListingPage ? pageSection : `${pageLabel} (${pageSection})`;
+
+				const systemPrompt = `## CRITICAL GROUNDING (highest priority)
 You MUST answer using ONLY the CONTEXT block at the end of this prompt. If CONTEXT does not support an answer, say so in one plain sentence (e.g. "I don't have that" or "I'm not sure from what's here") — do NOT invent details from general knowledge.
 
 CONTEXT lines start with chunk ids like [CHUNK-site-...], [CHUNK-notes-...], or [CHUNK-imsg-...]. Mentally tie each factual claim to those chunks; do not cite ids in the user-visible reply unless asked.
@@ -360,89 +434,91 @@ ${routerPlan.assistant_hint?.trim() ? `\n## Router note (internal)\n${routerPlan
 CONTEXT:
 ${contextForModel}`;
 
-		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
-		// Client injects synthetic UIMessages with role "data" for action UI (route/minimize feedback).
-		// convertToModelMessages only accepts roles the model understands — strip UI-only rows.
-		const messagesForModel = messages.filter(
-			(m: { role: string }) => m.role !== 'data'
-		);
-		const modelMessages = await convertToModelMessages(messagesForModel);
-
-		const result = streamText({
-			model: openai('gpt-5.6-terra'),
-			system: systemPrompt,
-			messages: modelMessages,
-			tools,
-			stopWhen: stepCountIs(3),
-			// Keeps replies brief; raise if answers feel clipped after tool calls
-			maxOutputTokens: 180,
-			onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
-				const callNames = toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
-				const resultSummary =
-					toolResults?.map((tr) => ('toolName' in tr ? tr.toolName : 'unknown')) ?? [];
-				logRag(`step finish`, {
-					stepNumber,
-					toolCalls: callNames,
-					toolResults: resultSummary,
-					textLen: text?.length ?? 0
-				});
-			},
-			onFinish: ({ text, toolCalls }) => {
-				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
-				if (!posthogKey) return;
-
-				const clientToolCall = toolCalls?.find(
-					(tc) => 'toolName' in tc && tc.toolName !== 'search_knowledge_base'
+				const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
+				// Client injects synthetic UIMessages with role "data" for action UI (route/minimize feedback).
+				// convertToModelMessages only accepts roles the model understands — strip UI-only rows.
+				const messagesForModel = messages.filter(
+					(m: { role: string }) => m.role !== 'data'
 				);
-				void fetch('https://us.i.posthog.com/capture/', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						api_key: posthogKey,
-						event: 'chat_message',
-						distinct_id: sessionId ?? runID,
-						timestamp: new Date().toISOString(),
-						properties: {
-							user_message: lastMessageText,
-							bot_response: text || null,
-							function_call_name: clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
-							function_call_args: clientToolCall && 'input' in clientToolCall
-								? JSON.stringify(clientToolCall.input)
-								: null,
-							current_page: currentPage,
-							run_id: runID,
-							session_id: sessionId ?? null
-						}
-					})
-				}).catch(() => {
-					/* swallow */
+				const modelMessages = await convertToModelMessages(messagesForModel);
+
+				reportStatus('Putting together a reply…');
+
+				const result = streamText({
+					model: openai('gpt-5.6-terra'),
+					system: systemPrompt,
+					messages: modelMessages,
+					tools,
+					stopWhen: stepCountIs(3),
+					// Keeps replies brief; raise if answers feel clipped after tool calls
+					maxOutputTokens: 180,
+					onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
+						const callNames = toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
+						const resultSummary =
+							toolResults?.map((tr) => ('toolName' in tr ? tr.toolName : 'unknown')) ?? [];
+						logRag(`step finish`, {
+							stepNumber,
+							toolCalls: callNames,
+							toolResults: resultSummary,
+							textLen: text?.length ?? 0
+						});
+					},
+					onFinish: ({ text, toolCalls }) => {
+						const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
+						if (!posthogKey) return;
+
+						const clientToolCall = toolCalls?.find(
+							(tc) => 'toolName' in tc && tc.toolName !== 'search_knowledge_base'
+						);
+						void fetch('https://us.i.posthog.com/capture/', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								api_key: posthogKey,
+								event: 'chat_message',
+								distinct_id: sessionId ?? runID,
+								timestamp: new Date().toISOString(),
+								properties: {
+									user_message: lastMessageText,
+									bot_response: text || null,
+									function_call_name: clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
+									function_call_args: clientToolCall && 'input' in clientToolCall
+										? JSON.stringify(clientToolCall.input)
+										: null,
+									current_page: currentPage,
+									run_id: runID,
+									session_id: sessionId ?? null
+								}
+							})
+						}).catch(() => {
+							/* swallow */
+						});
+
+						void sendRagReflectionToPosthog({
+							posthogKey,
+							userMessage: lastMessageText,
+							assistantText: text ?? '',
+							contextExcerpt: contextForModel,
+							sessionId: sessionId ?? null,
+							runID,
+							currentPage
+						}).catch(() => {
+							/* swallow — reflection is optional */
+						});
+					}
 				});
 
-				void sendRagReflectionToPosthog({
-					posthogKey,
-					userMessage: lastMessageText,
-					assistantText: text ?? '',
-					contextExcerpt: contextForModel,
-					sessionId: sessionId ?? null,
-					runID,
-					currentPage
-				}).catch(() => {
-					/* swallow — reflection is optional */
-				});
+				writer.merge(result.toUIMessageStream());
+			} catch (error) {
+				console.error('Chat API error:', error);
+				writeFallbackReply(
+					error instanceof OpenAI.APIError
+						? "Something glitched talking to the model — mind trying that again?"
+						: 'Something went wrong on my end — mind trying that again?'
+				);
 			}
-		});
-
-		return result.toUIMessageStreamResponse();
-	} catch (error) {
-		console.error('Chat API error:', error);
-		if (error instanceof OpenAI.APIError) {
-			const { name, status, headers, message } = error;
-			return json({ name, status, headers, message }, { status: 500 });
-		} else {
-			return json(
-				{ error: `An error occurred while processing your request: ${error}` },
-				{ status: 500 }
-			);
 		}
-	}
+	});
+
+	return createUIMessageStreamResponse({ stream });
 };
