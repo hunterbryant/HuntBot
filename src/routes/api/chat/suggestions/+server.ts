@@ -157,7 +157,7 @@ Example: ${
 						]
 					: [])
 			],
-			max_tokens: 200
+			max_completion_tokens: 200
 		});
 
 		const raw = response.choices[0]?.message?.content ?? '[]';

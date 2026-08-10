@@ -43,7 +43,7 @@ Page content:
 ${pageText}`
 				}
 			],
-			max_tokens: 60
+			max_completion_tokens: 60
 		});
 
 		const message = response.choices[0]?.message?.content?.trim() ?? null;
