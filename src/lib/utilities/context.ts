@@ -9,6 +9,10 @@ import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qd
 import { rewriteRetrievalQuery } from '$lib/rewrite';
 import { rerankChunks } from '$lib/server/rerank';
 
+/** Reports a human-readable label for the pipeline stage currently running. */
+export type StatusReporter = (label: string) => void;
+const noopStatus: StatusReporter = () => {};
+
 export type Metadata = {
 	url: string;
 	text: string;
@@ -148,8 +152,10 @@ async function maybeRerank(
 export const getContext = async (
 	message: string,
 	conversationHistory: string[] = [],
-	currentPage: string = '/'
+	currentPage: string = '/',
+	onStatus: StatusReporter = noopStatus
 ): Promise<string> => {
+	onStatus('Reframing your question…');
 	const retrievalQuery = await rewriteRetrievalQuery(message, conversationHistory, currentPage);
 	logRag('getContext retrieval query', {
 		rewritten: retrievalQuery.slice(0, 200),
@@ -176,6 +182,7 @@ export const getContext = async (
 			}
 		: null;
 
+	onStatus('Searching Hunter’s site and notes…');
 	const [mainResults, imessageResults, personResults] = await Promise.all([
 		similaritySearchWithScore(retrievalQuery, QDRANT_TOP_K, mainFilter),
 		imessageEnabled
@@ -203,6 +210,9 @@ export const getContext = async (
 	const sorted = deduped.sort((a, b) => b.vectorScore - a.vectorScore).map((s) => s.doc);
 
 	// Rerank, then diversify by source
+	if (env.RERANK_ENABLED !== '0' && sorted.length > RERANK_TOP_K) {
+		onStatus('Choosing the most relevant results…');
+	}
 	const reranked = await maybeRerank(retrievalQuery, sorted, RERANK_TOP_K);
 	const docs = diversifyBySource(reranked);
 

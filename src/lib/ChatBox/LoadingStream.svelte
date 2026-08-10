@@ -1,12 +1,15 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide } from 'svelte/transition';
-	import { onDestroy } from 'svelte';
 
-	const phrases = ['Hold on…', 'Iterating…', 'One sec…'];
-	let index = 0;
+	// Reflects the server's actual pipeline stage (see data-status parts in MessageStore).
+	// Falls back to a neutral placeholder for the brief window before the first status arrives.
+	export let status: string | undefined = undefined;
 
 	const FADE_OUT_MS = 120;
+	const DEFAULT_PHRASE = 'Hold on…';
+
+	$: displayText = status ?? DEFAULT_PHRASE;
 
 	function typeReveal(node: HTMLElement, text: string) {
 		let timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -73,12 +76,6 @@
 			}
 		};
 	}
-
-	const interval = setInterval(() => {
-		index = (index + 1) % phrases.length;
-	}, 2800);
-
-	onDestroy(() => clearInterval(interval));
 </script>
 
 <div
@@ -88,7 +85,7 @@
 	<Huntbotlogo />
 
 	<p class="mr-6 mt-3.5 grow whitespace-pre-line" aria-label="HuntBot is thinking">
-		<span class="shimmer" use:typeReveal={phrases[index]}></span>
+		<span class="shimmer" use:typeReveal={displayText}></span>
 	</p>
 </div>
 
