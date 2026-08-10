@@ -33,7 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		const response = await openai.chat.completions.create({
-			model: 'gpt-4.1-mini',
+			model: 'gpt-5.6-terra',
 			messages: [
 				{
 					role: 'system',

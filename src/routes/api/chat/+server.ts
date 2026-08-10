@@ -369,7 +369,7 @@ ${contextForModel}`;
 		const modelMessages = await convertToModelMessages(messagesForModel);
 
 		const result = streamText({
-			model: openai('gpt-4.1-mini'),
+			model: openai('gpt-5.6-terra'),
 			system: systemPrompt,
 			messages: modelMessages,
 			tools,

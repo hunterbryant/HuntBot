@@ -16,7 +16,7 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants) |
 | CMS | Prismic (Slice Machine) |
-| LLM | OpenAI `gpt-3.5-turbo` via the `openai` npm package |
+| LLM | OpenAI `gpt-5.6-terra` via the `openai` npm package |
 | Vector DB | Qdrant Cloud (free tier, 1GB) |
 | Embeddings | OpenAI `text-embedding-3-small`, 512 dimensions |
 | RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`) |
@@ -189,7 +189,7 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-4o-mini` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
 4. **Context sufficiency check**: if CONTEXT has zero or one chunk, a fallback `searchKnowledgeBase` call appends broader results. Disable with `SELF_CRITIQUE=0`.
 5. Retrieved context (including any pre-run and fallback searches) is injected into the system prompt alongside the full message history
-6. OpenAI `gpt-4.1-mini` is called with streaming + tools (Vercel AI SDK `streamText`, `temperature: 0`)
+6. OpenAI `gpt-5.6-terra` is called with streaming + tools (Vercel AI SDK `streamText`, `temperature: 0`)
 7. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`
 8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
 
