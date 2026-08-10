@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
+import { readRepoFile } from '$lib/server/github-repo';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
@@ -288,6 +289,22 @@ export const POST: RequestHandler = async ({ request }) => {
 							});
 							return await searchKnowledgeBase(query, source_filter);
 						}
+					}),
+					read_github_file: tool({
+						description:
+							"Read a file live from Hunter's HuntBot GitHub repo (hunterbryant/huntbot) to answer technical questions about how the site/bot itself is built — tech stack, architecture, RAG pipeline, etc. Defaults to CLAUDE.md (the full architecture/tech-stack doc) if no path is given — start there for general questions. Other useful paths: README.md; package.json (dependencies/tech stack); src/routes/api/chat/+server.ts (this chat endpoint + its tools); src/lib/utilities/context.ts (RAG retrieval pipeline); src/lib/server/rerank.ts (chunk reranking); src/lib/server/rag-router.ts (supplemental search planning). Only call this for genuinely technical/meta questions about HuntBot's own implementation — not for questions about Hunter's design work.",
+						inputSchema: z.object({
+							path: z
+								.string()
+								.default('CLAUDE.md')
+								.describe('Repo-relative file path, e.g. "src/lib/server/rerank.ts".')
+						}),
+						execute: async ({ path }) => {
+							logRag('tool read_github_file', { path });
+							const file = await readRepoFile(path);
+							if (!file) return `No file found at "${path}" in the repo.`;
+							return file.truncated ? `${file.content}\n\n[...truncated]` : file.content;
+						}
 					})
 				};
 
@@ -428,6 +445,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces contact links automatically, so don't repeat contact info in your message.
+- Use read_github_file only for technical/meta questions about how HuntBot itself is built (tech stack, RAG pipeline, architecture) — never for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code or file contents into a reply.
 
 ## Navigation
 When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.

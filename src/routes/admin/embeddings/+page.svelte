@@ -18,9 +18,6 @@
 	// Text export state
 	let textStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
 
-	// GitHub repo docs state
-	let githubStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
-
 	// iMessage state
 	let imessageToggle = false;
 	let imessageToggleLoading = false;
@@ -136,12 +133,6 @@
 		textStatus = 'running';
 		await fetch('/api/embed/texts', { method: 'GET' });
 		textStatus = 'done';
-	};
-
-	const triggerGithubEmbedding = async () => {
-		githubStatus = 'running';
-		const res = await fetch('/api/embed/github', { method: 'GET' });
-		githubStatus = res.ok ? 'done' : 'error';
 	};
 
 	const triggerImessageEmbedding = async () => {
@@ -275,28 +266,6 @@
 					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
 				>
 					{urlStatus === 'running' ? 'Indexing...' : urlStatus === 'done' ? 'Done' : 'Index'}
-				</button>
-			</span>
-
-			<!-- GitHub -->
-			<p class="mt-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
-				GitHub
-			</p>
-
-			<span class="flex h-12 items-center justify-between gap-4 align-middle">
-				Repo docs (CLAUDE.md, README.md)
-				<button
-					on:click={triggerGithubEmbedding}
-					disabled={githubStatus === 'running'}
-					class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
-				>
-					{githubStatus === 'running'
-						? 'Indexing...'
-						: githubStatus === 'done'
-							? 'Done'
-							: githubStatus === 'error'
-								? 'Error — retry'
-								: 'Index'}
 				</button>
 			</span>
 

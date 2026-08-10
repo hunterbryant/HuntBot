@@ -207,6 +207,8 @@ The LLM can invoke two functions:
 
 All valid route destinations are defined in `src/lib/types.ts` as the `SupportedRoutes` enum. **When adding new pages to the site, add the route to `SupportedRoutes` so HuntBot can navigate to it.**
 
+Beyond the two client-visible actions above, the model also has server-executed tools it can call mid-turn (not surfaced in the UI as actions): `search_knowledge_base` (additional Qdrant lookups) and `read_github_file` (`src/lib/server/github-repo.ts`) — reads a file live from the `hunterbryant/huntbot` repo via unauthenticated `raw.githubusercontent.com`, defaulting to `CLAUDE.md`, so HuntBot can answer technical questions about its own architecture/tech stack without a separate embedding/re-indexing step.
+
 ### Client-side chat state (`MessageStore.ts`)
 
 - Uses Vercel AI SDK's `useChat()` (`ai/svelte`)
@@ -228,7 +230,6 @@ The Qdrant vector collection is the knowledge base for HuntBot. It is populated 
 | `GET /api/embed/notion-url` | Notion pages via API | Uses `NOTION_INTEGRATION_TOKEN` |
 | `GET /api/embed/notion-file` | Local `local_files/notion_export/` directory | Dev-only button in admin UI |
 | `GET /api/embed/texts` | Local text/CSV files | Dev-only button in admin UI |
-| `GET /api/embed/github` | HuntBot's own repo docs (`CLAUDE.md`, `README.md` on `main`) | Fetched unauthenticated from `raw.githubusercontent.com` (public repo) — no token needed. Lets HuntBot answer technical questions about its own architecture/tech stack. |
 
 All embedders use:
 - Model: `text-embedding-3-small`
