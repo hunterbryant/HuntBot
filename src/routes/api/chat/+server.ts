@@ -1,24 +1,29 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
+import type { RagRouterPlan } from '$lib/schemas/ragRouter';
 import { logRag } from '$lib/server/rag-debug';
-import { getAvailableRoutes } from '$lib/server/site-nav-routes';
-import { planSupplementalSearches } from '$lib/server/rag-router';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
+import { planSupplementalSearches } from '$lib/server/rag-router';
+import { getAvailableRoutes } from '$lib/server/site-nav-routes';
 import { getContext, searchKnowledgeBase, type StatusReporter } from '$lib/utilities/context';
+import { createOpenAI } from '@ai-sdk/openai';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import {
-	streamText,
-	tool,
 	convertToModelMessages,
-	stepCountIs,
 	createUIMessageStream,
 	createUIMessageStreamResponse,
+	smoothStream,
+	stepCountIs,
+	streamText,
+	tool,
 	type UIMessage
 } from 'ai';
-import { createOpenAI } from '@ai-sdk/openai';
 import OpenAI from 'openai';
 import { z } from 'zod';
-import type { RagRouterPlan } from '$lib/schemas/ragRouter';
+
+// Matches SITE_ORIGIN in src/lib/utilities/context.ts — used to turn a full source URL
+// into a short readable slug for the source-url UI parts.
+const SITE_ORIGIN_PREFIX = 'https://www.hunterbryant.io';
 
 // Short acknowledgements/greetings that never need knowledge-base grounding —
 // skipping retrieval for these is most of the perceived "why is this slow" latency.
@@ -70,7 +75,10 @@ export const POST: RequestHandler = async ({ request }) => {
 	const lastMessage = messages[messages.length - 1];
 
 	// Extract text content from a UIMessage (v6 format uses parts array)
-	function getMessageText(m: { parts?: Array<{ type: string; text?: string }>; content?: string }): string {
+	function getMessageText(m: {
+		parts?: Array<{ type: string; text?: string }>;
+		content?: string;
+	}): string {
 		if (m.parts) {
 			return m.parts
 				.filter((p: { type: string }) => p.type === 'text')
@@ -192,10 +200,31 @@ export const POST: RequestHandler = async ({ request }) => {
 					}
 				}
 
+				// Surface the site pages that grounded this answer as source-url UI parts, so the
+				// client can show visitors which pages the reply actually drew from. Only SITE
+				// CONTENT chunks carry a real page URL (`[CHUNK-site-...] Source: <url>`); notes
+				// and iMessage chunks aren't public pages and are intentionally left out.
+				const seenSourceUrls = new Set<string>();
+				for (const match of contextForModel.matchAll(
+					/\[CHUNK-site-[a-f0-9]+-\d+\] Source: (\S+)/g
+				)) {
+					const url = match[1];
+					if (seenSourceUrls.has(url)) continue;
+					seenSourceUrls.add(url);
+					const slug = url.replace(SITE_ORIGIN_PREFIX, '').replace(/\/$/, '') || 'Home';
+					writer.write({
+						type: 'source-url',
+						sourceId: crypto.randomUUID(),
+						url,
+						title: slug
+					});
+				}
+
 				// Build tool definitions with live routes from Prismic
-				const routeEnum = availableRoutes.length > 0
-					? (availableRoutes as [string, ...string[]])
-					: (['/' ] as [string, ...string[]]);
+				const routeEnum =
+					availableRoutes.length > 0
+						? (availableRoutes as [string, ...string[]])
+						: (['/'] as [string, ...string[]]);
 
 				const tools = {
 					minimize_chat: tool({
@@ -213,28 +242,24 @@ export const POST: RequestHandler = async ({ request }) => {
 						description:
 							"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
 						inputSchema: z.object({
-							page: z
-								.enum(routeEnum)
-								.describe('The local route path to navigate to.'),
+							page: z.enum(routeEnum).describe('The local route path to navigate to.'),
 							message: z
 								.string()
 								.describe(
-									"A brief message about what the user will find on the page (1 sentence, plain text). E.g. \"That case study has the full breakdown.\""
+									'A brief message about what the user will find on the page (1 sentence, plain text). E.g. "That case study has the full breakdown."'
 								)
 						})
 					}),
 					ask_clarifying_question: tool({
 						description:
-							"Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like \"tell me about your work\" or \"what do you do\". One question at a time — don't list multiple questions.",
+							'Ask the user one focused follow-up question when their query is too vague to answer accurately. Use this instead of a generic response to broad queries like "tell me about your work" or "what do you do". One question at a time — don\'t list multiple questions.',
 						inputSchema: z.object({
-							question: z
-								.string()
-								.describe('The specific clarifying question to ask the user.')
+							question: z.string().describe('The specific clarifying question to ask the user.')
 						})
 					}),
 					capture_lead_intent: tool({
 						description:
-							"Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: \"we're hiring\", \"looking for a designer\", \"want to work with you\", \"would love to collaborate\", \"open to freelance?\". Acknowledge their interest warmly and surface contact options.",
+							'Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: "we\'re hiring", "looking for a designer", "want to work with you", "would love to collaborate", "open to freelance?". Acknowledge their interest warmly and surface contact options.',
 						inputSchema: z.object({
 							intent_type: z
 								.enum(['hiring', 'collaboration', 'general'])
@@ -276,7 +301,10 @@ export const POST: RequestHandler = async ({ request }) => {
 				// Build a human-readable page label from the current URL path
 				const pageSlug = currentPage.split('/').pop() || '';
 				const pageLabel = pageSlug
-					? pageSlug.split('-').map((w) => w[0].toUpperCase() + w.slice(1)).join(' ')
+					? pageSlug
+							.split('-')
+							.map((w) => w[0].toUpperCase() + w.slice(1))
+							.join(' ')
 					: 'Home';
 				const pageSection = currentPage.startsWith('/case-studies/')
 					? 'case study page'
@@ -289,7 +317,9 @@ export const POST: RequestHandler = async ({ request }) => {
 								: currentPage === '/projects'
 									? 'projects listing'
 									: 'home';
-				const isListingPage = ['/', '/case-studies', '/projects', '/information'].includes(currentPage);
+				const isListingPage = ['/', '/case-studies', '/projects', '/information'].includes(
+					currentPage
+				);
 				const pageContext = isListingPage ? pageSection : `${pageLabel} (${pageSection})`;
 
 				const systemPrompt = `## CRITICAL GROUNDING (highest priority)
@@ -387,13 +417,6 @@ Q: Tell me more about We Came to Sauna
 ## Handling follow-ups
 Use conversation history. "Tell me more" continues the last topic — don't restart from scratch.
 
-## Time and dates
-Today is ${today}. Use CONTEXT dates when present; prefer specific months/years over vague "recently".
-
-## Current page
-The visitor is on: ${pageContext}
-On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
-
 ## Confidence calibration
 - Strong CONTEXT match → answer directly.
 - Partial CONTEXT → share what you know and name the gap.
@@ -407,10 +430,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces contact links automatically, so don't repeat contact info in your message.
 
 ## Navigation
-When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
-
-APPROVED ROUTES (copy exactly, no modifications):
-${availableRoutes.join('\n')}
+When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
 
 ## iMessage context
 The CONTEXT section may include chunks labeled "[iMessage — contact]". These are Hunter's real text messages, grouped by conversation. Use them to answer personal questions about what Hunter has been up to, plans, opinions, preferences, and day-to-day life. Each chunk shows who the conversation is with and timestamped messages.
@@ -426,8 +446,18 @@ Important rules for iMessage context:
 ## Source awareness
 The CONTEXT section is labeled by source type: SITE CONTENT, NOTES & DOCUMENTS, and IMESSAGE CONVERSATIONS. When answering, be aware of which source you're drawing from. If a user asks about Hunter's professional work and only iMessage content is relevant, flag that naturally — e.g. "from his texts it sounds like..." rather than presenting casual conversation as professional portfolio content.
 
-Date ranges and message counts in iMessage labels tell you how recent and extensive a conversation is. Prefer recent conversations over old ones. If a label says "(Jan 2024 — Mar 2024)" and today is ${today}, note the time gap.
+Date ranges and message counts in iMessage labels tell you how recent and extensive a conversation is. Prefer recent conversations over old ones. If a label says "(Jan 2024 — Mar 2024)", check it against the date below and note the time gap.
 
+---
+
+## Live details (turn-specific — everything above this line is static)
+
+Today is ${today}. Use CONTEXT dates when present; prefer specific months/years over vague "recently".
+
+The visitor is on: ${pageContext}. On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
+
+APPROVED ROUTES (copy exactly, no modifications):
+${availableRoutes.join('\n')}
 ${routerPlan.assistant_hint?.trim() ? `\n## Router note (internal)\n${routerPlan.assistant_hint.trim()}\n` : ''}
 ---
 
@@ -437,23 +467,39 @@ ${contextForModel}`;
 				const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 				// Client injects synthetic UIMessages with role "data" for action UI (route/minimize feedback).
 				// convertToModelMessages only accepts roles the model understands — strip UI-only rows.
-				const messagesForModel = messages.filter(
-					(m: { role: string }) => m.role !== 'data'
-				);
+				const messagesForModel = messages.filter((m: { role: string }) => m.role !== 'data');
 				const modelMessages = await convertToModelMessages(messagesForModel);
 
 				reportStatus('Putting together a reply…');
 
 				const result = streamText({
-					model: openai('gpt-5.6-terra'),
+					// Responses API (not chat completions) — required to get back reasoning
+					// summaries for a reasoning model, and to use promptCacheKey below.
+					model: openai.responses('gpt-5.6-terra'),
 					system: systemPrompt,
 					messages: modelMessages,
 					tools,
 					stopWhen: stepCountIs(3),
 					// Keeps replies brief; raise if answers feel clipped after tool calls
 					maxOutputTokens: 180,
+					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
+					// at a natural pace instead of the bursty cadence of a reasoning model's output.
+					experimental_transform: smoothStream({ chunking: 'word' }),
+					providerOptions: {
+						openai: {
+							// Low effort — replies are 1-3 sentences, deep reasoning isn't needed and
+							// would only add latency.
+							reasoningEffort: 'low',
+							reasoningSummary: 'auto',
+							// Stable key (not per-session) so requests share the same cache partition —
+							// the system prompt's static prefix (everything above "## Live details")
+							// is identical across visitors and is the part worth caching.
+							promptCacheKey: 'huntbot-chat-system-v1'
+						}
+					},
 					onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
-						const callNames = toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
+						const callNames =
+							toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
 						const resultSummary =
 							toolResults?.map((tr) => ('toolName' in tr ? tr.toolName : 'unknown')) ?? [];
 						logRag(`step finish`, {
@@ -481,10 +527,12 @@ ${contextForModel}`;
 								properties: {
 									user_message: lastMessageText,
 									bot_response: text || null,
-									function_call_name: clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
-									function_call_args: clientToolCall && 'input' in clientToolCall
-										? JSON.stringify(clientToolCall.input)
-										: null,
+									function_call_name:
+										clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
+									function_call_args:
+										clientToolCall && 'input' in clientToolCall
+											? JSON.stringify(clientToolCall.input)
+											: null,
 									current_page: currentPage,
 									run_id: runID,
 									session_id: sessionId ?? null
@@ -513,7 +561,7 @@ ${contextForModel}`;
 				console.error('Chat API error:', error);
 				writeFallbackReply(
 					error instanceof OpenAI.APIError
-						? "Something glitched talking to the model — mind trying that again?"
+						? 'Something glitched talking to the model — mind trying that again?'
 						: 'Something went wrong on my end — mind trying that again?'
 				);
 			}
