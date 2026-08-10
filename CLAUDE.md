@@ -93,6 +93,8 @@ HuntBot/
 │       ├── admin/                    # Admin panel for triggering embedding jobs
 │       ├── api/
 │       │   ├── chat/+server.ts       # POST — main chat endpoint (RAG + streaming)
+│       │   ├── cron/
+│       │   │   └── qdrant-keepalive/ # Daily Vercel Cron ping to keep the free Qdrant cluster active
 │       │   └── embed/                # GET endpoints to trigger Qdrant embedding jobs
 │       │       ├── urls/             # Recursively crawls hunterbryant.io
 │       │       ├── notion-url/       # Embeds content from Notion via API
@@ -161,6 +163,7 @@ QDRANT_URL=              # Qdrant Cloud cluster URL (e.g., https://xxx.cloud.qdr
 QDRANT_API_KEY=          # Qdrant Cloud API key
 QDRANT_COLLECTION=       # Name of the Qdrant collection to use (e.g., huntbot)
 QDRANT_VECTOR_NAME=      # Optional: dense vector name if the collection uses named vectors (fixes "Not existing vector name" from Qdrant). Auto-detected from collection config when unset.
+CRON_SECRET=             # Random 16+ char secret authorizing Vercel Cron requests to /api/cron/* — set in the Vercel dashboard, Vercel auto-sends it as the cron job's Authorization header
 NOTION_INTEGRATION_TOKEN= # Notion integration token for content embedding
 RAG_DEBUG=               # Set to 1 to log RAG / agent tool steps in production (dev logs them by default)
 RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_reflection` event: thinking, citations, confidence)
@@ -231,6 +234,12 @@ All embedders use:
 - Dimensions: `512`
 - Chunk size: `1000` characters, overlap: `200`
 - LangChain `QdrantVectorStore.fromDocuments()`
+
+### Keeping the free Qdrant cluster alive
+
+Qdrant Cloud's free tier auto-suspends a cluster after 1 week of inactivity and deletes it after 4 weeks if it's not reactivated — this has already happened once to this project. Qdrant doesn't publicly document what counts as "activity," so relying on organic site traffic (visitors triggering chat → vector search) isn't reliable, since a low-traffic personal portfolio site can go days without a single chat query.
+
+`vercel.json` schedules a daily Vercel Cron job (`GET /api/cron/qdrant-keepalive`) that runs a real `scroll` read against the collection — genuine data-plane traffic, not just a metadata/health-check call — well within the 1-week suspension window with margin to spare. The endpoint is secured with `CRON_SECRET` per [Vercel's cron job pattern](https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs): set a random 16+ char value for `CRON_SECRET` in the Vercel dashboard and Vercel automatically sends it as the request's `Authorization: Bearer` header. Vercel's Hobby plan caps cron frequency at once/day; that's already ~7x margin under the suspension threshold.
 
 ---
 
