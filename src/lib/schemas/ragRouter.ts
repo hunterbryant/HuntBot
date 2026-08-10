@@ -27,9 +27,9 @@ export const ragRouterSchema = z.object({
 	assistant_hint: z
 		.string()
 		.max(300)
-		.optional()
+		.nullable()
 		.describe(
-			'Optional one-line note for the reply model (e.g. which section to trust). Not shown to the visitor.'
+			'One-line note for the reply model (e.g. which section to trust), or null if none. Not shown to the visitor.'
 		)
 });
 

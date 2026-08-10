@@ -374,7 +374,6 @@ ${contextForModel}`;
 			messages: modelMessages,
 			tools,
 			stopWhen: stepCountIs(3),
-			temperature: 0.1,
 			// Keeps replies brief; raise if answers feel clipped after tool calls
 			maxOutputTokens: 180,
 			onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
