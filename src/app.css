@@ -4,28 +4,32 @@
 
 @font-face {
 	font-family: 'Favorit';
-	src: url('../src/lib/assets/fonts/FavoritStd-Regular.otf');
+	src: url('/fonts/FavoritStd-Regular.woff2') format('woff2');
 	font-weight: 400;
 	font-style: normal;
+	font-display: swap;
 }
 
 @font-face {
 	font-family: 'Favorit';
-	src: url('../src/lib/assets/fonts/FavoritStd-Medium.otf');
+	src: url('/fonts/FavoritStd-Medium.woff2') format('woff2');
 	font-weight: 500;
 	font-style: normal;
+	font-display: swap;
 }
 
 @font-face {
 	font-family: 'Favorit';
-	src: url('../src/lib/assets/fonts/FavoritStd-Bold.otf');
+	src: url('/fonts/FavoritStd-Bold.woff2') format('woff2');
 	font-weight: 700;
 	font-style: normal;
+	font-display: swap;
 }
 
 @font-face {
 	font-family: 'Garamond';
-	src: url('../src/lib/assets/fonts/EBGaramond-BoldItalic.ttf');
+	src: url('/fonts/EBGaramond-BoldItalic.woff2') format('woff2');
 	font-weight: bold;
 	font-style: italic;
+	font-display: swap;
 }

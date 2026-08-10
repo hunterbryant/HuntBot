@@ -4,6 +4,12 @@ import { FunctionState, type FunctionMessage } from '$lib/types';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { generateId, DefaultChatTransport } from 'ai';
 import { toStore, writable } from 'svelte/store';
+import { botEngaged, minimized } from './chatVisibility';
+
+// Re-exported for backward compat with files that import these alongside the
+// rest of the chat runtime; the root layout imports chatVisibility.ts directly
+// to avoid pulling in the ai-sdk chat runtime on every page load.
+export { botEngaged, minimized };
 
 // Re-export UIMessage as Message for backward compat with consuming code
 export type { UIMessage as Message };
@@ -183,9 +189,6 @@ const initMessage: UIMessage = {
 };
 
 let chatInstance: Chat | null = null;
-
-export const botEngaged = writable(false);
-export const minimized = writable(true);
 
 // Helper to extract text from a UIMessage's parts
 export function getMessageText(message: UIMessage): string {
