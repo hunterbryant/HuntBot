@@ -2,7 +2,7 @@ import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
-import { generateId, DefaultChatTransport } from 'ai';
+import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
 
 // Re-export UIMessage as Message for backward compat with consuming code
@@ -195,6 +195,21 @@ export function getMessageText(message: UIMessage): string {
 		.join('');
 }
 
+/** Extracts the site pages (source-url UI parts) that grounded an assistant reply. */
+export function getMessageSources(message: UIMessage): { url: string; title?: string }[] {
+	const seen = new Set<string>();
+	const sources: { url: string; title?: string }[] = [];
+	for (const p of message.parts) {
+		if (p.type === 'source-url') {
+			const part = p as { url: string; title?: string };
+			if (seen.has(part.url)) continue;
+			seen.add(part.url);
+			sources.push({ url: part.url, title: part.title });
+		}
+	}
+	return sources;
+}
+
 /** True once the in-flight assistant reply has any visible text (hides loading placeholder while still streaming). */
 export function streamingAssistantHasText(messages: UIMessage[]): boolean {
 	let lastUserIdx = -1;
@@ -247,7 +262,11 @@ export const chat = () => {
 		}),
 		onToolCall: async ({ toolCall }) => {
 			// In v6, tool call has toolName + input (not args)
-			const tc = toolCall as unknown as { toolCallId: string; toolName: string; input: Record<string, unknown> };
+			const tc = toolCall as unknown as {
+				toolCallId: string;
+				toolName: string;
+				input: Record<string, unknown>;
+			};
 			handleToolCall({ toolCallId: tc.toolCallId, toolName: tc.toolName, args: tc.input });
 		}
 	});
@@ -272,13 +291,18 @@ export const chat = () => {
 		}
 		return msgs;
 	});
-	const isLoading = toStore(() => instance.status === 'streaming' || instance.status === 'submitted');
+	const isLoading = toStore(
+		() => instance.status === 'streaming' || instance.status === 'submitted'
+	);
 	const input = writable('');
 
 	function handleSubmit(event?: { preventDefault?: () => void }) {
 		event?.preventDefault?.();
 		let value = '';
-		input.update((v) => { value = v; return ''; });
+		input.update((v) => {
+			value = v;
+			return '';
+		});
 		if (value.trim()) {
 			instance.sendMessage({ text: value.trim() });
 		}
@@ -324,9 +348,11 @@ function stripTrailingAssistantToolTurns(messages: UIMessage[]): UIMessage[] {
 	return out;
 }
 
-function handleToolCall(
-	toolCall: { toolCallId: string; toolName: string; args: Record<string, unknown> }
-) {
+function handleToolCall(toolCall: {
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+}) {
 	if (!chatInstance) {
 		console.error('Chat instance not initialized.');
 		return;
@@ -393,7 +419,12 @@ function handleToolCall(
 			{
 				id: generateId(),
 				role: 'assistant',
-				parts: [{ type: 'text', text: args.question ?? "Could you tell me a bit more about what you're looking for?" }]
+				parts: [
+					{
+						type: 'text',
+						text: args.question ?? "Could you tell me a bit more about what you're looking for?"
+					}
+				]
 			}
 		];
 	} else if (toolCall.toolName === 'capture_lead_intent') {
