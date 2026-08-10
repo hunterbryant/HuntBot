@@ -68,19 +68,11 @@ async function resolveDenseVectorName(
 	return name;
 }
 
-function toSearchVector(
-	embedding: number[],
-	named: string | null
-): number[] | { name: string; vector: number[] } {
-	if (!named) {
-		return embedding;
-	}
-	return { name: named, vector: embedding };
-}
-
 /**
  * LangChain's QdrantVectorStore always sends an unnamed vector to `search()`, which breaks
  * collections that only define named dense vectors (Qdrant: "Not existing vector name").
+ * `search()` was removed from the client in 1.19 in favor of the universal `query()` endpoint,
+ * which takes the raw vector as `query` and the named-vector key (if any) as a separate `using`.
  */
 export async function qdrantSimilaritySearchWithScore(
 	client: QdrantClient,
@@ -90,17 +82,17 @@ export async function qdrantSimilaritySearchWithScore(
 	filter?: Record<string, unknown>
 ): Promise<[Document, number][]> {
 	const named = await resolveDenseVectorName(client, collectionName);
-	const vector = toSearchVector(embedding, named);
 
-	const results = await client.search(collectionName, {
-		vector,
+	const { points } = await client.query(collectionName, {
+		query: embedding,
+		...(named ? { using: named } : {}),
 		limit: k,
 		...(filter ? { filter } : {}),
 		with_payload: [METADATA_KEY, CONTENT_KEY],
 		with_vector: false
 	});
 
-	return results.map((res) => {
+	return points.map((res) => {
 		const payload = (res.payload ?? {}) as Record<string, unknown>;
 		const meta = payload[METADATA_KEY];
 		const content = payload[CONTENT_KEY];

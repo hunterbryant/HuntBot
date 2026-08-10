@@ -170,7 +170,7 @@
 			<span
 				class="pointer-events-none absolute inset-0 flex items-center overflow-x-hidden overflow-y-visible whitespace-nowrap text-stone-400 dark:text-stone-500"
 				use:typeReveal={placeholder}
-			/>
+			></span>
 		{/if}
 	</div>
 	<hr class="absolute inset-x-2 -top-px border-stone-200 peer-focus:hidden dark:border-stone-700" />

@@ -57,7 +57,7 @@
 		"@notionhq/client": "^2.2.14",
 		"@prismicio/client": "^7.3.1",
 		"@prismicio/svelte": "^1.0.3",
-		"@qdrant/js-client-rest": "^1.9.0",
+		"@qdrant/js-client-rest": "^1.19.0",
 		"@splinetool/runtime": "^1.0.66",
 		"@types/jsonwebtoken": "^9.0.6",
 		"@vercel/analytics": "^1.2.2",

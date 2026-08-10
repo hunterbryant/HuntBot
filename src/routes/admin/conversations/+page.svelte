@@ -409,7 +409,7 @@
 						<span class="text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-500">Opened chat</span>
 						{#if metaStatus === 'loading'}
 							<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
-								<span class="inline-block h-3.5 w-8 animate-pulse rounded bg-stone-200 align-middle dark:bg-stone-700" />
+								<span class="inline-block h-3.5 w-8 animate-pulse rounded bg-stone-200 align-middle dark:bg-stone-700"></span>
 							</span>
 						{:else}
 							<span class="text-sm font-semibold text-stone-800 dark:text-stone-200">
@@ -442,10 +442,10 @@
 					{#each [1, 2, 3, 4, 5] as _}
 						<div class="animate-pulse rounded border border-stone-200 p-4 dark:border-stone-700">
 							<div class="flex items-center gap-2">
-								<div class="h-3 w-24 rounded bg-stone-200 dark:bg-stone-700" />
-								<div class="h-3 w-12 rounded bg-stone-200 dark:bg-stone-700" />
+								<div class="h-3 w-24 rounded bg-stone-200 dark:bg-stone-700"></div>
+								<div class="h-3 w-12 rounded bg-stone-200 dark:bg-stone-700"></div>
 							</div>
-							<div class="mt-2 h-3 w-48 rounded bg-stone-100 dark:bg-stone-800" />
+							<div class="mt-2 h-3 w-48 rounded bg-stone-100 dark:bg-stone-800"></div>
 						</div>
 					{/each}
 				</div>
