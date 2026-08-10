@@ -293,7 +293,7 @@
 							<div
 								class="h-full rounded-full transition-all duration-300 ease-out {notionStatus === 'error' ? 'bg-red-500' : notionStatus === 'done' ? 'bg-green-500' : 'bg-mud-600'}"
 								style="width: {notionStatus === 'running' && notionTotal === 0 ? '5' : notionPercent}%"
-							/>
+							></div>
 						</div>
 						<div class="flex items-center justify-between">
 							<p class="truncate text-xs text-stone-400 dark:text-stone-500">
@@ -346,7 +346,7 @@
 					<span class="flex items-center gap-2">
 						<span
 							class="inline-block h-2 w-2 rounded-full {imessageToggle ? 'bg-green-500' : 'bg-stone-400'}"
-						/>
+						></span>
 						Include iMessage context in retrieval
 					</span>
 					<button
@@ -411,7 +411,7 @@
 							placeholder="+15551234567=Work Nickname, anon@example.com=Friend"
 							bind:value={imessageContactAliases}
 							class="rounded border border-stone-300 bg-transparent px-3 py-1.5 text-sm leading-relaxed dark:border-stone-700"
-						/>
+						></textarea>
 						<p class="text-xs text-stone-400 dark:text-stone-500">
 							Names are auto-resolved from your macOS Contacts. Add overrides here only for contacts
 							not in your address book or where you want a different name.
@@ -451,7 +451,7 @@
 											? 'bg-green-500'
 											: 'bg-mud-600'}"
 									style="width: {imessageStatus === 'running' && imessageTotal === 0 ? '5' : imessagePercent}%"
-								/>
+								></div>
 							</div>
 							<p class="text-xs text-stone-400 dark:text-stone-500">
 								{imessageMessage}

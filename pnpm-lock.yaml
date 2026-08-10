@@ -19,7 +19,7 @@ importers:
         version: 4.0.134(svelte@5.54.0)(zod@4.3.6)
       '@langchain/community':
         specifier: ^0.0.35
-        version: 0.0.35(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.17.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
+        version: 0.0.35(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.19.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       '@langchain/core':
         specifier: 0.1.46
         version: 0.1.46(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
@@ -39,8 +39,8 @@ importers:
         specifier: ^1.0.3
         version: 1.5.0(@prismicio/client@7.21.6)(@sveltejs/kit@2.55.0(@opentelemetry/api@1.9.0)(@sveltejs/vite-plugin-svelte@7.0.0(svelte@5.54.0)(vite@8.0.1(@types/node@25.3.5)(jiti@1.21.7)(yaml@2.8.2)))(svelte@5.54.0)(typescript@5.9.3)(vite@8.0.1(@types/node@25.3.5)(jiti@1.21.7)(yaml@2.8.2)))(svelte@5.54.0)
       '@qdrant/js-client-rest':
-        specifier: ^1.9.0
-        version: 1.17.0(typescript@5.9.3)
+        specifier: ^1.19.0
+        version: 1.19.0(typescript@5.9.3)
       '@splinetool/runtime':
         specifier: ^1.0.66
         version: 1.12.67
@@ -88,7 +88,7 @@ importers:
         version: 9.0.3
       langchain:
         specifier: ^0.1.27
-        version: 0.1.37(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@notionhq/client@2.3.0)(@qdrant/js-client-rest@1.17.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cheerio@1.0.0-rc.12)(cohere-ai@7.20.0)(d3-dsv@2.0.0)(fast-xml-parser@5.5.8)(html-to-text@9.0.5)(ignore@5.3.2)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(notion-to-md@3.1.9)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
+        version: 0.1.37(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@notionhq/client@2.3.0)(@qdrant/js-client-rest@1.19.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cheerio@1.0.0-rc.12)(cohere-ai@7.20.0)(d3-dsv@2.0.0)(fast-xml-parser@5.5.8)(html-to-text@9.0.5)(ignore@5.3.2)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(notion-to-md@3.1.9)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       langsmith:
         specifier: ^0.1.13
         version: 0.1.68(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
@@ -1354,9 +1354,9 @@ packages:
     resolution: {integrity: sha512-1uhHnZTiGeCi+rmO507B8jtnUTCNetdgrC5sfZEw9zsCplfgBELt0+BN1RFsXWLbZbyvR9xzHcrJ87Ykqa8JZA==}
     engines: {node: '>=12.7.0'}
 
-  '@qdrant/js-client-rest@1.17.0':
-    resolution: {integrity: sha512-aZFQeirWVqWAa1a8vJ957LMzcXkFHGbsoRhzc8AkGfg6V0jtK8PlG8/eyyc2xhYsR961FDDx1Tx6nyE0K7lS+A==}
-    engines: {node: '>=18.17.0', pnpm: '>=8'}
+  '@qdrant/js-client-rest@1.19.0':
+    resolution: {integrity: sha512-1+QLUHsWp+WV4PE35FLnH2ckxotWrQEqi/F3t4goF3cCThR0ZxLVtOC4OoOi/E1iyj/iIYBdbuACWMuQ15NAnA==}
+    engines: {node: '>=22.0.0'}
     peerDependencies:
       typescript: '>=4.7'
 
@@ -1443,36 +1443,42 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-arm64-musl@1.0.0-rc.10':
     resolution: {integrity: sha512-vELN+HNb2IzuzSBUOD4NHmP9yrGwl1DVM29wlQvx1OLSclL0NgVWnVDKl/8tEks79EFek/kebQKnNJkIAA4W2g==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-linux-ppc64-gnu@1.0.0-rc.10':
     resolution: {integrity: sha512-ZqrufYTgzxbHwpqOjzSsb0UV/aV2TFIY5rP8HdsiPTv/CuAgCRjM6s9cYFwQ4CNH+hf9Y4erHW1GjZuZ7WoI7w==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-s390x-gnu@1.0.0-rc.10':
     resolution: {integrity: sha512-gSlmVS1FZJSRicA6IyjoRoKAFK7IIHBs7xJuHRSmjImqk3mPPWbR7RhbnfH2G6bcmMEllCt2vQ/7u9e6bBnByg==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-gnu@1.0.0-rc.10':
     resolution: {integrity: sha512-eOCKUpluKgfObT2pHjztnaWEIbUabWzk3qPZ5PuacuPmr4+JtQG4k2vGTY0H15edaTnicgU428XW/IH6AimcQw==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rolldown/binding-linux-x64-musl@1.0.0-rc.10':
     resolution: {integrity: sha512-Xdf2jQbfQowJnLcgYfD/m0Uu0Qj5OdxKallD78/IPPfzaiaI4KRAwZzHcKQ4ig1gtg1SuzC7jovNiM2TzQsBXA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rolldown/binding-openharmony-arm64@1.0.0-rc.10':
     resolution: {integrity: sha512-o1hYe8hLi1EY6jgPFyxQgQ1wcycX+qz8eEbVmot2hFkgUzPxy9+kF0u0NIQBeDq+Mko47AkaFFaChcvZa9UX9Q==}
@@ -1543,66 +1549,79 @@ packages:
     resolution: {integrity: sha512-t4ONHboXi/3E0rT6OZl1pKbl2Vgxf9vJfWgmUoCEVQVxhW6Cw/c8I6hbbu7DAvgp82RKiH7TpLwxnJeKv2pbsw==}
     cpu: [arm]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm-musleabihf@4.59.0':
     resolution: {integrity: sha512-CikFT7aYPA2ufMD086cVORBYGHffBo4K8MQ4uPS/ZnY54GKj36i196u8U+aDVT2LX4eSMbyHtyOh7D7Zvk2VvA==}
     cpu: [arm]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.59.0':
     resolution: {integrity: sha512-jYgUGk5aLd1nUb1CtQ8E+t5JhLc9x5WdBKew9ZgAXg7DBk0ZHErLHdXM24rfX+bKrFe+Xp5YuJo54I5HFjGDAA==}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-arm64-musl@4.59.0':
     resolution: {integrity: sha512-peZRVEdnFWZ5Bh2KeumKG9ty7aCXzzEsHShOZEFiCQlDEepP1dpUl/SrUNXNg13UmZl+gzVDPsiCwnV1uI0RUA==}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-loong64-gnu@4.59.0':
     resolution: {integrity: sha512-gbUSW/97f7+r4gHy3Jlup8zDG190AuodsWnNiXErp9mT90iCy9NKKU0Xwx5k8VlRAIV2uU9CsMnEFg/xXaOfXg==}
     cpu: [loong64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-loong64-musl@4.59.0':
     resolution: {integrity: sha512-yTRONe79E+o0FWFijasoTjtzG9EBedFXJMl888NBEDCDV9I2wGbFFfJQQe63OijbFCUZqxpHz1GzpbtSFikJ4Q==}
     cpu: [loong64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-ppc64-gnu@4.59.0':
     resolution: {integrity: sha512-sw1o3tfyk12k3OEpRddF68a1unZ5VCN7zoTNtSn2KndUE+ea3m3ROOKRCZxEpmT9nsGnogpFP9x6mnLTCaoLkA==}
     cpu: [ppc64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-ppc64-musl@4.59.0':
     resolution: {integrity: sha512-+2kLtQ4xT3AiIxkzFVFXfsmlZiG5FXYW7ZyIIvGA7Bdeuh9Z0aN4hVyXS/G1E9bTP/vqszNIN/pUKCk/BTHsKA==}
     cpu: [ppc64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-riscv64-gnu@4.59.0':
     resolution: {integrity: sha512-NDYMpsXYJJaj+I7UdwIuHHNxXZ/b/N2hR15NyH3m2qAtb/hHPA4g4SuuvrdxetTdndfj9b1WOmy73kcPRoERUg==}
     cpu: [riscv64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-riscv64-musl@4.59.0':
     resolution: {integrity: sha512-nLckB8WOqHIf1bhymk+oHxvM9D3tyPndZH8i8+35p/1YiVoVswPid2yLzgX7ZJP0KQvnkhM4H6QZ5m0LzbyIAg==}
     cpu: [riscv64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-linux-s390x-gnu@4.59.0':
     resolution: {integrity: sha512-oF87Ie3uAIvORFBpwnCvUzdeYUqi2wY6jRFWJAy1qus/udHFYIkplYRW+wo+GRUP4sKzYdmE1Y3+rY5Gc4ZO+w==}
     cpu: [s390x]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-gnu@4.59.0':
     resolution: {integrity: sha512-3AHmtQq/ppNuUspKAlvA8HtLybkDflkMuLK4DPo77DfthRb71V84/c4MlWJXixZz4uruIH4uaa07IqoAkG64fg==}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.59.0':
     resolution: {integrity: sha512-2UdiwS/9cTAx7qIUZB/fWtToJwvt0Vbo0zmnYt7ED35KPg13Q0ym1g442THLC7VyI6JfYTP4PiSOWyoMdV2/xg==}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   '@rollup/rollup-openbsd-x64@4.59.0':
     resolution: {integrity: sha512-M3bLRAVk6GOwFlPTIxVBSYKUaqfLrn8l0psKinkCFxl4lQvOSz8ZrKDz2gxcBwHFpci0B6rttydI4IpS4IS/jQ==}
@@ -3482,24 +3501,28 @@ packages:
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-arm64-musl@1.32.0:
     resolution: {integrity: sha512-UpQkoenr4UJEzgVIYpI80lDFvRmPVg6oqboNHfoH4CQIfNA+HOrZ7Mo7KZP02dC6LjghPQJeBsvXhJod/wnIBg==}
     engines: {node: '>= 12.0.0'}
     cpu: [arm64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-linux-x64-gnu@1.32.0:
     resolution: {integrity: sha512-V7Qr52IhZmdKPVr+Vtw8o+WLsQJYCTd8loIfpDaMRWGUZfBOYEJeyJIkqGIDMZPwPx24pUMfwSxxI8phr/MbOA==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   lightningcss-linux-x64-musl@1.32.0:
     resolution: {integrity: sha512-bYcLp+Vb0awsiXg/80uCRezCYHNg1/l3mt0gzHnWV9XP1W5sKa5/TCdGWaR/zBM2PeF/HbsQv/j2URNOiVuxWg==}
     engines: {node: '>= 12.0.0'}
     cpu: [x64]
     os: [linux]
+    libc: [musl]
 
   lightningcss-win32-arm64-msvc@1.32.0:
     resolution: {integrity: sha512-8SbC8BR40pS6baCM8sbtYDSwEVQd4JlFTOlaD3gWGHfThTcABnNDBda6eTZeqbofalIJhFx0qKzgHJmcPTnGdw==}
@@ -4638,9 +4661,9 @@ packages:
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
 
-  undici@6.23.0:
-    resolution: {integrity: sha512-VfQPToRA5FZs/qJxLIinmU59u0r7LXqoJkCzinq3ckNJp3vKEh7jTWN589YQ5+aoAC/TGRLyJLCPKcLQbM8r9g==}
-    engines: {node: '>=18.17'}
+  undici@7.29.0:
+    resolution: {integrity: sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==}
+    engines: {node: '>=20.18.1'}
 
   universalify@0.2.0:
     resolution: {integrity: sha512-CJ1QgKmNg3CwvAv/kOFmtnEN05f0D/cn9QntgNOQlQF9dgvVTHj3t+8JPdjqawCHk7V/KA+fbUqzZ9XWhcqPUg==}
@@ -5563,7 +5586,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@langchain/community@0.0.35(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.17.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)':
+  '@langchain/community@0.0.35(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.19.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)':
     dependencies:
       '@langchain/core': 0.1.46(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
       '@langchain/openai': 0.0.20(ws@8.19.0)
@@ -5574,7 +5597,7 @@ snapshots:
     optionalDependencies:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/credential-provider-node': 3.972.24
-      '@qdrant/js-client-rest': 1.17.0(typescript@5.9.3)
+      '@qdrant/js-client-rest': 1.19.0(typescript@5.9.3)
       '@smithy/util-utf8': 2.3.0
       better-sqlite3: 12.6.2
       cohere-ai: 7.20.0
@@ -5585,7 +5608,7 @@ snapshots:
       - encoding
       - openai
 
-  '@langchain/community@0.0.57(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.17.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)':
+  '@langchain/community@0.0.57(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.19.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)':
     dependencies:
       '@langchain/core': 0.1.46(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
       '@langchain/openai': 0.0.34(ws@8.19.0)
@@ -5598,7 +5621,7 @@ snapshots:
     optionalDependencies:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/credential-provider-node': 3.972.24
-      '@qdrant/js-client-rest': 1.17.0(typescript@5.9.3)
+      '@qdrant/js-client-rest': 1.19.0(typescript@5.9.3)
       '@smithy/util-utf8': 2.3.0
       better-sqlite3: 12.6.2
       cohere-ai: 7.20.0
@@ -5651,7 +5674,7 @@ snapshots:
   '@langchain/qdrant@0.0.5(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(typescript@5.9.3)':
     dependencies:
       '@langchain/core': 0.1.46(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
-      '@qdrant/js-client-rest': 1.17.0(typescript@5.9.3)
+      '@qdrant/js-client-rest': 1.19.0(typescript@5.9.3)
       uuid: 9.0.1
     transitivePeerDependencies:
       - openai
@@ -5847,11 +5870,11 @@ snapshots:
 
   '@prismicio/types@0.2.9': {}
 
-  '@qdrant/js-client-rest@1.17.0(typescript@5.9.3)':
+  '@qdrant/js-client-rest@1.19.0(typescript@5.9.3)':
     dependencies:
       '@qdrant/openapi-typescript-fetch': 1.2.6
       typescript: 5.9.3
-      undici: 6.23.0
+      undici: 7.29.0
 
   '@qdrant/openapi-typescript-fetch@1.2.6': {}
 
@@ -7979,10 +8002,10 @@ snapshots:
 
   known-css-properties@0.35.0: {}
 
-  langchain@0.1.37(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@notionhq/client@2.3.0)(@qdrant/js-client-rest@1.17.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cheerio@1.0.0-rc.12)(cohere-ai@7.20.0)(d3-dsv@2.0.0)(fast-xml-parser@5.5.8)(html-to-text@9.0.5)(ignore@5.3.2)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(notion-to-md@3.1.9)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0):
+  langchain@0.1.37(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@notionhq/client@2.3.0)(@qdrant/js-client-rest@1.19.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cheerio@1.0.0-rc.12)(cohere-ai@7.20.0)(d3-dsv@2.0.0)(fast-xml-parser@5.5.8)(html-to-text@9.0.5)(ignore@5.3.2)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(notion-to-md@3.1.9)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0):
     dependencies:
       '@anthropic-ai/sdk': 0.9.1
-      '@langchain/community': 0.0.57(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.17.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
+      '@langchain/community': 0.0.57(@aws-crypto/sha256-js@5.2.0)(@aws-sdk/credential-provider-node@3.972.24)(@qdrant/js-client-rest@1.19.0(typescript@5.9.3))(@smithy/util-utf8@2.3.0)(better-sqlite3@12.6.2)(cohere-ai@7.20.0)(html-to-text@9.0.5)(jsdom@24.1.3)(jsonwebtoken@9.0.3)(openai@4.104.0(ws@8.19.0)(zod@4.3.6))(ws@8.19.0)
       '@langchain/core': 0.1.46(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
       '@langchain/openai': 0.0.34(ws@8.19.0)
       '@langchain/textsplitters': 0.0.3(openai@4.104.0(ws@8.19.0)(zod@4.3.6))
@@ -9313,7 +9336,7 @@ snapshots:
 
   undici-types@7.18.2: {}
 
-  undici@6.23.0: {}
+  undici@7.29.0: {}
 
   universalify@0.2.0: {}
 
