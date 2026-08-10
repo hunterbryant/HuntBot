@@ -244,11 +244,16 @@ function groupByChat(rows: MessageRow[]): Map<string, MessageRow[]> {
 	return groups;
 }
 
-/** Resolve all unique non-me contact ids from a chat thread to display names. */
+/** Resolve all unique contact ids from a chat thread to display names.
+ *  `handle_id` identifies who the thread is with on both sent and received rows —
+ *  direction is a separate field (`is_from_me`) — so self-sent rows carry usable
+ *  contact info too. Filtering them out here made any conversation with no
+ *  successfully-extracted received message (e.g. one-sided threads, or ones where
+ *  the other side's attributedBody failed to parse) get dropped entirely. */
 function resolveParticipants(rows: MessageRow[], aliasMap: Map<string, string>): string[] {
 	const seen = new Set<string>();
 	for (const r of rows) {
-		if (!r.is_from_me && r.contact) seen.add(aliasMap.get(r.contact) ?? r.contact);
+		if (r.contact) seen.add(aliasMap.get(r.contact) ?? r.contact);
 	}
 	return [...seen];
 }
