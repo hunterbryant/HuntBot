@@ -28,6 +28,9 @@
 	>
 		<PrismicImage
 			field={project.highlight_image}
+			imgixParams={{ auto: ['format', 'compress'] }}
+			sizes="(min-width: 768px) 33vw, 100vw"
+			loading="lazy"
 			class="h-full w-full transform-gpu rounded transition-transform  duration-500 group-hover:scale-110  {project.image_fill
 				? 'object-cover'
 				: 'object-contain'} "

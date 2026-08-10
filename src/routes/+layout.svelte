@@ -7,14 +7,13 @@
 	import Lettermark from '$lib/assets/lettermark.svelte';
 
 	import Links from '$lib/nav/Links.svelte';
-	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen, keyboardOpen } from '$lib/nav/navstore';
-	import { botEngaged, chat, minimized } from '$lib/ChatBox/MessageStore.svelte';
+	import { botEngaged, minimized } from '$lib/ChatBox/chatVisibility';
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
 	import { onMount } from 'svelte';
-	import { afterNavigate, beforeNavigate } from '$app/navigation';
+	import { beforeNavigate } from '$app/navigation';
 	import { page } from '$app/stores';
 
 	inject({ mode: dev ? 'development' : 'production' });
@@ -30,6 +29,18 @@
 	let slotElement: HTMLElement;
 	let mounted = false;
 
+	// ChatBox pulls in the ai-sdk chat runtime; load it lazily so it never
+	// blocks the initial page bundle. Kicked off during idle time so it's
+	// warm by the time the user actually opens the chat.
+	let ChatBoxComponent: typeof import('$lib/ChatBox/ChatBox.svelte').default | undefined;
+	const loadChatBox = () => {
+		if (!ChatBoxComponent) {
+			import('$lib/ChatBox/ChatBox.svelte').then((m) => {
+				ChatBoxComponent = m.default;
+			});
+		}
+	};
+
 	// On initial load set nav state based on entry path,
 	// must not live within onMount
 	if ($page.url.pathname === '/') {
@@ -41,6 +52,7 @@
 	}
 
 	const engageHuntbot = () => {
+		loadChatBox();
 		const scrollDistance = mobileBreakpoint ? window.innerHeight / 2 : window.innerHeight / 2 - 64;
 		if (!$botEngaged) {
 			hitButton = true;
@@ -76,6 +88,12 @@
 			mobile.set(true);
 		}
 		mounted = true;
+
+		if ('requestIdleCallback' in window) {
+			requestIdleCallback(loadChatBox);
+		} else {
+			setTimeout(loadChatBox, 200);
+		}
 	});
 
 	// Change the nav state based on destination path
@@ -91,14 +109,10 @@
 				navEngaged.set(true);
 				closeMenu();
 			}
+			// Reset scroll before the page transition starts, not after, so the
+			// fly transition doesn't play on top of a still-animating scroll jump.
+			window.scrollTo({ top: 0, behavior: 'instant' });
 		}
-	});
-
-	afterNavigate(() => {
-		window.scrollTo({
-			top: 0,
-			behavior: 'smooth'
-		});
 	});
 
 	// Halt window scrolling when mobile menu is active
@@ -242,7 +256,9 @@
 					}}
 					class="pointer-events-auto absolute bottom-0 z-50 -mx-2 w-full flex-initial sm:mx-0"
 				>
-					<ChatBox bind:greeting />
+					{#if ChatBoxComponent}
+						<svelte:component this={ChatBoxComponent} bind:greeting />
+					{/if}
 				</div>
 			{/if}
 		</div>
@@ -268,7 +284,9 @@
 		}}
 		class="fixed bottom-0 z-50 -mx-0 w-full flex-initial sm:mx-0"
 	>
-		<ChatBox bind:greeting />
+		{#if ChatBoxComponent}
+			<svelte:component this={ChatBoxComponent} bind:greeting />
+		{/if}
 	</div>
 {/if}
 
