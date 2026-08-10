@@ -51,16 +51,27 @@ function extractPageProperties(page: Record<string, unknown>): string {
 	return lines.join('\n');
 }
 
+function sleep(ms: number): Promise<void> {
+	return new Promise((r) => setTimeout(r, ms));
+}
+
+// Notion's API averages ~3 requests/second; stay under that between calls
+// so recursive block-children fetches don't trip rate limiting.
+const NOTION_REQUEST_SPACING_MS = 350;
+
 async function getBlockChildren(notion: Client, blockId: string): Promise<string> {
 	const lines: string[] = [];
 	let cursor: string | undefined;
 
 	do {
-		const response = await notion.blocks.children.list({
-			block_id: blockId,
-			start_cursor: cursor,
-			page_size: 100
-		});
+		const response = await withRetry(() =>
+			notion.blocks.children.list({
+				block_id: blockId,
+				start_cursor: cursor,
+				page_size: 100
+			})
+		);
+		await sleep(NOTION_REQUEST_SPACING_MS);
 
 		for (const block of response.results) {
 			const b = block as BlockObjectResponse;
@@ -163,13 +174,16 @@ export async function GET() {
 				let cursor: string | undefined;
 
 				do {
-					const response = await notion.databases.query({
-						database_id: DATABASE_ID,
-						start_cursor: cursor,
-						page_size: 100
-					});
+					const response = await withRetry(() =>
+						notion.databases.query({
+							database_id: DATABASE_ID,
+							start_cursor: cursor,
+							page_size: 100
+						})
+					);
 					pages.push(...(response.results as Record<string, unknown>[]));
 					cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
+					if (cursor) await sleep(NOTION_REQUEST_SPACING_MS);
 				} while (cursor);
 
 				const total = pages.length;

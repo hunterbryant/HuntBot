@@ -16,14 +16,14 @@ export async function planSupplementalSearches(options: {
 	contextText: string;
 }): Promise<RagRouterPlan> {
 	if (env.RAG_ROUTER === '0') {
-		return { supplemental_searches: [] };
+		return { supplemental_searches: [], assistant_hint: null };
 	}
 
 	const { userMessage, priorUserMessages, contextText } = options;
 	const trimmed = userMessage.trim();
 	// Skip router for trivial acknowledgements
 	if (trimmed.length < 3) {
-		return { supplemental_searches: [] };
+		return { supplemental_searches: [], assistant_hint: null };
 	}
 
 	const prior =
@@ -41,7 +41,6 @@ export async function planSupplementalSearches(options: {
 		const { object } = await generateObject({
 			model: openai('gpt-5.6-terra'),
 			schema: zodSchema(ragRouterSchema),
-			temperature: 0.1,
 			prompt: `You route retrieval for HuntBot (Hunter Bryant's portfolio + Notion notes + optional iMessage chunks).
 
 Decide if the INITIAL CONTEXT below is sufficient for a grounded answer to the LATEST user message, or if 1–3 extra vector searches will materially help.
@@ -75,6 +74,6 @@ ${contextPreview}`
 		return object;
 	} catch (err) {
 		console.warn('RAG router failed, continuing without supplemental searches:', err);
-		return { supplemental_searches: [] };
+		return { supplemental_searches: [], assistant_hint: null };
 	}
 }

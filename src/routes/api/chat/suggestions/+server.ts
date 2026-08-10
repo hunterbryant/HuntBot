@@ -157,7 +157,6 @@ Example: ${
 						]
 					: [])
 			],
-			temperature: 0.7,
 			max_tokens: 200
 		});
 

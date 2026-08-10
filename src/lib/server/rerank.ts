@@ -39,7 +39,6 @@ export async function rerankChunks(
 		const { object } = await generateObject({
 			model: openai('gpt-5.6-luna'),
 			schema: zodSchema(rerankSchema),
-			temperature: 0,
 			prompt: `Rate how relevant each chunk is to the question. Score 1-5 (1=irrelevant, 5=directly answers).
 
 Question: "${query}"

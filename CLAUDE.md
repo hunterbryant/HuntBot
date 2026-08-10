@@ -189,7 +189,7 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-5.6-terra` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
 4. **Context sufficiency check**: if CONTEXT has zero or one chunk, a fallback `searchKnowledgeBase` call appends broader results. Disable with `SELF_CRITIQUE=0`.
 5. Retrieved context (including any pre-run and fallback searches) is injected into the system prompt alongside the full message history
-6. OpenAI `gpt-5.6-terra` is called with streaming + tools (Vercel AI SDK `streamText`, `temperature: 0`)
+6. OpenAI `gpt-5.6-terra` is called with streaming + tools (Vercel AI SDK `streamText`). `gpt-5.6-terra`/`gpt-5.6-luna` are reasoning models and reject a `temperature` param, so none is set anywhere in the pipeline.
 7. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`
 8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
 
@@ -299,7 +299,7 @@ The site uses a simple cookie-based JWT auth system:
 
 ### HuntBot voice
 - System prompt includes contrastive few-shot examples that define Hunter's speaking style
-- Temperature is set to 0.1 for natural variation while maintaining persona consistency
+- No `temperature` param is set — `gpt-5.6-terra` is a reasoning model and rejects it; persona consistency comes entirely from the system prompt
 - Responses default to 1-3 sentences, plain text, no markdown
 - Anti-patterns (corporate jargon, chatbot pleasantries) are explicitly banned in the prompt
 - See the `## How Hunter talks` and `## Voice examples` sections in the system prompt for the full voice spec
