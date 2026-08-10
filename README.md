@@ -11,36 +11,40 @@ HuntBot has been built using the following technologies:
   - Slicemachine for simulating pages before publishing
   - Generated types for data models
   - Decent documentation for use with SvelteKit
-- Langchain JS is used, but only for handling my Retrieval Augmented Generation (RAG) pipeline. I initially did my RAG manually, but found that Langchain has nice abstractions for things like connecting to Pinecone and loading documents to embed from various sources (I load documents from Notion, obscure .txts, .csvs, and from random URLS).
-- Pinecone as my Vector DB to hold embeddings. I only chose this because they have an easy-to-setup serverless option, and I'm small enough where I can live on the free tier.
-- Vercel AI SDK is the backbone for getting streaming chat responses from the server, and handling OpenAI function calls via its function handler (both on server & on client). The final API call to the LLM isn't done with Langchain, rather the vanilla OpenAI NPM module. The reason being that I wasn't able to find a good way to get Langcahin and the Vercel AI SDK to work together with OpenAI function calling AND streaming.
+- Langchain JS is used, but only for handling my Retrieval Augmented Generation (RAG) pipeline — connecting to Qdrant and loading documents to embed from various sources (I load documents from Notion, obscure .txts, .csvs, random URLs, and even my own iMessage history).
+- Qdrant Cloud as my Vector DB to hold embeddings. I originally used Pinecone's free serverless tier, but migrated to Qdrant Cloud's free tier — same idea (small enough to live on a free plan), different provider. Worth noting: the free tier auto-suspends a cluster after a week of inactivity and deletes it after four, so there's a daily Vercel Cron job (`/api/cron/qdrant-keepalive`) that pings it to make sure that never happens again (it happened once).
+- Vercel AI SDK is the backbone for getting streaming chat responses from the server, and handling OpenAI function calls via its function handler (both on server & on client).
 
 ## Setup
 
-To configure a compatible assistant, use the models `gpt-3.5-turbo` or `gpt-4-turbo-preview`.
-The frontend expects two environmental variables to connect with Open AI:
+The main chat model is `gpt-5.6-terra` (OpenAI's current balanced/mid-tier model), called through the Vercel AI SDK's `streamText`. Reranking retrieved chunks uses the cheaper `gpt-5.6-luna`. Both are reasoning models, which means they reject a `temperature` param — none is set anywhere in the pipeline; persona consistency comes entirely from the system prompt instead.
 
 The project expects several environmental variables to connect with various APIs and hold various secrets:
 
 ```bash
 export OPENAI_API_KEY="..."
 export OPENAI_ASISTANT_ID="..."
+export LANGCHAIN_API_KEY="..."      # LangSmith tracing for the RAG pipeline
 export JWT_KEY="..."
 export AUTH_PASSWORD="..."
 export ADMIN_PASSWORD="..."
-export PINECONE_API_KEY="..."
-export PINECONE_INDEX="..."
+export QDRANT_URL="..."             # e.g. https://xxx.cloud.qdrant.io:6333
+export QDRANT_API_KEY="..."
+export QDRANT_COLLECTION="..."
 export NOTION_INTEGRATION_TOKEN="..."
+export CRON_SECRET="..."            # authorizes the daily Qdrant keepalive cron
 # export QDRANT_VECTOR_NAME="default"  # If Qdrant errors with "Not existing vector name" (named-vector collection)
 # Optional RAG tuning (see CLAUDE.md)
 # export RAG_DEBUG=1             # Verbose RAG logs outside dev
 # export RAG_REFLECTION=1        # PostHog structured audit of replies vs context
 # export RAG_ROUTER=0            # Disable pre-turn supplemental vector search planner
+# export RERANK_ENABLED=0        # Disable LLM reranking of retrieved chunks
+# export SELF_CRITIQUE=0         # Disable pre-generation context sufficiency check
 ```
 
-The auth password is what site visitors must use to gain access to protected case studies. The admin password is used for access to the admin tools. Right now this include the triggers for embedding new data to the vector DB.
+The auth password is what site visitors must use to gain access to protected case studies. The admin password is used for access to the admin tools — that's where the triggers live for embedding new data into the vector DB (site crawl, Notion, local files, and iMessage).
 
-At the time of writing, HuntBot supports the functions that the LLM can call:
+At the time of writing, HuntBot's chat endpoint gives the LLM five tools to call:
 
 ```bash
 #Minimize chat
@@ -63,15 +67,15 @@ At the time of writing, HuntBot supports the functions that the LLM can call:
 
 {
 	"name":  "route_to_page",
-	"description":  "Route the user to a new url on the site. Only route to one at a time.",
+	"description":  "Navigate the user to a page on Hunter's site. Only call this with an exact URL copied verbatim from the approved list in the system prompt.",
 	"parameters":  {
 		"type":  "object",
 		"properties":  {
 			"page":  {
 				"type":  "string",
 				"enum": [
-				"/case-studies/slug",
-				"/case-studies/slug-2",
+				"/case-studies/gathers",
+				"/case-studies/karoo2",
 				...
 				]
 			}
@@ -83,33 +87,28 @@ At the time of writing, HuntBot supports the functions that the LLM can call:
 }
 ```
 
-Currently, the enum values that route_to_page can return are hardcoded to individual routes on the frontend. You can find the corresponding types for both functions and the enum [here.](packages/huntbot-frontend/src/lib/types.d.ts) This is a temporary solution, but in the future it would be ideal to dynamically populate the assistant's possible routes via a Prismic API call.
+Three more tools round things out: `ask_clarifying_question` (asks one focused follow-up when a query is too vague to answer well), `capture_lead_intent` (fires when a visitor signals they want to hire or collaborate with Hunter, and surfaces contact options), and `search_knowledge_base` (lets the model run an extra targeted vector search mid-conversation if the pre-run context wasn't enough).
+
+Currently, the enum values that `route_to_page` can return come from a live Prismic API call (`getAvailableRoutes()` in `src/lib/server/site-nav-routes.ts`), so new case studies and projects show up automatically without a code change. Static routes are still hardcoded in the `SupportedRoutes` enum — you can find it and the rest of the shared types [here](src/lib/types.ts).
 
 ## RAG Pipeline
 
 At the time of this commit, the pipeline used for the LLM is as follows:
 
 - User submits a message in the client
-- The /api/chat endpoint receives the message
-  1. Initialize a new OpenAI client
-  2. Reformat the user's message based on the past few messages in the chat history as context
-     - If the user asks a specific question with no ambiguity, the vector search is generally good at returning relevant context. Example: `"What engineering classes did Hunter take while at USC?"`
-     - If the user uses an unclear antecedent, or doesn't provide relevant context in the question itself, the vector search generally won't return relevant context. Example: `"What classes did he take?"`
-     - Without reformatting the message, ambiguous questions can't create an embedding that contains relevant information. So, we add a step to call an LLM once more to rewrite the question with complete context. To do so, we feed it the previous few messages in the chat history, and return a reformatted response. Via experimentation, too much history will make the LLM lose "focus", but too little won't add the appropriate context. Something in the range of 3-5 past messages seems to work, including the previous LLM responses.
-     - At the time of writing, I'm using the gpt-3.5-turbo model. GPT 4 turbo works well, but the api costs are high (~20x in this case)
-  3. Retrieve context from the vector DB based on the reformatted user message
-     - With the previous reformatted user message as input, we create an embedding of the question.
-     - We perform a vector search in the vector DB for nearby entries.
-     - We get the top results, and filter out by our set minimum score (throw away entries that aren't similar enough)
-     - Reformat the entries as a single string
-  4. Submit full chat history and retrieved context in an api call to the LLM
-     - At the time of writing, I'm using the gpt-3.5-turbo model. GPT 4 turbo works well, but the api costs are high (~20x in this case)
-  5. Return a streaming response to the client via the Vercel AI SDK
-  6. Handle any function calls returned from the LLM via the Vercel AI SDK's function handler callback
+- The `/api/chat` endpoint receives the message
+  1. Rewrite the user's message into a standalone search query using the recent chat history as context, then run HyDE (Hypothetical Document Embeddings) — generate a brief hypothetical answer and concatenate it with the query — to improve vector similarity for vague questions like `"what classes did he take?"` instead of `"what engineering classes did Hunter take while at USC?"`
+  2. Embed the rewritten query and search Qdrant across parallel branches (main site content, iMessage if enabled, and an entity-filtered branch when the message mentions a specific person), over-retrieving 16 chunks per branch
+  3. LLM-rerank the over-retrieved candidates down to the top 5 using `gpt-5.6-luna`, then apply a source-diversity filter (max 2 chunks per source) so one document can't dominate the context
+  4. A structured "RAG router" call (`gpt-5.6-terra`) decides whether the initial context is thin or off-topic and, if so, plans up to 3 more targeted vector searches before generation even starts
+  5. If context still comes back empty or nearly empty after all that, a broader fallback search runs as a last resort
+  6. Submit the full chat history plus all retrieved context to `gpt-5.6-terra` with tool definitions via the Vercel AI SDK's `streamText`
+  7. Stream the response back to the client, and handle any function calls returned from the LLM via the AI SDK's tool-call handling
 
-Any step in this pipeline is subject to change. I'm looking into other approaches for better responses. Other things on my list include:
+Any step in this pipeline is subject to change. Things on my list:
 
-- Multi Query Retreival - Create several reformatted responses to perform vector search against. Helps find multiple separate relevant pieces of information form a query.
-- Multi Vector Retreival - I'm particularly interested in creating embeddings for the summary of a document as well as the embedding of the content itself.
-- Indexing - Help manage the entries in my vector db and delete duplicates
-- Generally clean up dataset - Most embeddings were from raw data I tossed over the fence. Since it's from different sources, it would be nice to add metadata where appropriate. This could help create more focused context and enable self-querying retreival, where the LLM writes a metadata filter.
+- Indexing — help manage the entries in my vector db and delete duplicates
+- Generally clean up dataset — most embeddings were from raw data I tossed over the fence. Since it's from different sources, it would be nice to add more metadata where appropriate, to enable more focused context and self-querying retrieval, where the LLM writes its own metadata filter.
+- Better observability into which retrieval branch (site / Notion / iMessage) actually ends up grounding a given answer, beyond what LangSmith traces already show.
+
+See `CLAUDE.md` for the full technical reference — directory structure, all env vars, embedding sources, and conventions for extending the codebase.
