@@ -16,7 +16,7 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants) |
 | CMS | Prismic (Slice Machine) |
-| LLM | OpenAI `gpt-3.5-turbo` via the `openai` npm package |
+| LLM | OpenAI `gpt-5.6-terra` via the `openai` npm package |
 | Vector DB | Qdrant Cloud (free tier, 1GB) |
 | Embeddings | OpenAI `text-embedding-3-small`, 512 dimensions |
 | RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`) |
@@ -181,15 +181,15 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 2. Server uses `getContext()` (`src/lib/utilities/context.ts`) to retrieve relevant docs:
    - **Query rewrite + HyDE expansion** (`src/lib/rewrite.ts`): standalone search query via AI SDK `generateText`, then HyDE (Hypothetical Document Embeddings) generates a brief hypothetical answer and concatenates it with the query to improve vector similarity for vague questions
    - Embeds with `text-embedding-3-small` (512 dims) and queries Qdrant (`k=16` per branch: main site + optional iMessage + optional entity-filtered search), deduped and ordered by vector score
-   - **LLM reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored by GPT-4.1-mini for relevance and reduced to top 5. Disable with `RERANK_ENABLED=0`.
+   - **LLM reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored by GPT-5.6 Luna for relevance and reduced to top 5. Disable with `RERANK_ENABLED=0`.
    - **Source diversity filter**: max 2 chunks per unique source URL to avoid redundant context
    - **Entity-aware search**: queries mentioning a person name trigger an additional Qdrant search filtered on `metadata.contact` / `metadata.participants`
    - CONTEXT chunks are labeled with `[CHUNK-...]` ids for grounding
    - **Qdrant vector naming**: Retrieval uses `src/lib/server/qdrant-search.ts`, which matches LangChain’s embed shape. It reads the collection config and uses a **named** vector (`{ name, vector }`) when the collection defines named dense vectors (common for Qdrant Cloud / dashboard-created collections). Set `QDRANT_VECTOR_NAME` if auto-detection picks the wrong vector on multi-vector collections.
-3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-4o-mini` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
+3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-5.6-terra` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
 4. **Context sufficiency check**: if CONTEXT has zero or one chunk, a fallback `searchKnowledgeBase` call appends broader results. Disable with `SELF_CRITIQUE=0`.
 5. Retrieved context (including any pre-run and fallback searches) is injected into the system prompt alongside the full message history
-6. OpenAI `gpt-4.1-mini` is called with streaming + tools (Vercel AI SDK `streamText`, `temperature: 0`)
+6. OpenAI `gpt-5.6-terra` is called with streaming + tools (Vercel AI SDK `streamText`, `temperature: 0`)
 7. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`
 8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
 
