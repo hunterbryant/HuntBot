@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
+import { CALENDAR_TIMEZONE, formatEventTime, getCalendarEvents } from '$lib/server/calendar';
 import {
 	getRecentCommits,
 	getRepoInfo,
@@ -371,15 +372,46 @@ export const POST: RequestHandler = async ({ request }) => {
 							if (!results || results.length === 0) return `No code matches found for "${query}".`;
 							return results.map((r) => r.path).join('\n');
 						}
+					}),
+					get_calendar_events: tool({
+						description:
+							'Get Hunter\'s calendar events for a date or date range, to answer questions like "what was Hunter up to on March 3rd" or "what does he have going on this week". Resolve relative dates ("yesterday", "next Tuesday") yourself using today\'s date from the live details before calling — this tool only accepts exact dates. Returns event titles and times only, nothing else.',
+						inputSchema: z.object({
+							date: z.string().describe('Start date, YYYY-MM-DD.'),
+							end_date: z
+								.string()
+								.optional()
+								.describe('End date, YYYY-MM-DD, inclusive. Omit for a single day.')
+						}),
+						execute: async ({ date, end_date }) => {
+							reportStatus('Checking the calendar…');
+							logRag('tool get_calendar_events', { date, end_date });
+							const events = await getCalendarEvents(date, end_date);
+							if (events === null) return 'Calendar is not connected.';
+							if (events.length === 0) {
+								const range = end_date && end_date !== date ? `${date} to ${end_date}` : date;
+								return `No events found for ${range}.`;
+							}
+							return events
+								.map((e) =>
+									e.allDay
+										? `${e.title} (all day)`
+										: `${formatEventTime(e.start)}–${formatEventTime(e.end)} ${e.title}`
+								)
+								.join('\n');
+						}
 					})
 				};
 
 				const today = new Date().toLocaleDateString('en-US', {
+					timeZone: CALENDAR_TIMEZONE,
 					weekday: 'long',
 					year: 'numeric',
 					month: 'long',
 					day: 'numeric'
 				});
+				// Explicit YYYY-MM-DD, same timezone as the calendar tool, for reliable relative-date math.
+				const todayISO = new Date().toLocaleDateString('en-CA', { timeZone: CALENDAR_TIMEZONE });
 
 				// Build a human-readable page label from the current URL path
 				const pageSlug = currentPage.split('/').pop() || '';
@@ -512,6 +544,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces contact links automatically, so don't repeat contact info in your message.
 - Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code only for technical/meta questions about how HuntBot itself is built or what's changed in its code recently — never for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
+- Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
 
 ## Navigation
 When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
@@ -536,7 +569,7 @@ Date ranges and message counts in iMessage labels tell you how recent and extens
 
 ## Live details (turn-specific — everything above this line is static)
 
-Today is ${today}. Use CONTEXT dates when present; prefer specific months/years over vague "recently".
+Today is ${today} (${todayISO}). Use CONTEXT dates when present; prefer specific months/years over vague "recently". When calling get_calendar_events with a relative date ("yesterday", "next Tuesday"), compute it from ${todayISO}.
 
 The visitor is on: ${pageContext}. On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
 
