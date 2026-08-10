@@ -228,6 +228,7 @@ The Qdrant vector collection is the knowledge base for HuntBot. It is populated 
 | `GET /api/embed/notion-url` | Notion pages via API | Uses `NOTION_INTEGRATION_TOKEN` |
 | `GET /api/embed/notion-file` | Local `local_files/notion_export/` directory | Dev-only button in admin UI |
 | `GET /api/embed/texts` | Local text/CSV files | Dev-only button in admin UI |
+| `GET /api/embed/github` | HuntBot's own repo docs (`CLAUDE.md`, `README.md` on `main`) | Fetched unauthenticated from `raw.githubusercontent.com` (public repo) — no token needed. Lets HuntBot answer technical questions about its own architecture/tech stack. |
 
 All embedders use:
 - Model: `text-embedding-3-small`
