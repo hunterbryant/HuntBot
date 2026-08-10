@@ -6,6 +6,7 @@
 	export let isLast: boolean = false;
 	export let onRetry: (() => void) | null = null;
 	export let animate: boolean = true;
+	export let sources: { url: string; title?: string }[] = [];
 
 	$: updatedVal = value;
 
@@ -183,6 +184,23 @@
 				in:slide|global={{ duration: 400 }}
 				use:streamReveal={value}
 			></p>
+			{#if sources.length > 0}
+				<p
+					class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-stone-400 dark:text-stone-600"
+					transition:fade={{ duration: 150 }}
+				>
+					{#each sources as source (source.url)}
+						<a
+							href={source.url}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="underline decoration-dotted underline-offset-2 hover:text-stone-600 dark:hover:text-stone-400"
+						>
+							{source.title || source.url}
+						</a>
+					{/each}
+				</p>
+			{/if}
 			{#if isLast && !retried}
 				<button
 					on:click={handleRetry}

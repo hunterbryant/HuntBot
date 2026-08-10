@@ -27,6 +27,7 @@
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		getMessageText,
+		getMessageSources,
 		streamingAssistantHasText,
 		getStreamingStatus,
 		SESSION_ID
@@ -563,6 +564,7 @@
 							isLast={i === $messages.length - 1 && !$isLoading}
 							onRetry={retryLastResponse}
 							animate={shouldAnimate(message.id)}
+							sources={getMessageSources(message)}
 						/>
 					{:else if (message.role as string) === 'data'}
 						<ActionMessage value={message as unknown as FunctionMessage} />
