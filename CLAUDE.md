@@ -207,7 +207,7 @@ The LLM can invoke two functions:
 
 All valid route destinations are defined in `src/lib/types.ts` as the `SupportedRoutes` enum. **When adding new pages to the site, add the route to `SupportedRoutes` so HuntBot can navigate to it.**
 
-Beyond the two client-visible actions above, the model also has server-executed tools it can call mid-turn (not surfaced in the UI as actions): `search_knowledge_base` (additional Qdrant lookups) and `read_github_file` (`src/lib/server/github-repo.ts`) — reads a file live from the `hunterbryant/huntbot` repo via unauthenticated `raw.githubusercontent.com`, defaulting to `CLAUDE.md`, so HuntBot can answer technical questions about its own architecture/tech stack without a separate embedding/re-indexing step.
+Beyond the two client-visible actions above, the model also has server-executed tools it can call mid-turn (not surfaced in the UI as actions): `search_knowledge_base` (additional Qdrant lookups) and two GitHub self-awareness tools backed by `src/lib/server/github-repo.ts` — `read_github_file` reads a file live from the `hunterbryant/huntbot` repo via unauthenticated `raw.githubusercontent.com` (defaulting to `CLAUDE.md`), and `get_recent_commits` fetches the latest commits (message/author/date) via GitHub's unauthenticated REST API (`api.github.com`, ~60 req/hr limit). Together they let HuntBot answer technical questions about its own architecture and recent changes without a separate embedding/re-indexing step.
 
 ### Client-side chat state (`MessageStore.ts`)
 

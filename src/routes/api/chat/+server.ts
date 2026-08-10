@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { env as publicEnv } from '$env/dynamic/public';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
-import { readRepoFile } from '$lib/server/github-repo';
+import { getRecentCommits, readRepoFile } from '$lib/server/github-repo';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
@@ -305,6 +305,27 @@ export const POST: RequestHandler = async ({ request }) => {
 							if (!file) return `No file found at "${path}" in the repo.`;
 							return file.truncated ? `${file.content}\n\n[...truncated]` : file.content;
 						}
+					}),
+					get_recent_commits: tool({
+						description:
+							'Get the most recent commits to Hunter\'s HuntBot GitHub repo (hunterbryant/huntbot, main branch) — message, author, and date. Use this for questions like "what was the last commit" or "what have you been working on in the code lately".',
+						inputSchema: z.object({
+							limit: z
+								.number()
+								.int()
+								.min(1)
+								.max(10)
+								.default(5)
+								.describe('How many recent commits to fetch.')
+						}),
+						execute: async ({ limit }) => {
+							logRag('tool get_recent_commits', { limit });
+							const commits = await getRecentCommits(limit);
+							if (!commits || commits.length === 0) return 'Could not fetch recent commits.';
+							return commits
+								.map((c) => `${c.sha} — ${c.message} (${c.author}, ${c.date})`)
+								.join('\n');
+						}
 					})
 				};
 
@@ -445,7 +466,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces contact links automatically, so don't repeat contact info in your message.
-- Use read_github_file only for technical/meta questions about how HuntBot itself is built (tech stack, RAG pipeline, architecture) — never for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code or file contents into a reply.
+- Use read_github_file and get_recent_commits only for technical/meta questions about how HuntBot itself is built or what's changed in its code recently — never for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit lists verbatim into a reply.
 
 ## Navigation
 When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
