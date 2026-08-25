@@ -128,7 +128,11 @@
 				>
 					<PrismicImage
 						field={caseStudy.data.highlight_image}
-						imgixParams={caseStudy.data.title === 'Protected' ? { blur: 2000 } : {}}
+						imgixParams={caseStudy.data.title === 'Protected'
+							? { blur: 2000, auto: ['format', 'compress'] }
+							: { auto: ['format', 'compress'] }}
+						sizes="(min-width: 1024px) 22vw, (min-width: 640px) 33vw, 100vw"
+						loading="lazy"
 						class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD]  transition-transform duration-500 hover:scale-110 {caseStudy
 							.data.image_fill
 							? 'object-cover'

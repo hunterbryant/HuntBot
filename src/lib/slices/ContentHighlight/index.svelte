@@ -138,8 +138,11 @@
 		{#if slice.variation == 'default'}
 			<PrismicImage
 				field={project.highlight_image}
-				class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] transition-transform duration-500 hover:scale-110 
+				class="z-0 m-auto block h-full w-full transform-gpu bg-[#DDDDDD] transition-transform duration-500 hover:scale-110
 				{project.image_fill ? 'object-cover' : 'object-contain'}"
+				imgixParams={{ auto: ['format', 'compress'] }}
+				sizes="(min-width: 640px) 50vw, 100vw"
+				loading="lazy"
 			/>
 		{:else}
 			<canvas

@@ -25,6 +25,9 @@
 		>
 			<PrismicImage
 				field={slice.primary.image}
+				imgixParams={{ auto: ['format', 'compress'] }}
+				sizes="(min-width: 640px) 40vw, 100vw"
+				loading="lazy"
 				class="rounded border border-black/10 dark:border-white/10 {slice.primary.caption
 					? 'mb-0'
 					: 'mb-4'}"
@@ -46,6 +49,9 @@
 					>
 						<PrismicImage
 							field={item.image}
+							imgixParams={{ auto: ['format', 'compress'] }}
+							sizes="90vw"
+							loading="lazy"
 							class="h-full max-h-56 w-full overflow-hidden rounded border border-black/10 object-cover  sm:max-h-96 dark:border-white/10 "
 						/>
 						<figcaption

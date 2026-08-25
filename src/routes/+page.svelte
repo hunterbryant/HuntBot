@@ -75,6 +75,10 @@
 				<PrismicImage
 					field={data.page.data.landing_image}
 					class="m-auto block h-full w-full object-cover"
+					imgixParams={{ auto: ['format', 'compress'] }}
+					sizes="(min-width: 640px) 50vw, 100vw"
+					loading="eager"
+					fetchpriority="high"
 				/>
 			</div>
 		</div>

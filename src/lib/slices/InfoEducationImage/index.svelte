@@ -39,6 +39,12 @@
 	<div
 		class="col-span-full col-start-1 row-span-1 row-start-1 mb-12 flex flex-col gap-8 sm:col-span-3 sm:col-start-4 md:col-start-auto md:row-span-2 md:row-start-1 md:mb-0"
 	>
-		<PrismicImage field={slice.primary.image} class="h-full rounded object-cover" />
+		<PrismicImage
+			field={slice.primary.image}
+			imgixParams={{ auto: ['format', 'compress'] }}
+			sizes="(min-width: 640px) 50vw, 100vw"
+			loading="lazy"
+			class="h-full rounded object-cover"
+		/>
 	</div>
 </section>

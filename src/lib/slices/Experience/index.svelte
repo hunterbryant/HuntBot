@@ -47,7 +47,11 @@
 					<div
 						class="flex flex-row items-center justify-stretch gap-4 lg:flex-col lg:items-start [&>img]:opacity-90 dark:[&>img]:invert"
 					>
-						<PrismicImage field={typeAffliation(item)?.data?.logo} />
+						<PrismicImage
+							field={typeAffliation(item)?.data?.logo}
+							imgixParams={{ auto: ['format', 'compress'] }}
+							loading="lazy"
+						/>
 						<div>
 							<h3 class="font-bold leading-tight text-stone-800 dark:text-stone-200">
 								{item.title}
