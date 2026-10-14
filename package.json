@@ -48,6 +48,7 @@
 	},
 	"type": "module",
 	"dependencies": {
+		"@ai-sdk/cohere": "^4.0.60",
 		"@ai-sdk/openai": "^4.0.93",
 		"@ai-sdk/svelte": "5.0.140",
 		"@langchain/community": "^0.0.35",

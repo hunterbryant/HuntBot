@@ -60,7 +60,7 @@ HuntBot/
 │   │   │   └── navstore.ts           # Svelte stores for nav/chat state
 │   │   ├── server/
 │   │   │   ├── auth.ts               # JWT cookie verification helper
-│   │   │   ├── rerank.ts             # Chunk reranking via OpenAI Decisions API (over-retrieve → rerank → top K)
+│   │   │   ├── rerank.ts             # Chunk reranking — Cohere Rerank, or OpenAI Decisions without a Cohere key
 │   │   │   ├── query-lane.ts         # Adaptive-compute lane classifier (quick / standard / deep)
 │   │   │   ├── timing.ts             # Per-request stage timer for latency logging
 │   │   │   ├── rag-router.ts         # Supplemental search planning via structured LLM call
@@ -175,6 +175,7 @@ GOOGLE_CALENDAR_TIMEZONE=      # Optional: IANA timezone for resolving "today"/r
 RAG_DEBUG=               # Set to 1 to log RAG / agent tool steps in production (dev logs them by default)
 RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_reflection` event: thinking, citations, confidence)
 RAG_ROUTER=              # Set to 0 to skip the pre-turn structured router (saves one small LLM call per message; default = router on)
+COHERE_API_KEY=          # Cohere API key for Rerank (rerank-v4.0-fast). Optional — without it, reranking uses the OpenAI Decisions API instead
 RERANK_ENABLED=          # Set to 0 to disable reranking of retrieved chunks (default: on). When enabled, 16 chunks are fetched and reranked to top 5.
 SELF_CRITIQUE=           # Set to 0 to disable pre-generation context sufficiency check and fallback search (default: on)
 QUERY_LANES=             # Set to 0 to disable adaptive-compute lanes and send every message down the standard pipeline (default: on)
@@ -193,7 +194,7 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 2. Server uses `getContext()` (`src/lib/utilities/context.ts`) to retrieve relevant docs:
    - **Query rewrite + HyDE expansion** (`src/lib/rewrite.ts`): standalone search query via AI SDK `generateText`, then HyDE (Hypothetical Document Embeddings) generates a brief hypothetical answer and concatenates it with the query to improve vector similarity for vague questions
    - Embeds with `text-embedding-3-small` (512 dims) — once per query, shared across branches — and queries Qdrant (`k=16` per branch: main site + optional iMessage + optional entity-filtered search), deduped and ordered by vector score
-   - **Reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored with OpenAI's Decisions API via AI SDK 7's `experimental_decide` + `openai.decisionModel('gpt-6-luna')` — one `score` question per chunk on a 4-level relevance rubric, answered in a single call, returning probability-weighted fractional scores — and reduced to top 5. The API is experimental; any failure falls back to vector-score order. Disable with `RERANK_ENABLED=0`.
+   - **Reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are reduced to the top 5. With `COHERE_API_KEY` set, this uses Cohere's dedicated `rerank-v4.0-fast` cross-encoder through the AI SDK `rerank()` helper (`@ai-sdk/cohere`) — roughly 0.1–0.6s per call, with a 3s timeout. Without a Cohere key it uses OpenAI's experimental Decisions API (`experimental_decide` + `openai.decisionModel('gpt-6-luna')`, one `score` question per chunk). Either way, any failure falls back to vector-score order. The quick lane skips reranking. Disable with `RERANK_ENABLED=0`.
    - **Source diversity filter**: max 2 chunks per unique source URL to avoid redundant context
    - **Entity-aware search**: queries mentioning a person name trigger an additional Qdrant search filtered on `metadata.contact` / `metadata.participants`
    - CONTEXT chunks are labeled with `[CHUNK-...]` ids for grounding

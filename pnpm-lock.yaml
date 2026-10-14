@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@ai-sdk/cohere':
+        specifier: ^4.0.60
+        version: 4.0.60(zod@4.3.6)
       '@ai-sdk/openai':
         specifier: ^4.0.93
         version: 4.0.93(zod@4.3.6)
@@ -200,6 +203,12 @@ importers:
         version: 8.0.1(@types/node@25.3.5)(jiti@1.21.7)(yaml@2.8.2)
 
 packages:
+
+  '@ai-sdk/cohere@4.0.60':
+    resolution: {integrity: sha512-5TRvpHPIIqoVSrJ4HshhZ+kCHqRnHBJETS7kfcjpWPGOYhoUvrAJDke+RVytLku+DFmoqs/ZG+j8uG1u0KOaYA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
 
   '@ai-sdk/gateway@4.0.113':
     resolution: {integrity: sha512-fYov5+sH1A20/eN1PaL5z8bZ9RUq0CcL9yAsAhCHz/qUCKliDOg9HXjNYzOUlH6o21lIrp/aKQc8QLGkEEZGlQ==}
@@ -4872,6 +4881,12 @@ packages:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
 
 snapshots:
+
+  '@ai-sdk/cohere@4.0.60(zod@4.3.6)':
+    dependencies:
+      '@ai-sdk/provider': 4.0.27
+      '@ai-sdk/provider-utils': 5.0.59(zod@4.3.6)
+      zod: 4.3.6
 
   '@ai-sdk/gateway@4.0.113(zod@4.3.6)':
     dependencies:
