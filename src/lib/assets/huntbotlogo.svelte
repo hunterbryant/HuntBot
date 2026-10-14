@@ -1,7 +1,6 @@
 <script lang="ts">
-	// When true, HuntBot looks like it's working something out: brows sketch in and the smile
-	// flattens while the eyes scan back and forth like they're reading, then it glances up with
-	// a raised brow and a wavy "hmm" mouth. The line also "boils" like a hand-drawn sketch being redrawn frame by
+	// When true, HuntBot looks like it's working something out: the smile flattens while the
+	// eyes drift slowly across like they're reading, then it glances up with a wavy "hmm" mouth. The line also "boils" like a hand-drawn sketch being redrawn frame by
 	// frame.
 	export let thinking = false;
 
@@ -62,17 +61,7 @@
 			</g>
 			<path class="mouth fill-current" d="M19.7787 26.769C19.7131 26.848 19.6409 27.1117 19.6183 27.3549C19.5854 27.7083 19.6211 27.8617 19.7964 28.1187C20.0781 28.5318 21.1206 29.0989 21.877 29.2504C22.1939 29.314 22.7696 29.441 23.1563 29.5329C23.6097 29.6405 24.4089 29.7173 25.4063 29.7489C27.5985 29.8184 27.8013 29.6992 27.8583 28.3093C27.8901 27.5365 27.8862 27.5199 27.6415 27.4008C27.2927 27.2311 26.9706 27.3758 26.6633 27.8402L26.4126 28.219H25.1656C24.4797 28.219 23.8052 28.176 23.6669 28.1233C23.5284 28.0707 23.0299 27.9622 22.5591 27.8822C21.5067 27.7036 20.7188 27.3712 20.7188 27.1059C20.7188 26.6877 20.0462 26.4466 19.7787 26.769Z" />
 			{#if thinking}
-				<g
-					class="brows"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="0.85"
-					stroke-linecap="round"
-				>
-					<path class="brow brow-left" pathLength="1" d="M19.7 21.2 Q20.9 20.5 22.1 20.9" />
-					<path class="brow brow-right" pathLength="1" d="M25 21.3 Q26.3 20.7 27.5 21.4" />
-				</g>
-				<!-- Stand-ins for the smile, which reads as scheming next to a focused brow. -->
+				<!-- Stand-ins for the smile, which looks smug on a face that is meant to be concentrating. -->
 				<g
 					class="thinking-mouths"
 					fill="none"
@@ -89,13 +78,13 @@
 </svg>
 
 <style>
-	/* One slow beat: furrow and scan like it's reading, glance up and mull it over, repeat. */
+	/* One slow beat: read across, glance up and mull it over, repeat. */
 	.thinking .head,
 	.thinking .eyes,
 	.thinking .eye,
 	.thinking .mouth-flat,
 	.thinking .mouth-hmm {
-		animation-duration: 5s;
+		animation-duration: 7s;
 		animation-iteration-count: infinite;
 		animation-timing-function: ease-in-out;
 	}
@@ -129,31 +118,6 @@
 		animation-name: mouth-hmm;
 	}
 
-	/* Brows get sketched in once, then keep furrowing and raising with the loop. */
-	.thinking .brow {
-		transform-box: fill-box;
-		transform-origin: center;
-		stroke-dasharray: 1;
-		animation:
-			sketch-in 0.5s ease-out both,
-			brow-left 5s ease-in-out infinite;
-	}
-
-	.thinking .brow-right {
-		animation:
-			sketch-in 0.5s 0.15s ease-out both,
-			brow-right 5s ease-in-out infinite;
-	}
-
-	@keyframes sketch-in {
-		from {
-			stroke-dashoffset: 1;
-		}
-		to {
-			stroke-dashoffset: 0;
-		}
-	}
-
 	/* Slight lean in while reading, then tip back the other way to mull it over. */
 	@keyframes ponder {
 		0%,
@@ -170,38 +134,26 @@
 		}
 	}
 
-	/* Two lines of reading: hop left to right, sweep back, hop again. Then look up and away. */
+	/* Drift slowly across a line like it's reading, then look up and away. */
 	@keyframes scan {
 		0%,
 		100% {
 			transform: translate(0, 0);
 		}
-		6%,
-		12% {
-			transform: translate(-1.1px, -0.2px);
-		}
-		16%,
+		10%,
 		22% {
-			transform: translate(0, -0.2px);
+			transform: translate(-1px, 0);
 		}
-		26%,
-		32% {
-			transform: translate(1.1px, -0.2px);
-		}
-		36%,
+		32%,
 		40% {
-			transform: translate(-1.1px, 0.4px);
+			transform: translate(0, 0);
 		}
-		44%,
-		48% {
-			transform: translate(0, 0.4px);
-		}
-		52%,
+		50%,
 		58% {
-			transform: translate(1.1px, 0.4px);
+			transform: translate(1px, 0);
 		}
-		66%,
-		90% {
+		68%,
+		88% {
 			transform: translate(1.3px, -0.9px);
 		}
 	}
@@ -248,45 +200,12 @@
 		}
 	}
 
-	/* Brows settle low and level while reading, a focused look rather than a scowl. */
-	@keyframes brow-left {
-		0%,
-		100% {
-			transform: translateY(0) rotate(0deg);
-		}
-		8%,
-		58% {
-			transform: translateY(0.4px) rotate(3deg);
-		}
-		68%,
-		90% {
-			transform: translateY(-0.3px) rotate(0deg);
-		}
-	}
-
-	/* Settles with the other brow, then pops up quizzically while mulling. */
-	@keyframes brow-right {
-		0%,
-		100% {
-			transform: translateY(0) rotate(0deg);
-		}
-		8%,
-		58% {
-			transform: translateY(0.4px) rotate(-3deg);
-		}
-		68%,
-		90% {
-			transform: translateY(-1.1px) rotate(-8deg);
-		}
-	}
-
 	@media (prefers-reduced-motion: reduce) {
 		.thinking .head,
 		.thinking .eyes,
 		.thinking .eye,
 		.thinking .mouth-flat,
-		.thinking .mouth-hmm,
-		.thinking .brow {
+		.thinking .mouth-hmm {
 			animation: none;
 		}
 	}
