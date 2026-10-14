@@ -161,7 +161,7 @@ export async function fetchSuggestions(messages: UIMessage[], currentPage: strin
 			suggestions.set(suggs);
 			if (suggs.length > 0) {
 				captureEvent('suggestions_shown', SESSION_ID, {
-					suggestion_type: 'post_message',
+					suggestion_type: messages.some((m) => m.role === 'user') ? 'post_message' : 'starter',
 					suggestions: suggs,
 					current_page: currentPage,
 					session_id: SESSION_ID
@@ -208,6 +208,17 @@ export function getMessageSources(message: UIMessage): { url: string; title?: st
 		}
 	}
 	return sources;
+}
+
+/** Closest site pages the server attached to a reply that came up empty (`data-related` part). */
+export function getMessageRelated(message: UIMessage): { path: string; title: string }[] {
+	for (const p of message.parts) {
+		if (p.type === 'data-related') {
+			const pages = (p as { data?: { pages?: { path: string; title: string }[] } }).data?.pages;
+			if (Array.isArray(pages)) return pages;
+		}
+	}
+	return [];
 }
 
 /** True once the in-flight assistant reply has any visible text (hides loading placeholder while still streaming). */

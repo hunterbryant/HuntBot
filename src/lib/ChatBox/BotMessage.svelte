@@ -1,12 +1,17 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide, fade } from 'svelte/transition';
+	import { page } from '$app/stores';
+	import { captureEvent } from '$lib/analytics';
+	import { SESSION_ID } from './MessageStore.svelte';
 
 	export let value: string;
 	export let isLast: boolean = false;
 	export let onRetry: (() => void) | null = null;
 	export let animate: boolean = true;
 	export let sources: { url: string; title?: string }[] = [];
+	// Closest site pages, attached by the server when the reply couldn't answer the question.
+	export let related: { path: string; title: string }[] = [];
 
 	$: updatedVal = value;
 
@@ -184,7 +189,26 @@
 				in:slide|global={{ duration: 400 }}
 				use:streamReveal={value}
 			></p>
-			{#if sources.length > 0}
+			{#if related.length > 0}
+				<!-- On a miss these replace the source links: the reply didn't draw on those pages. -->
+				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
+					{#each related as relatedPage (relatedPage.path)}
+						<a
+							href={relatedPage.path}
+							on:click={() =>
+								captureEvent('related_page_clicked', SESSION_ID, {
+									session_id: SESSION_ID,
+									current_page: $page.url.pathname,
+									related_page: relatedPage.path
+								})}
+							class="inline-flex items-center gap-1 rounded-lg border border-stone-200 px-2.5 py-1.5 text-sm text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mud-600 dark:border-stone-700 dark:text-stone-400 dark:hover:border-stone-600 dark:hover:bg-stone-900/40"
+						>
+							{relatedPage.title}
+							<span aria-hidden="true">→</span>
+						</a>
+					{/each}
+				</p>
+			{:else if sources.length > 0}
 				<p
 					class="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-stone-400 dark:text-stone-600"
 					transition:fade={{ duration: 150 }}

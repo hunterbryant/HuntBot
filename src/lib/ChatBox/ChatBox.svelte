@@ -28,6 +28,7 @@
 		triggerProactiveOpener,
 		getMessageText,
 		getMessageSources,
+		getMessageRelated,
 		streamingAssistantHasText,
 		getStreamingStatus,
 		SESSION_ID
@@ -114,23 +115,26 @@
 		}
 	}
 
-	// Active suggestions to display.
+	// Active suggestions to display, tagged with where they came from so clicks can be
+	// attributed (suggestions_shown already carries the same suggestion_type).
 	// Pre-conversation: hover > scroll > default.
 	// Once a conversation is underway, post-response suggestions ($sugg) take
 	// priority so they aren't displaced by stale hover/scroll context fetches.
+	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll';
+	type ActiveSuggestions = { items: string[]; type: SuggestionType | null };
 	const activeSuggestions = derived(
 		[messages, hoverSuggestions, scrollSuggestions, suggestions],
-		([$msgs, $hover, $scroll, $sugg]) => {
+		([$msgs, $hover, $scroll, $sugg]): ActiveSuggestions => {
 			const hasUser = $msgs.some((m) => m.role === 'user');
-			if (!readyForSuggestions && !hasUser) return [];
+			if (!readyForSuggestions && !hasUser) return { items: [], type: null };
 			if (hasUser) {
-				if ($sugg.length > 0) return $sugg;
-				if ($hover.length > 0) return $hover;
-				return [];
+				if ($sugg.length > 0) return { items: $sugg, type: 'post_message' };
+				if ($hover.length > 0) return { items: $hover, type: 'hover' };
+				return { items: [], type: null };
 			}
-			if ($hover.length > 0) return $hover;
-			if ($scroll.length > 0) return $scroll;
-			return $sugg;
+			if ($hover.length > 0) return { items: $hover, type: 'hover' };
+			if ($scroll.length > 0) return { items: $scroll, type: 'scroll' };
+			return { items: $sugg, type: 'starter' };
 		}
 	);
 
@@ -185,10 +189,12 @@
 	// Primary: observes h1–h4 headings and first heading within Prismic slice containers.
 	// Fallback: on heading-sparse pages (e.g. one big TextBlock), fires at scroll-depth
 	// milestones (25%, 50%, 75%) so long-form content still gets fresh suggestions.
-	// Both share the same fetch budget (max 5 per page, 3s dwell before firing).
+	// Both share the same fetch budget (max 2 per page, 3s dwell before firing). It used to be 5,
+	// which mostly churned the minimized placeholder: 556 scroll chip sets were shown over six
+	// months against a handful of clicks.
 
 	const DWELL_MS = 3000;
-	const MAX_FETCHES = 5;
+	const MAX_FETCHES = 2;
 	const MIN_OBSERVABLE = 3;
 	const DEPTH_MILESTONES = [25, 50, 75];
 
@@ -473,10 +479,11 @@
 		}, 300);
 	});
 
-	async function selectSuggestion(suggestion: string) {
+	async function selectSuggestion(suggestion: string, suggestionType: string | null) {
 		cancelContextFetches();
 		captureEvent('suggestion_clicked', SESSION_ID, {
 			suggestion_text: suggestion,
+			suggestion_type: suggestionType,
 			current_page: $page.url.pathname,
 			session_id: SESSION_ID
 		});
@@ -552,7 +559,7 @@
 				</div>
 			{/if}
 			<!-- Render the chat messages -->
-			<div class="first:pt-4 {$activeSuggestions.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
+			<div class="first:pt-4 {$activeSuggestions.items.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
 				{#each $messages as message, i}
 					<div
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
@@ -572,6 +579,7 @@
 							onRetry={retryLastResponse}
 							animate={shouldAnimate(message.id)}
 							sources={getMessageSources(message)}
+							related={getMessageRelated(message)}
 						/>
 					{:else if (message.role as string) === 'data'}
 						<ActionMessage value={message as unknown as FunctionMessage} />
@@ -597,10 +605,13 @@
 	{/if}
 	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
 		<div out:slide|global={{ duration: 200, easing: cubicOut }}>
-			<ChatSuggestions suggestions={$activeSuggestions} onSelect={selectSuggestion} />
+			<ChatSuggestions
+				suggestions={$activeSuggestions.items}
+				onSelect={(s) => selectSuggestion(s, $activeSuggestions.type)}
+			/>
 		</div>
 	{/if}
 	{#if $botEngaged}
-		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} onPlaceholderSelect={selectSuggestion} />
+		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} onPlaceholderSelect={(s) => selectSuggestion(s, 'placeholder')} />
 	{/if}
 </div>

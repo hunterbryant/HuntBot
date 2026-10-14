@@ -12,10 +12,12 @@ import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/serve
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
-import { getAvailableRoutes } from '$lib/server/site-nav-routes';
+import { getAvailableRoutes, getSiteNavCatalog } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
 import { UserRole } from '$lib/types';
 import {
+	embedQueryText,
+	findRelatedSitePaths,
 	getContext,
 	getSitePageText,
 	searchKnowledgeBase,
@@ -74,6 +76,19 @@ const CLIENT_TOOL_NAMES = new Set([
 ]);
 
 type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
+
+// Replies that admit HuntBot doesn't have the thing ("I don't have that", "I'm not sure from
+// what's here"). A third of logged replies looked like this, often with nowhere to go next.
+const MISS_PATTERN =
+	/\bI (?:don['’]t|do not) (?:have|see)\b|\bnot sure from\b|\bnothing (?:here )?(?:on|about)\b/i;
+const RELATED_PAGE_LIMIT = 2;
+
+/** What a client-side tool shows as the reply when the model wrote no text of its own. */
+function clientToolReplyText(tool: { name: string; input: unknown } | null): string | null {
+	const input = tool?.input as { message?: unknown; question?: unknown } | undefined;
+	const text = input?.message ?? input?.question;
+	return typeof text === 'string' && text.trim() ? text.trim() : null;
+}
 
 /** Cheap heuristic (chunk count + length) reused to decide whether the router / fallback
  *  search LLM calls are worth their round trip, without invoking a model.
@@ -182,6 +197,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				model: null as string | null,
 				visibleText: '',
 				clientTool: null as { name: string; input: unknown } | null,
+				relatedPages: [] as string[],
 				serverTools: [] as { name: string; input: unknown }[],
 				contextConfidence: null as ContextConfidence | null,
 				contextChunks: 0,
@@ -213,8 +229,10 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 							$pathname: currentPage,
 							is_admin: isAdmin,
 							user_message: lastMessageText,
-							// What the visitor actually saw, including any fallback line.
-							bot_response: turn.visibleText.trim() || null,
+							// What the visitor actually saw, including any fallback line, or the
+							// message a client-side tool (route, lead capture) showed in its place.
+							bot_response: turn.visibleText.trim() || clientToolReplyText(turn.clientTool),
+							related_pages: turn.relatedPages,
 							function_call_name: turn.clientTool?.name ?? null,
 							function_call_args: turn.clientTool ? JSON.stringify(turn.clientTool.input) : null,
 							server_tools: turn.serverTools.map((t) => t.name),
@@ -461,7 +479,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					}),
 					capture_lead_intent: tool({
 						description:
-							'Call this when the visitor signals they want to hire Hunter or collaborate on a project, or asks how to contact him or whether he\'s available. Trigger phrases include: "we\'re hiring", "looking for a designer", "want to work with you", "would love to collaborate", "open to freelance?", "open to fractional work?", "how do I reach him?", "what\'s his email?", "what kind of collaborations does he take on?". Acknowledge their interest warmly and surface contact options (the UI shows his LinkedIn and email).',
+							'Call this when the visitor signals they want to hire Hunter or collaborate on a project, asks how to contact him or whether he\'s available, or asks why they should hire him. Trigger phrases include: "we\'re hiring", "looking for a designer", "want to work with you", "would love to collaborate", "open to freelance?", "open to fractional work?", "how do I reach him?", "what\'s his email?", "what kind of collaborations does he take on?", "why should I hire him?". Answer their actual question in text first, then call this in the same response: it adds a contact card (LinkedIn and email) under your reply, it does not replace it.',
 						inputSchema: z.object({
 							intent_type: z
 								.enum(['hiring', 'collaboration', 'general'])
@@ -469,7 +487,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 							message: z
 								.string()
 								.describe(
-									'A short, warm acknowledgement of their interest (1 sentence, plain text).'
+									'Only shown if you wrote no text before calling this, so make it a real answer to what they asked (1-3 sentences, plain text), not just "thanks for your interest".'
 								)
 						})
 					}),
@@ -644,6 +662,10 @@ Partial answers are good. Hedging is OK when evidence is thin.
 ## Your role
 You are HuntBot on Hunter Bryant's portfolio. Hunter is a product designer; the site also has essays, travel, side projects, and life updates. Read the room — not everything is a case study.
 
+## Who's talking
+You are HuntBot, not Hunter. Talk about him in the third person ("Hunter", "he"), in his conversational style. Use "I" only for yourself as the bot ("I don't have that", "I run on a RAG pipeline").
+Visitors often talk to you as if you were Hunter ("how do you work?", "are you open to freelance?"). Answer about him in the third person ("He starts with..."). Never claim his work or experiences as your own: "He processed the point cloud in CloudCompare", never "I processed the point cloud".
+
 ## How Hunter talks
 
 Hunter thinks out loud. He leads with the point, then layers context and examples after. He mirrors what people say before adding his own angle. He's direct but not blunt — casual but not sloppy.
@@ -690,15 +712,16 @@ Tone shifts by context:
 - When you don't know → say it plainly, no apology tour, then offer the closest thing you do have. "I don't have that, but the Lyngen project page gets into how he built the terrain."
 
 ## Voice examples (match the ✅ style, avoid the ❌ style)
+These are Hunter's own phrasings, retold in the third person. Borrow the rhythm, not the "I".
 
-✅ Hunter: "We were in a similar boat on Square Messages — like, we were a platform team, but we also had our own feature level work. Most of our day to day was the messages inbox, but we were powering texts for Cash App, restaurants, appointments, all of that across Block."
-❌ Generic bot: "My experience at Square involved working on the Messages platform team, which was responsible for powering text messaging infrastructure across multiple Block products."
+✅ "Hunter was in a similar boat on Square Messages. Like, they were a platform team, but they also had their own feature level work. Most of the day to day was the messages inbox, but they were powering texts for Cash App, restaurants, appointments, all of that across Block."
+❌ Generic bot: "Hunter's experience at Square involved working on the Messages platform team, which was responsible for powering text messaging infrastructure across multiple Block products."
 
-✅ Hunter: "I pretty much started every review with like, this is what we're looking for. This is in play. This isn't. Sometimes it's as simple as that. Sometimes you really do have to have those conversations."
-❌ Generic bot: "I found it helpful to set clear expectations at the beginning of design reviews by defining the scope of feedback being requested."
+✅ "He pretty much starts every review with, like, this is what we're looking for. This is in play. This isn't. Sometimes it's as simple as that. Sometimes you really do have to have those conversations."
+❌ Generic bot: "He found it helpful to set clear expectations at the beginning of design reviews by defining the scope of feedback being requested."
 
-✅ Hunter: "It's fun to build things, man. And when you can build anything, is it the right thing to be building? I think that's even more true now."
-❌ Generic bot: "I enjoy the creative process of building products. It's important to ensure we're focusing our efforts on high-impact work."
+✅ "He just likes building things, man. And when you can build anything, is it the right thing to be building? He thinks that's even more true now."
+❌ Generic bot: "Hunter enjoys the creative process of building products. He believes it's important to focus efforts on high-impact work."
 
 Match Hunter's style in every response. If you catch yourself writing something that sounds like the ❌ examples, rewrite it.
 
@@ -739,7 +762,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 ## Tools
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
-- Use capture_lead_intent immediately when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces his LinkedIn and email automatically, so don't repeat contact info in your message. Never answer these with "I don't have that".
+- Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
 
@@ -752,7 +775,7 @@ The CONTEXT section may include chunks labeled "[iMessage — contact]". These a
 Important rules for iMessage context:
 - Only report what's explicitly in the iMessage chunks. Do not infer connections between separate conversations.
 - Treat it as background knowledge — don't quote messages verbatim or say "in your texts you said..."
-- Paraphrase the actual content naturally: "You've been looking at apartments in [area]" not "In a text to Sara Pink on March 5 you said..."
+- Paraphrase the actual content naturally: "He's been looking at apartments in [area]" not "In a text to Sara Pink on March 5 he said..."
 - Do not combine an iMessage chunk with facts from a different source (Notion, site content, etc.) to answer a single question — keep sources separate in your reasoning.
 - If multiple chunks from different conversations seem to conflict, prefer the most recent one
 - Never reveal other people's messages or phone numbers — only use Hunter's own words and the general topic
@@ -884,6 +907,38 @@ ${contextForModel}`;
 					}
 					writer.write(value);
 				}
+
+				// The prompt asks for a next step after "I don't have that", but bare misses kept
+				// getting through, so the server guarantees one: the closest site pages, sent as a
+				// data part the client renders as links under the reply.
+				if (producedReply && !fastPath && !turn.clientTool && MISS_PATTERN.test(turn.visibleText)) {
+					try {
+						const related = await timer.time('related', async () => {
+							// Pages retrieval already ranked for this question come first; a site-only
+							// search fills in when CONTEXT held no site pages (notes or texts only).
+							const paths = [...seenSourceUrls]
+								.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
+								.filter((path) => path !== currentPage);
+							if (paths.length < RELATED_PAGE_LIMIT) {
+								const embedding = laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+								paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
+							}
+							const { pages } = await getSiteNavCatalog();
+							const titleOf = new Map(pages.map((p) => [p.path, p.displayTitle]));
+							return [...new Set(paths)]
+								.filter((path) => path !== '/' && routableRoutes.includes(path))
+								.slice(0, RELATED_PAGE_LIMIT)
+								.map((path) => ({ path, title: titleOf.get(path) ?? path }));
+						});
+						if (related.length > 0) {
+							turn.relatedPages = related.map((p) => p.path);
+							writer.write({ type: 'data-related', data: { pages: related } });
+						}
+					} catch (err) {
+						console.warn('Related pages lookup failed:', err);
+					}
+				}
+
 				if (!producedReply) {
 					const finishReason = await Promise.resolve(result.finishReason).catch(() => 'error');
 					console.warn('Model produced an empty reply', {

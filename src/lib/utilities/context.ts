@@ -508,3 +508,46 @@ export async function searchKnowledgeBase(
 		})
 		.join('\n\n---\n\n');
 }
+
+// Public (non-iMessage) sources only: site pages plus notes. Used where results feed something
+// visitors see outside a grounded reply (chips, related-page links), so private texts never
+// steer them.
+const PUBLIC_SOURCES_FILTER = {
+	must_not: [{ key: 'metadata.source', match: { value: 'imessage' } }]
+};
+
+/**
+ * Site pages most related to a query embedding, best first, as local paths ("/projects/lyngen").
+ * Used to give a reply that came up empty somewhere concrete to go next.
+ */
+export async function findRelatedSitePaths(embedding: number[], limit = 2): Promise<string[]> {
+	const results = await searchByEmbedding(embedding, QDRANT_TOP_K, PUBLIC_SOURCES_FILTER);
+	const paths: string[] = [];
+	for (const [doc, score] of results.sort((a, b) => b[1] - a[1])) {
+		if (score < MIN_VECTOR_SCORE) break;
+		const source = doc.metadata?.source;
+		if (typeof source !== 'string' || !source.startsWith(SITE_ORIGIN)) continue;
+		const path = source.slice(SITE_ORIGIN.length).replace(/\/$/, '') || '/';
+		if (!paths.includes(path)) paths.push(path);
+		if (paths.length >= limit) break;
+	}
+	return paths;
+}
+
+/**
+ * Best vector score each query gets against the knowledge base (public sources only), in input
+ * order. A cheap answerability check: a question whose nearest chunk scores below
+ * MIN_VECTOR_SCORE is one HuntBot will almost certainly answer with "I don't have that".
+ */
+export async function bestMatchScores(queries: string[]): Promise<number[]> {
+	if (queries.length === 0) return [];
+	const embeddings = await getEmbeddings().embedDocuments(queries);
+	return Promise.all(
+		embeddings.map(async (embedding) => {
+			const [top] = await searchByEmbedding(embedding, 1, PUBLIC_SOURCES_FILTER);
+			return top ? top[1] : 0;
+		})
+	);
+}
+
+export { MIN_VECTOR_SCORE };
