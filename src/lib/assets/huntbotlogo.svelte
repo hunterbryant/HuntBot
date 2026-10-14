@@ -1,22 +1,58 @@
 <script lang="ts">
-	// When true, HuntBot strikes a "hmm" pose: head tilted, eyes up to the side, mouth pushed
-	// over, with thought bubbles rising one by one. The line also "boils" like a hand-drawn
-	// sketch being redrawn frame by frame.
-	export let thinking = false;
+	import { onDestroy, onMount } from 'svelte';
 
-	// Unique per instance so multiple avatars on the page don't share a filter.
-	const sketchId = `huntbot-sketch-${Math.random().toString(36).slice(2, 8)}`;
+	// still:    the plain avatar.
+	// sketchy:  idle. Just a slow "line boil", like a hand-drawn sketch redrawn frame by frame.
+	// thinking: working something out. The line boils a little faster, the smile flattens while
+	//           the eyes drift across like they're reading, then it glances up with a wavy
+	//           "hmm" mouth.
+	export let mode: 'still' | 'sketchy' | 'thinking' = 'still';
 
-	// Cycle the noise seed a few times a second so the wobble shifts in steps, like
-	// animation drawn on twos, rather than smoothly.
-	function boil(node: SVGFETurbulenceElement) {
+	// Change this to any new value to make HuntBot blink once, e.g. when a new suggestion shows.
+	export let blinkOn: unknown = undefined;
+
+	const BOIL_MS = { sketchy: 480, thinking: 220 };
+	const BLINK_MS = 260;
+
+	// Unique per instance so multiple avatars on the page don't share a filter. Assigned on mount
+	// so a server-rendered id can't drift from the client's after hydration.
+	let sketchId = '';
+	onMount(() => {
+		sketchId = `huntbot-sketch-${Math.random().toString(36).slice(2, 8)}`;
+	});
+
+	let blinking = false;
+	let blinkTimer: ReturnType<typeof setTimeout> | undefined;
+	let lastBlinkOn = blinkOn;
+
+	$: if (blinkOn !== lastBlinkOn) {
+		lastBlinkOn = blinkOn;
+		// Thinking already blinks on its own loop.
+		if (mode !== 'thinking') {
+			clearTimeout(blinkTimer);
+			blinking = true;
+			blinkTimer = setTimeout(() => (blinking = false), BLINK_MS);
+		}
+	}
+
+	onDestroy(() => clearTimeout(blinkTimer));
+
+	// Cycle the noise seed so the wobble shifts in steps, like animation drawn on twos, rather
+	// than smoothly.
+	function boil(node: SVGFETurbulenceElement, ms: number) {
 		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
 		let seed = 1;
-		const interval = setInterval(() => {
-			seed = (seed % 4) + 1;
-			node.setAttribute('seed', String(seed));
-		}, 220);
+		let interval: ReturnType<typeof setInterval>;
+		function start(every: number) {
+			clearInterval(interval);
+			interval = setInterval(() => {
+				seed = (seed % 4) + 1;
+				node.setAttribute('seed', String(seed));
+			}, every);
+		}
+		start(ms);
 		return {
+			update: start,
 			destroy() {
 				clearInterval(interval);
 			}
@@ -29,14 +65,15 @@
 	height="48"
 	viewBox="0 0 48 48"
 	class="h-12 flex-none basis-12 fill-current"
-	class:thinking
+	class:thinking={mode === 'thinking'}
+	class:blinking
 	xmlns="http://www.w3.org/2000/svg"
 >
-	{#if thinking}
+	{#if mode !== 'still' && sketchId}
 		<defs>
 			<filter id={sketchId} x="-10%" y="-10%" width="120%" height="120%">
 				<feTurbulence
-					use:boil
+					use:boil={BOIL_MS[mode === 'thinking' ? 'thinking' : 'sketchy']}
 					type="fractalNoise"
 					baseFrequency="0.09"
 					numOctaves="2"
@@ -47,7 +84,7 @@
 			</filter>
 		</defs>
 	{/if}
-	<g filter={thinking ? `url(#${sketchId})` : undefined}>
+	<g filter={mode !== 'still' && sketchId ? `url(#${sketchId})` : undefined}>
 		<g class="head">
 			<path
 				fill-rule="evenodd"
@@ -60,25 +97,31 @@
 				<path class="eye fill-current" d="M25.3991 23.618C24.9866 24.0306 25.0121 24.5377 25.4675 24.9801C25.7358 25.2406 25.886 25.3127 26.1603 25.3127C26.6012 25.3127 26.9009 25.0753 26.9912 24.6542C27.0496 24.3826 27.0166 24.2624 26.7927 23.9313C26.3402 23.2622 25.8624 23.1548 25.3991 23.618Z" />
 			</g>
 			<path class="mouth fill-current" d="M19.7787 26.769C19.7131 26.848 19.6409 27.1117 19.6183 27.3549C19.5854 27.7083 19.6211 27.8617 19.7964 28.1187C20.0781 28.5318 21.1206 29.0989 21.877 29.2504C22.1939 29.314 22.7696 29.441 23.1563 29.5329C23.6097 29.6405 24.4089 29.7173 25.4063 29.7489C27.5985 29.8184 27.8013 29.6992 27.8583 28.3093C27.8901 27.5365 27.8862 27.5199 27.6415 27.4008C27.2927 27.2311 26.9706 27.3758 26.6633 27.8402L26.4126 28.219H25.1656C24.4797 28.219 23.8052 28.176 23.6669 28.1233C23.5284 28.0707 23.0299 27.9622 22.5591 27.8822C21.5067 27.7036 20.7188 27.3712 20.7188 27.1059C20.7188 26.6877 20.0462 26.4466 19.7787 26.769Z" />
+			{#if mode === 'thinking'}
+				<!-- Stand-ins for the smile, which looks smug on a face that is meant to be concentrating. -->
+				<g
+					class="thinking-mouths"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.1"
+					stroke-linecap="round"
+				>
+					<path class="mouth-flat" d="M21.4 28.2 Q23.6 28.5 25.9 28.5" />
+					<path class="mouth-hmm" d="M21.9 28.6 Q22.9 27.7 23.9 28.3 T25.9 28" />
+				</g>
+			{/if}
 		</g>
-		{#if thinking}
-			<g class="bubbles" fill="none" stroke="currentColor" stroke-width="0.8">
-				<circle class="bubble" cx="36.2" cy="15" r="0.9" />
-				<circle class="bubble" cx="39.4" cy="11" r="1.4" />
-				<circle class="bubble" cx="43.2" cy="6" r="2.2" />
-			</g>
-		{/if}
 	</g>
 </svg>
 
 <style>
-	/* One slow beat: settle into the pose, hold it while the bubbles rise, then relax. */
+	/* One slow beat: read across, glance up and mull it over, repeat. */
 	.thinking .head,
 	.thinking .eyes,
 	.thinking .eye,
-	.thinking .mouth,
-	.thinking .bubble {
-		animation-duration: 5s;
+	.thinking .mouth-flat,
+	.thinking .mouth-hmm {
+		animation-duration: 7s;
 		animation-iteration-count: infinite;
 		animation-timing-function: ease-in-out;
 	}
@@ -90,7 +133,7 @@
 	}
 
 	.thinking .eyes {
-		animation-name: look-up;
+		animation-name: scan;
 	}
 
 	.thinking .eye {
@@ -100,143 +143,124 @@
 	}
 
 	.thinking .mouth {
-		transform-box: fill-box;
-		transform-origin: center;
-		animation-name: hmm;
+		display: none;
 	}
 
-	.thinking .bubble {
-		transform-box: fill-box;
-		transform-origin: center;
-		animation-name: bubble;
+	.thinking .mouth-flat {
+		animation-name: mouth-flat;
 	}
 
-	.thinking .bubble:nth-child(2) {
-		animation-name: bubble-2;
+	.thinking .mouth-hmm {
+		opacity: 0;
+		animation-name: mouth-hmm;
 	}
 
-	.thinking .bubble:nth-child(3) {
-		animation-name: bubble-3;
-	}
-
-	/* Tilt toward the bubbles, with a slow nod partway through the hold. */
+	/* Slight lean in while reading, then tip back the other way to mull it over. */
 	@keyframes ponder {
 		0%,
 		100% {
 			transform: rotate(0deg);
 		}
-		14%,
-		45% {
-			transform: rotate(6deg);
+		8%,
+		58% {
+			transform: rotate(-3deg);
 		}
-		58%,
-		84% {
-			transform: rotate(4deg) translateY(0.4px);
+		68%,
+		90% {
+			transform: rotate(5deg);
 		}
 	}
 
-	/* Eyes roll up toward the bubbles and stay there. */
-	@keyframes look-up {
+	/* Drift slowly across a line like it's reading, then look up and away. */
+	@keyframes scan {
 		0%,
 		100% {
 			transform: translate(0, 0);
 		}
-		14%,
-		45% {
-			transform: translate(1.3px, -1.4px);
+		10%,
+		22% {
+			transform: translate(-1px, 0);
 		}
-		58%,
-		84% {
-			transform: translate(1.6px, -1.1px);
+		32%,
+		40% {
+			transform: translate(0, 0);
+		}
+		50%,
+		58% {
+			transform: translate(1px, 0);
+		}
+		68%,
+		88% {
+			transform: translate(1.3px, -0.9px);
 		}
 	}
 
+	/* A blink as it looks up from "reading". */
 	@keyframes blink {
 		0%,
-		49%,
-		55%,
+		60%,
+		66%,
 		100% {
 			transform: scaleY(1);
 		}
-		52% {
+		63% {
 			transform: scaleY(0.1);
 		}
 	}
 
-	/* Mouth scrunches and slides to one side, a "hmm" face. */
-	@keyframes hmm {
+	/* Flat, focused mouth while reading; crossfades to the wavy "hmm" while mulling. */
+	@keyframes mouth-flat {
 		0%,
+		60%,
+		94%,
 		100% {
-			transform: translateX(0) scale(1, 1);
-		}
-		14%,
-		84% {
-			transform: translateX(0.8px) scale(0.65, 0.85);
-		}
-	}
-
-	/* Bubbles pop in smallest to largest, hold, then fade together. */
-	@keyframes bubble {
-		0%,
-		16% {
-			opacity: 0;
-			transform: scale(0.3);
-		}
-		22%,
-		82% {
 			opacity: 1;
-			transform: scale(1);
 		}
-		92%,
-		100% {
+		66%,
+		88% {
 			opacity: 0;
-			transform: scale(1);
 		}
 	}
 
-	@keyframes bubble-2 {
+	@keyframes mouth-hmm {
 		0%,
-		28% {
-			opacity: 0;
-			transform: scale(0.3);
-		}
-		34%,
-		82% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		92%,
+		60%,
+		94%,
 		100% {
 			opacity: 0;
-			transform: scale(1);
+			transform: translateX(0);
+		}
+		66%,
+		88% {
+			opacity: 1;
+			transform: translateX(0.6px);
 		}
 	}
 
-	@keyframes bubble-3 {
+	/* One-off blink, e.g. when a new suggestion shows up. */
+	.blinking .eye {
+		transform-box: fill-box;
+		transform-origin: center;
+		animation: blink-once 260ms ease-in-out;
+	}
+
+	@keyframes blink-once {
 		0%,
-		40% {
-			opacity: 0;
-			transform: scale(0.3);
-		}
-		46%,
-		82% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		92%,
 		100% {
-			opacity: 0;
-			transform: scale(1);
+			transform: scaleY(1);
+		}
+		50% {
+			transform: scaleY(0.1);
 		}
 	}
 
-	/* Without motion, the bubbles just sit there, which still reads as thinking. */
 	@media (prefers-reduced-motion: reduce) {
+		.blinking .eye,
 		.thinking .head,
 		.thinking .eyes,
 		.thinking .eye,
-		.thinking .mouth,
-		.thinking .bubble {
+		.thinking .mouth-flat,
+		.thinking .mouth-hmm {
 			animation: none;
 		}
 	}

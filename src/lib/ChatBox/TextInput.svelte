@@ -176,6 +176,10 @@
 	<hr class="absolute inset-x-2 -top-px border-stone-200 peer-focus:hidden dark:border-stone-700" />
 
 	{#if $minimized}
-		<Huntbotlogo />
+		<!-- Sketchy at rest, thinking while questions generate, and a blink as each one lands. -->
+		<Huntbotlogo
+			mode={$loadingContextSuggestions || $isLoading ? 'thinking' : 'sketchy'}
+			blinkOn={placeholder}
+		/>
 	{/if}
 </form>
