@@ -1,7 +1,7 @@
 <script lang="ts">
-	// When true, HuntBot looks like it's working something out: brows sketch in and furrow while
-	// the eyes scan back and forth like they're reading, then it glances up with a raised brow
-	// and a "hmm" mouth. The line also "boils" like a hand-drawn sketch being redrawn frame by
+	// When true, HuntBot looks like it's working something out: brows sketch in and the smile
+	// flattens while the eyes scan back and forth like they're reading, then it glances up with
+	// a raised brow and a wavy "hmm" mouth. The line also "boils" like a hand-drawn sketch being redrawn frame by
 	// frame.
 	export let thinking = false;
 
@@ -72,6 +72,17 @@
 					<path class="brow brow-left" pathLength="1" d="M19.7 21.2 Q20.9 20.5 22.1 20.9" />
 					<path class="brow brow-right" pathLength="1" d="M25 21.3 Q26.3 20.7 27.5 21.4" />
 				</g>
+				<!-- Stand-ins for the smile, which reads as scheming next to a focused brow. -->
+				<g
+					class="thinking-mouths"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.1"
+					stroke-linecap="round"
+				>
+					<path class="mouth-flat" d="M21.4 28.2 Q23.6 28.5 25.9 28.5" />
+					<path class="mouth-hmm" d="M21.9 28.6 Q22.9 27.7 23.9 28.3 T25.9 28" />
+				</g>
 			{/if}
 		</g>
 	</g>
@@ -82,7 +93,8 @@
 	.thinking .head,
 	.thinking .eyes,
 	.thinking .eye,
-	.thinking .mouth {
+	.thinking .mouth-flat,
+	.thinking .mouth-hmm {
 		animation-duration: 5s;
 		animation-iteration-count: infinite;
 		animation-timing-function: ease-in-out;
@@ -105,9 +117,16 @@
 	}
 
 	.thinking .mouth {
-		transform-box: fill-box;
-		transform-origin: center;
-		animation-name: hmm;
+		display: none;
+	}
+
+	.thinking .mouth-flat {
+		animation-name: mouth-flat;
+	}
+
+	.thinking .mouth-hmm {
+		opacity: 0;
+		animation-name: mouth-hmm;
 	}
 
 	/* Brows get sketched in once, then keep furrowing and raising with the loop. */
@@ -200,23 +219,36 @@
 		}
 	}
 
-	/* Pursed while reading, pushed to one side while mulling. */
-	@keyframes hmm {
+	/* Flat, focused mouth while reading; crossfades to the wavy "hmm" while mulling. */
+	@keyframes mouth-flat {
 		0%,
+		60%,
+		94%,
 		100% {
-			transform: translateX(0) scale(1, 1);
+			opacity: 1;
 		}
-		8%,
-		58% {
-			transform: translateX(0) scale(0.8, 0.9);
-		}
-		68%,
-		90% {
-			transform: translateX(0.8px) scale(0.65, 0.85);
+		66%,
+		88% {
+			opacity: 0;
 		}
 	}
 
-	/* Inner ends dip toward each other to furrow while reading. */
+	@keyframes mouth-hmm {
+		0%,
+		60%,
+		94%,
+		100% {
+			opacity: 0;
+			transform: translateX(0);
+		}
+		66%,
+		88% {
+			opacity: 1;
+			transform: translateX(0.6px);
+		}
+	}
+
+	/* Brows settle low and level while reading, a focused look rather than a scowl. */
 	@keyframes brow-left {
 		0%,
 		100% {
@@ -224,15 +256,15 @@
 		}
 		8%,
 		58% {
-			transform: translateY(0.4px) rotate(12deg);
+			transform: translateY(0.4px) rotate(3deg);
 		}
 		68%,
 		90% {
-			transform: translateY(-0.3px) rotate(4deg);
+			transform: translateY(-0.3px) rotate(0deg);
 		}
 	}
 
-	/* Furrows with the other brow, then pops up skeptically while mulling. */
+	/* Settles with the other brow, then pops up quizzically while mulling. */
 	@keyframes brow-right {
 		0%,
 		100% {
@@ -240,11 +272,11 @@
 		}
 		8%,
 		58% {
-			transform: translateY(0.4px) rotate(-12deg);
+			transform: translateY(0.4px) rotate(-3deg);
 		}
 		68%,
 		90% {
-			transform: translateY(-1px) rotate(-6deg);
+			transform: translateY(-1.1px) rotate(-8deg);
 		}
 	}
 
@@ -252,7 +284,8 @@
 		.thinking .head,
 		.thinking .eyes,
 		.thinking .eye,
-		.thinking .mouth,
+		.thinking .mouth-flat,
+		.thinking .mouth-hmm,
 		.thinking .brow {
 			animation: none;
 		}
