@@ -143,6 +143,29 @@ async function searchByEmbedding(
 	return qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
 }
 
+const NOT_A_NAME = new Set([
+	'he',
+	'him',
+	'his',
+	'she',
+	'her',
+	'they',
+	'them',
+	'you',
+	'your',
+	'it',
+	'its',
+	'this',
+	'that',
+	'the',
+	'hunter',
+	'hunters',
+	'me',
+	'my',
+	'we',
+	'us'
+]);
+
 /**
  * Extract a person name from the query for entity-aware search.
  * Returns null if no person-lookup pattern is detected.
@@ -156,7 +179,8 @@ function extractPersonName(query: string): string | null {
 	];
 	for (const p of patterns) {
 		const m = query.match(p);
-		if (m?.[1] && m[1].length > 2) {
+		// "what is he up to" would otherwise extract "he up" as a name.
+		if (m?.[1] && m[1].length > 2 && !NOT_A_NAME.has(m[1].split(/\s+/)[0].toLowerCase())) {
 			logRag('entity extraction', { name: m[1] });
 			return m[1];
 		}
@@ -272,8 +296,13 @@ export const getContext = async (
 				imessageEnabled
 					? searchByEmbedding(embedding, QDRANT_TOP_K, imessageFilter)
 					: Promise.resolve([] as [Document, number][]),
+				// Best-effort: this filter needs a Qdrant text index on metadata.contact /
+				// metadata.participants, and a failure here must not take down the main search.
 				personFilter
-					? searchByEmbedding(embedding, 8, personFilter)
+					? searchByEmbedding(embedding, 8, personFilter).catch((err) => {
+							console.warn('Person-filtered search failed, skipping:', err?.data ?? err);
+							return [] as [Document, number][];
+						})
 					: Promise.resolve([] as [Document, number][])
 			]);
 		}

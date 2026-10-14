@@ -47,15 +47,24 @@ function isTrivialMessage(text: string): boolean {
 
 // Model + effort per adaptive-compute lane (see $lib/server/query-lane). Quick replies go to
 // the fast model; deep questions get more reasoning. Reasoning tokens count against
-// maxOutputTokens, so the deep lane needs a bigger budget to leave room for the reply.
+// maxOutputTokens, so every lane leaves headroom beyond the 1–3 sentence reply itself
+// (a 180-token cap let reasoning swallow the whole budget and return an empty reply).
 const LANE_MODEL_CONFIG: Record<
 	QueryLane,
 	{ model: string; reasoningEffort: 'low' | 'medium'; maxOutputTokens: number }
 > = {
-	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 180 },
-	standard: { model: 'gpt-6-astra', reasoningEffort: 'low', maxOutputTokens: 180 },
-	deep: { model: 'gpt-6-astra', reasoningEffort: 'medium', maxOutputTokens: 1000 }
+	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 600 },
+	standard: { model: 'gpt-6-astra', reasoningEffort: 'low', maxOutputTokens: 600 },
+	deep: { model: 'gpt-6-astra', reasoningEffort: 'medium', maxOutputTokens: 1500 }
 };
+
+// Tools with no server `execute` — the client renders their input as the reply/action.
+const CLIENT_TOOL_NAMES = new Set([
+	'minimize_chat',
+	'route_to_page',
+	'ask_clarifying_question',
+	'capture_lead_intent'
+]);
 
 type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
 
@@ -649,7 +658,7 @@ ${contextForModel}`;
 					messages: modelMessages,
 					tools,
 					stopWhen: stepCountIs(3),
-					// Keeps replies brief; raise if answers feel clipped after tool calls
+					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
 					// at a natural pace instead of the bursty cadence of a reasoning model's output.
@@ -749,7 +758,37 @@ ${contextForModel}`;
 					}
 				});
 
-				writer.merge(result.toUIMessageStream());
+				// Forward the model stream ourselves (instead of writer.merge) so a turn can never
+				// end silently: if the model produced no text and no client-visible action — e.g.
+				// reasoning used up the whole output budget — send a fallback line before `finish`.
+				const reader = result.toUIMessageStream({ sendFinish: false }).getReader();
+				let producedReply = false;
+				for (;;) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					if (
+						(value.type === 'text-delta' && value.delta.trim()) ||
+						(value.type === 'tool-input-available' && CLIENT_TOOL_NAMES.has(value.toolName))
+					) {
+						producedReply = true;
+					}
+					writer.write(value);
+				}
+				if (!producedReply) {
+					const finishReason = await Promise.resolve(result.finishReason).catch(() => 'error');
+					console.warn('Model produced an empty reply', { lane, finishReason, runID });
+					const id = crypto.randomUUID();
+					writer.write({ type: 'start-step' });
+					writer.write({ type: 'text-start', id });
+					writer.write({
+						type: 'text-delta',
+						id,
+						delta: 'Sorry, I blanked on that one — mind asking again?'
+					});
+					writer.write({ type: 'text-end', id });
+					writer.write({ type: 'finish-step' });
+				}
+				writer.write({ type: 'finish' });
 			} catch (error) {
 				console.error('Chat API error:', error);
 				writeFallbackReply(

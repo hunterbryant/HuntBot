@@ -48,7 +48,7 @@
 	},
 	"type": "module",
 	"dependencies": {
-		"@ai-sdk/openai": "^3.0.47",
+		"@ai-sdk/openai": "^3.0.127",
 		"@ai-sdk/svelte": "4.0.134",
 		"@langchain/community": "^0.0.35",
 		"@langchain/core": "0.1.46",
