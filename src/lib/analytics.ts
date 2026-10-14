@@ -7,6 +7,18 @@ export function captureEvent(
 ) {
 	const key = env.PUBLIC_POSTHOG_API_KEY;
 	if (!key) return;
+	// Raw capture API (no posthog-js), so send the browser context ourselves — without a user
+	// agent PostHog classifies every event as Automation traffic.
+	const browserContext =
+		typeof window !== 'undefined'
+			? {
+					$raw_user_agent: navigator.userAgent,
+					$current_url: window.location.href,
+					$pathname: window.location.pathname,
+					$host: window.location.host,
+					$referrer: document.referrer || '$direct'
+				}
+			: {};
 	fetch('https://us.i.posthog.com/capture/', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -15,7 +27,7 @@ export function captureEvent(
 			event,
 			distinct_id: distinctId,
 			timestamp: new Date().toISOString(),
-			properties
+			properties: { ...browserContext, ...properties }
 		})
 	}).catch(() => {});
 }

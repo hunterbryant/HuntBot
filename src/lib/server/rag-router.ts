@@ -5,6 +5,9 @@ import { ragRouterSchema, type RagRouterPlan } from '$lib/schemas/ragRouter';
 import { logRag } from '$lib/server/rag-debug';
 
 const CONTEXT_PREVIEW_MAX = 14_000;
+// The router blocks the reply; past this budget, answer from initial CONTEXT instead
+// (the model can still call search_knowledge_base itself).
+const ROUTER_TIMEOUT_MS = 3000;
 
 /**
  * Structured plan for supplemental Qdrant searches before `streamText`.
@@ -42,6 +45,7 @@ export async function planSupplementalSearches(options: {
 			model: openai('gpt-6-luna'),
 			output: Output.object({ schema: zodSchema(ragRouterSchema) }),
 			reasoning: 'low',
+			abortSignal: AbortSignal.timeout(ROUTER_TIMEOUT_MS),
 			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `You route retrieval for HuntBot (Hunter Bryant's portfolio + Notion notes + optional iMessage chunks).
 

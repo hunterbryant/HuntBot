@@ -1,11 +1,21 @@
 import { env } from '$env/dynamic/private';
 import { formatNavPagesForPrompt, getSiteNavCatalog } from '$lib/server/site-nav-routes';
+import { getSitePageText } from '$lib/utilities/context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, Output } from 'ai';
 import { z } from 'zod';
 
 const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
+
+const PAGE_TEXT_MAX = 6000;
+
+// Chips used to be written from the page path alone, so the model invented plausible-sounding
+// questions ("What inspired his travel stories?") that HuntBot then couldn't answer — 6 of the
+// first 15 clicked chips led to "I don't have that". Grounding them in the page text fixes that.
+const ANSWERABLE_RULES = `- Every question must be answerable from the PAGE TEXT or the conversation shown to you. If the text doesn't state it, don't ask it.
+- No questions about motivation, inspiration, or feelings ("What inspired…", "Why did he decide…", "How did he feel…") unless the text spells that out.
+- Prefer concrete hooks the text actually names: a specific project, decision, constraint, number, place, or tool.`;
 
 /** AI SDK UI messages use `parts`; older code used `content`. */
 function plainTextFromMessage(m: { role?: string; content?: unknown; parts?: unknown }): string {
@@ -57,6 +67,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const hasUserMessages = messages.some((m: { role: string }) => m.role === 'user');
 
+		// Cached per warm instance (30 min), shared with chat retrieval.
+		const pageText = (await getSitePageText(path).catch(() => null))?.slice(0, PAGE_TEXT_MAX);
+		const pageTextBlock = pageText ? `\n\nPAGE TEXT (what the visitor can see):\n${pageText}` : '';
+
 		const scrollContext =
 			!hasUserMessages
 				? [
@@ -81,7 +95,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
 Current page: ${path}
 
-Generate 3 short suggestions (each under 10 words). Usually they are questions someone reading this passage would ask — specific to the content, not generic. Match the subject matter: travel → the trip; design → the work.${navAppendix}
+Generate 3 short suggestions (each under 10 words). Usually they are questions someone reading this passage would ask — specific to the content, not generic. Match the subject matter: travel → the trip; design → the work.
+${ANSWERABLE_RULES}${navAppendix}${pageTextBlock}
 
 Put the suggestions in the questions list.
 
@@ -97,11 +112,13 @@ Current page: ${path}
 
 Rules:
 - Read the transcript below. Each suggestion MUST tie to something explicit there — names, products, topics, or the assistant's last answer. No generic portfolio prompts (e.g. avoid "What projects are showcased here?" unless the chat was about browsing the site).
-- Prefer deepening the current thread over changing subject.${
+- Prefer deepening the current thread over changing subject.
+- Never follow up on something the assistant said it doesn't have or isn't sure about.
+${ANSWERABLE_RULES}${
 				navAppendix
 					? '\n- A navigation-style chip is allowed only when the chat clearly points at a specific page you can name from the destination list.'
 					: ''
-			}${navAppendix}
+			}${navAppendix}${pageTextBlock}
 
 Put the suggestions in the questions list.
 
@@ -119,11 +136,12 @@ Hunter is a product designer, but his site also includes personal writing, trave
 
 Rules:
 - Tailor to the current page and visible section context — if it's a travel blog, ask about the trip, not "the design process"
-- Make them feel like genuine curiosity, not marketing prompts${
+- Make them feel like genuine curiosity, not marketing prompts
+${ANSWERABLE_RULES}${
 				navAppendix
 					? '\n- On home, about, or listing pages, include **exactly one** navigation-style suggestion when a natural fit exists. On a specific case study or project page, use **at most one** navigation chip and only when it points to a *different* listed page.'
 					: ''
-			}${navAppendix}
+			}${navAppendix}${pageTextBlock}
 
 Put the suggestions in the questions list.
 

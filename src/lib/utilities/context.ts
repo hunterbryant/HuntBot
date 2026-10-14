@@ -69,6 +69,11 @@ function fetchFullPageText(url: string): Promise<string | null> {
 	return text;
 }
 
+/** Cached plain text of a hunterbryant.io page by path (e.g. "/information"), or null. */
+export function getSitePageText(path: string): Promise<string | null> {
+	return fetchFullPageText(`${SITE_ORIGIN}${path === '/' ? '' : path}`);
+}
+
 // First-turn retrieval depends only on the message, page and lane, and the same opening
 // questions (suggestion chips especially) get asked over and over — cache the assembled
 // CONTEXT briefly so repeats skip rewrite/HyDE, search and rerank entirely.

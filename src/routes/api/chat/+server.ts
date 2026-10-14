@@ -14,7 +14,13 @@ import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
 import { getAvailableRoutes } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
-import { getContext, searchKnowledgeBase, type StatusReporter } from '$lib/utilities/context';
+import { UserRole } from '$lib/types';
+import {
+	getContext,
+	getSitePageText,
+	searchKnowledgeBase,
+	type StatusReporter
+} from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import {
@@ -86,7 +92,7 @@ function assessConfidence(contextText: string): ContextConfidence {
 	return 'moderate';
 }
 
-export const POST: RequestHandler = async ({ request }) => {
+export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
 	let body: { messages: UIMessage[]; sessionId?: string; currentPage?: string };
 	try {
 		body = await request.json();
@@ -137,6 +143,17 @@ export const POST: RequestHandler = async ({ request }) => {
 	const lastMessageText = getMessageText(lastMessage);
 	const fastPath = isTrivialMessage(lastMessageText);
 
+	// Request identity for analytics. Capture runs server-side, so without these PostHog geolocates
+	// every event to the Vercel region and classifies it as Automation (no user agent).
+	let clientIp: string | null = null;
+	try {
+		clientIp = getClientAddress();
+	} catch {
+		// not available in every adapter/runtime
+	}
+	const userAgent = request.headers.get('user-agent');
+	const isAdmin = locals.user?.role === UserRole.ADMIN;
+
 	const stream = createUIMessageStream<UIMessage>({
 		execute: async ({ writer }) => {
 			const reportStatus: StatusReporter = (label) =>
@@ -156,6 +173,94 @@ export const POST: RequestHandler = async ({ request }) => {
 			}
 
 			const timer = createStageTimer();
+
+			// What actually happened this turn, filled in as the pipeline runs and sent to PostHog
+			// once at the end (including when the pipeline throws), so a turn can be diagnosed
+			// from the event alone.
+			const turn = {
+				lane: null as QueryLane | null,
+				model: null as string | null,
+				visibleText: '',
+				clientTool: null as { name: string; input: unknown } | null,
+				serverTools: [] as { name: string; input: unknown }[],
+				contextConfidence: null as ContextConfidence | null,
+				contextChunks: 0,
+				contextSources: { site: 0, notes: 0, imessage: 0 },
+				routerRan: false,
+				routerSearches: 0,
+				fallbackSearchRan: false,
+				emptyReplyFallback: false,
+				modelError: null as string | null,
+				pipelineError: false,
+				contextForReflection: ''
+			};
+
+			function sendTurnAnalytics() {
+				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
+				if (!posthogKey) return;
+				void fetch('https://us.i.posthog.com/capture/', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						api_key: posthogKey,
+						event: 'chat_message',
+						distinct_id: sessionId ?? runID,
+						timestamp: new Date().toISOString(),
+						properties: {
+							$ip: clientIp ?? undefined,
+							$raw_user_agent: userAgent ?? undefined,
+							$current_url: `${SITE_ORIGIN_PREFIX}${currentPage}`,
+							$pathname: currentPage,
+							is_admin: isAdmin,
+							user_message: lastMessageText,
+							// What the visitor actually saw, including any fallback line.
+							bot_response: turn.visibleText.trim() || null,
+							function_call_name: turn.clientTool?.name ?? null,
+							function_call_args: turn.clientTool ? JSON.stringify(turn.clientTool.input) : null,
+							server_tools: turn.serverTools.map((t) => t.name),
+							server_tool_args: turn.serverTools.length
+								? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
+								: null,
+							context_confidence: turn.contextConfidence,
+							context_chunks: turn.contextChunks,
+							context_site_chunks: turn.contextSources.site,
+							context_notes_chunks: turn.contextSources.notes,
+							context_imessage_chunks: turn.contextSources.imessage,
+							router_ran: turn.routerRan,
+							router_searches: turn.routerSearches,
+							fallback_search_ran: turn.fallbackSearchRan,
+							empty_reply_fallback: turn.emptyReplyFallback,
+							model_error: turn.modelError,
+							pipeline_error: turn.pipelineError,
+							current_page: currentPage,
+							run_id: runID,
+							session_id: sessionId ?? null,
+							lane: turn.lane,
+							model: turn.model,
+							lane_quick_score: laneDecision.quickScore,
+							lane_deep_score: laneDecision.deepScore,
+							timings_ms: timer.timings
+						}
+					})
+				}).catch(() => {
+					/* swallow */
+				});
+
+				if (turn.visibleText.trim() && !turn.pipelineError) {
+					void sendRagReflectionToPosthog({
+						posthogKey,
+						userMessage: lastMessageText,
+						assistantText: turn.visibleText,
+						contextExcerpt: turn.contextForReflection,
+						sessionId: sessionId ?? null,
+						runID,
+						currentPage
+					}).catch(() => {
+						/* swallow — reflection is optional */
+					});
+				}
+			}
+
 			let laneDecision: LaneDecision = {
 				lane: 'quick',
 				quickScore: 0,
@@ -171,6 +276,10 @@ export const POST: RequestHandler = async ({ request }) => {
 				// warning while we're awaiting other work — the await below still throws.
 				const routesPromise = getAvailableRoutes();
 				routesPromise.catch(() => {});
+				// The Information page (role, work history, links) goes into every prompt so basic
+				// "who is he / where has he worked / how do I reach him" questions never depend on
+				// retrieval — the quick lane in particular kept missing them. Cached for 30 min.
+				const aboutPromise = getSitePageText('/information').catch(() => null);
 
 				// Trivial acknowledgements ("thanks", "ok") skip classification and retrieval
 				// entirely — there's nothing to ground. Everything else gets a lane.
@@ -178,9 +287,10 @@ export const POST: RequestHandler = async ({ request }) => {
 					laneDecision = await timer.time('classify', () => classifyQueryLane(lastMessageText));
 				}
 				const { lane } = laneDecision;
+				turn.lane = lane;
 
 				// Degrade gracefully if retrieval fails.
-				const [context, availableRoutes] = await Promise.all([
+				const [context, availableRoutes, aboutPageText] = await Promise.all([
 					fastPath
 						? Promise.resolve('')
 						: timer
@@ -198,18 +308,23 @@ export const POST: RequestHandler = async ({ request }) => {
 									);
 									return '';
 								}),
-					routesPromise
+					routesPromise,
+					aboutPromise
 				]);
 
-				// RAG router: only worth a full LLM round trip when initial retrieval isn't already
-				// a confident match. The quick lane never pays for it; the deep lane always does,
-				// since open-ended questions usually benefit from extra targeted searches.
+				// RAG router: only worth a full LLM round trip when initial retrieval came back
+				// empty or thin. The quick lane never pays for it; the deep lane always does, since
+				// open-ended questions usually benefit from extra targeted searches. (It used to run
+				// on "moderate" context too, adding 1.3–4.7s to most standard turns; the model can
+				// still call search_knowledge_base itself when it needs more.)
+				const initialConfidence = fastPath ? 'empty' : assessConfidence(context);
 				let routerPlan: RagRouterPlan = { supplemental_searches: [], assistant_hint: null };
-				if (
+				const runRouter =
 					!fastPath &&
 					lane !== 'quick' &&
-					(lane === 'deep' || assessConfidence(context) !== 'strong')
-				) {
+					(lane === 'deep' || initialConfidence === 'empty' || initialConfidence === 'thin');
+				turn.routerRan = runRouter;
+				if (runRouter) {
 					reportStatus('Checking if I need more info…');
 					routerPlan = await timer.time('router', () =>
 						planSupplementalSearches({
@@ -228,6 +343,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					return true;
 				});
 
+				turn.routerSearches = uniqueSearches.length;
 				let supplementalBlocks: string[] = [];
 				if (uniqueSearches.length > 0) {
 					reportStatus('Running a follow-up search…');
@@ -258,6 +374,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					const confidence = assessConfidence(contextForModel);
 					if (confidence === 'empty' || confidence === 'thin') {
 						reportStatus('Widening the search a bit…');
+						turn.fallbackSearchRan = true;
 						logRag('context insufficient, running fallback search', { confidence });
 						try {
 							const fallback = await timer.time('fallback', () =>
@@ -271,6 +388,15 @@ export const POST: RequestHandler = async ({ request }) => {
 						}
 					}
 				}
+
+				turn.contextConfidence = fastPath ? null : assessConfidence(contextForModel);
+				turn.contextChunks = (contextForModel.match(/\[CHUNK-/g) || []).length;
+				turn.contextSources = {
+					site: (contextForModel.match(/\[CHUNK-site-/g) || []).length,
+					notes: (contextForModel.match(/\[CHUNK-notes-/g) || []).length,
+					imessage: (contextForModel.match(/\[CHUNK-imsg-/g) || []).length
+				};
+				turn.contextForReflection = contextForModel;
 
 				// Surface the site pages that grounded this answer as source-url UI parts, so the
 				// client can show visitors which pages the reply actually drew from. Only SITE
@@ -293,9 +419,13 @@ export const POST: RequestHandler = async ({ request }) => {
 				}
 
 				// Build tool definitions with live routes from Prismic
+				// The page the visitor is already on is dropped: routing there just replaces an
+				// answer with a no-op navigation (seen in the logs: "Give me a paragraph on him"
+				// on /information → routed to /information, no paragraph).
+				const routableRoutes = availableRoutes.filter((r) => r !== currentPage);
 				const routeEnum =
-					availableRoutes.length > 0
-						? (availableRoutes as [string, ...string[]])
+					routableRoutes.length > 0
+						? (routableRoutes as [string, ...string[]])
 						: (['/'] as [string, ...string[]]);
 
 				const tools = {
@@ -312,13 +442,13 @@ export const POST: RequestHandler = async ({ request }) => {
 					}),
 					route_to_page: tool({
 						description:
-							"Navigate the user to a page on Hunter's site. Call this when discussing a specific project or section — route them there so they can see the work directly. CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.",
+							'Navigate the user to a page on Hunter\'s site. Routing is an extra, never a substitute for an answer: if the visitor asked a question or asked you to tell, describe, write or explain something, answer in text first and only then (optionally) call this in the same response. Call it on its own only when they explicitly asked to go somewhere ("take me to", "open", "show me the X page"). CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.',
 						inputSchema: z.object({
 							page: z.enum(routeEnum).describe('The local route path to navigate to.'),
 							message: z
 								.string()
 								.describe(
-									'A brief message about what the user will find on the page (1 sentence, plain text). E.g. "That case study has the full breakdown."'
+									'A brief message about what the user will find on the page (1 sentence, plain text). E.g. "That case study has the full breakdown." Only shown when you did not already reply in text.'
 								)
 						})
 					}),
@@ -331,7 +461,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					}),
 					capture_lead_intent: tool({
 						description:
-							'Call this when the visitor signals they want to hire Hunter or collaborate on a project. Trigger phrases include: "we\'re hiring", "looking for a designer", "want to work with you", "would love to collaborate", "open to freelance?". Acknowledge their interest warmly and surface contact options.',
+							'Call this when the visitor signals they want to hire Hunter or collaborate on a project, or asks how to contact him or whether he\'s available. Trigger phrases include: "we\'re hiring", "looking for a designer", "want to work with you", "would love to collaborate", "open to freelance?", "open to fractional work?", "how do I reach him?", "what\'s his email?", "what kind of collaborations does he take on?". Acknowledge their interest warmly and surface contact options (the UI shows his LinkedIn and email).',
 						inputSchema: z.object({
 							intent_type: z
 								.enum(['hiring', 'collaboration', 'general'])
@@ -557,7 +687,7 @@ Tone shifts by context:
 - Design work / case studies → technical, opinionated, talk about constraints and tradeoffs. "The constraint was X, so we had to figure out Y."
 - Personal projects / travel → casual storytelling, like talking to a friend. "It was a fun challenge, man."
 - General info / about Hunter → confident, brief. Don't oversell.
-- When you don't know → just say it plainly. "I don't have that" or "Not sure from what I've got here." No apology tour.
+- When you don't know → say it plainly, no apology tour, then offer the closest thing you do have. "I don't have that, but the Lyngen project page gets into how he built the terrain."
 
 ## Voice examples (match the ✅ style, avoid the ❌ style)
 
@@ -583,7 +713,7 @@ Use "Hunter" naturally — e.g. "He journaled the whole trip" not stiff third-pe
 ## Corrected examples (these show what good responses look like)
 
 Q: Tell me about him
-✅ "Hunter's a product designer, been at Uber working on Maps. Before that, Square and Twitter. He's into the hard problems, like mapping and search at scale."
+✅ "Hunter's a product designer, leading design for maps and autonomous at Uber right now. Before that he spent six years at Hammerhead shipping the Karoo bike computers. He's into the hard problems, like wayfinding and maps at scale."
 ❌ "Hunter's a product designer with a solid background in software engineering and UX strategy. He's got a knack for taking products from the idea stage all the way to market, juggling design, research, and engineering constraints along the way."
 
 Q: Tell me about his personal projects
@@ -600,19 +730,21 @@ Use conversation history. "Tell me more" continues the last topic — don't rest
 ## Confidence calibration
 - Strong CONTEXT match → answer directly.
 - Partial CONTEXT → share what you know and name the gap.
-- No relevant CONTEXT → one sentence, stop. Do NOT guess.
+- No relevant CONTEXT → if you haven't searched yet this turn, try search_knowledge_base once with a rephrased query. Still nothing → say so in one sentence, then point at the closest thing you do have (a related project, a page to route to). Never a bare "I don't have that" when something related exists. Do NOT guess.
+- Never say you don't have Hunter's role, work history, education, or links. Those are in the ABOUT HUNTER section below.
+- "Lately", "now", "currently", "these days" → his current role comes from ABOUT HUNTER. For anything else, use the most recent dated CONTEXT and say how old it is if it's more than a few months old.
 
 Never fill gaps with training-data knowledge about companies or tech if CONTEXT is silent.
 
 ## Tools
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
-- Use capture_lead_intent immediately when a visitor signals hiring or project interest. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces contact links automatically, so don't repeat contact info in your message.
-- Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code only for technical/meta questions about how HuntBot itself is built or what's changed in its code recently — never for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
-- Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
+- Use capture_lead_intent immediately when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Pass a warm acknowledgement in the message field (brief, same tone rules). The function surfaces his LinkedIn and email automatically, so don't repeat contact info in your message. Never answer these with "I don't have that".
+- HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
+- Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
 
 ## Navigation
-When a conversation naturally leads to a specific project or section, route the user there using route_to_page — give them one short sentence about what they'll find. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
+Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
 
 ## iMessage context
 The CONTEXT section may include chunks labeled "[iMessage — contact]". These are Hunter's real text messages, grouped by conversation. Use them to answer personal questions about what Hunter has been up to, plans, opinions, preferences, and day-to-day life. Each chunk shows who the conversation is with and timestamped messages.
@@ -630,6 +762,9 @@ The CONTEXT section is labeled by source type: SITE CONTENT, NOTES & DOCUMENTS, 
 
 Date ranges and message counts in iMessage labels tell you how recent and extensive a conversation is. Prefer recent conversations over old ones. If a label says "(Jan 2024 — Mar 2024)", check it against the date below and note the time gap.
 
+## ABOUT HUNTER (his Information page — always current, trust it over older CONTEXT for role and work history)
+${aboutPageText?.trim() || '(Unavailable this turn — fall back to CONTEXT.)'}
+
 ---
 
 ## Live details (turn-specific — everything above this line is static)
@@ -639,7 +774,7 @@ Today is ${today} (${todayISO}). Use CONTEXT dates when present; prefer specific
 The visitor is on: ${pageContext}. On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
 
 APPROVED ROUTES (copy exactly, no modifications):
-${availableRoutes.join('\n')}
+${routableRoutes.join('\n')}
 ${routerPlan.assistant_hint?.trim() ? `\n## Router note (internal)\n${routerPlan.assistant_hint.trim()}\n` : ''}
 ---
 
@@ -655,6 +790,7 @@ ${contextForModel}`;
 				reportStatus('Putting together a reply…');
 
 				const modelConfig = LANE_MODEL_CONFIG[lane];
+				turn.model = modelConfig.model;
 				timer.mark('model_start');
 				let sawFirstToken = false;
 
@@ -680,10 +816,17 @@ ${contextForModel}`;
 							// which would make the streamed reasoning parts much chattier.
 							reasoningSummary: 'auto',
 							// Stable key (not per-session) so requests share the same cache partition —
-							// the system prompt's static prefix (everything above "## Live details")
-							// is identical across visitors and is the part worth caching.
+							// the system prompt's static prefix (everything above "## Live details",
+							// including the ABOUT HUNTER page text, which only changes when the site
+							// does) is identical across visitors and is the part worth caching.
 							promptCacheKey: 'huntbot-chat-system-v1'
 						}
+					},
+					// The UI stream masks errors as "An error occurred." — keep the real message for
+					// analytics (this replaces the SDK's default console logging, so log it too).
+					onError: ({ error }) => {
+						console.error('streamText error:', error);
+						turn.modelError = error instanceof Error ? error.message : String(error);
 					},
 					onChunk: ({ chunk }) => {
 						if (!sawFirstToken && chunk.type === 'text-delta') {
@@ -715,69 +858,6 @@ ${contextForModel}`;
 							toolResults: resultSummary,
 							textLen: text?.length ?? 0
 						});
-					},
-					onEnd: ({ text, toolCalls }) => {
-						timer.mark('total');
-						// One line per turn, always on, so latency can be attributed to a stage
-						// straight from the Vercel logs.
-						console.log(
-							'[HuntBot timing]',
-							JSON.stringify({
-								lane,
-								model: modelConfig.model,
-								quick_score: Number(laneDecision.quickScore.toFixed(3)),
-								deep_score: Number(laneDecision.deepScore.toFixed(3)),
-								...timer.timings
-							})
-						);
-
-						const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
-						if (!posthogKey) return;
-
-						const clientToolCall = toolCalls?.find(
-							(tc) => 'toolName' in tc && tc.toolName !== 'search_knowledge_base'
-						);
-						void fetch('https://us.i.posthog.com/capture/', {
-							method: 'POST',
-							headers: { 'Content-Type': 'application/json' },
-							body: JSON.stringify({
-								api_key: posthogKey,
-								event: 'chat_message',
-								distinct_id: sessionId ?? runID,
-								timestamp: new Date().toISOString(),
-								properties: {
-									user_message: lastMessageText,
-									bot_response: text || null,
-									function_call_name:
-										clientToolCall && 'toolName' in clientToolCall ? clientToolCall.toolName : null,
-									function_call_args:
-										clientToolCall && 'input' in clientToolCall
-											? JSON.stringify(clientToolCall.input)
-											: null,
-									current_page: currentPage,
-									run_id: runID,
-									session_id: sessionId ?? null,
-									lane,
-									lane_quick_score: laneDecision.quickScore,
-									lane_deep_score: laneDecision.deepScore,
-									timings_ms: timer.timings
-								}
-							})
-						}).catch(() => {
-							/* swallow */
-						});
-
-						void sendRagReflectionToPosthog({
-							posthogKey,
-							userMessage: lastMessageText,
-							assistantText: text ?? '',
-							contextExcerpt: contextForModel,
-							sessionId: sessionId ?? null,
-							runID,
-							currentPage
-						}).catch(() => {
-							/* swallow — reflection is optional */
-						});
 					}
 				});
 
@@ -789,37 +869,66 @@ ${contextForModel}`;
 				for (;;) {
 					const { done, value } = await reader.read();
 					if (done) break;
-					if (
-						(value.type === 'text-delta' && value.delta.trim()) ||
-						(value.type === 'tool-input-available' && CLIENT_TOOL_NAMES.has(value.toolName))
-					) {
-						producedReply = true;
+					if (value.type === 'text-delta') {
+						turn.visibleText += value.delta;
+						if (value.delta.trim()) producedReply = true;
+					} else if (value.type === 'tool-input-available') {
+						if (CLIENT_TOOL_NAMES.has(value.toolName)) {
+							producedReply = true;
+							turn.clientTool ??= { name: value.toolName, input: value.input };
+						} else {
+							turn.serverTools.push({ name: value.toolName, input: value.input });
+						}
+					} else if (value.type === 'error') {
+						turn.modelError ??= value.errorText;
 					}
 					writer.write(value);
 				}
 				if (!producedReply) {
 					const finishReason = await Promise.resolve(result.finishReason).catch(() => 'error');
-					console.warn('Model produced an empty reply', { lane, finishReason, runID });
+					console.warn('Model produced an empty reply', {
+						lane,
+						finishReason,
+						modelError: turn.modelError,
+						runID
+					});
+					const fallbackText = 'Sorry, I blanked on that one — mind asking again?';
+					turn.emptyReplyFallback = true;
+					turn.visibleText = fallbackText;
 					const id = crypto.randomUUID();
 					writer.write({ type: 'start-step' });
 					writer.write({ type: 'text-start', id });
-					writer.write({
-						type: 'text-delta',
-						id,
-						delta: 'Sorry, I blanked on that one — mind asking again?'
-					});
+					writer.write({ type: 'text-delta', id, delta: fallbackText });
 					writer.write({ type: 'text-end', id });
 					writer.write({ type: 'finish-step' });
 				}
 				writer.write({ type: 'finish' });
 			} catch (error) {
 				console.error('Chat API error:', error);
-				writeFallbackReply(
+				const fallbackText =
 					error instanceof OpenAI.APIError
 						? 'Something glitched talking to the model — mind trying that again?'
-						: 'Something went wrong on my end — mind trying that again?'
-				);
+						: 'Something went wrong on my end — mind trying that again?';
+				turn.pipelineError = true;
+				turn.modelError = error instanceof Error ? error.message : String(error);
+				turn.visibleText = fallbackText;
+				writeFallbackReply(fallbackText);
 			}
+
+			timer.mark('total');
+			// One line per turn, always on, so latency can be attributed to a stage
+			// straight from the Vercel logs.
+			console.log(
+				'[HuntBot timing]',
+				JSON.stringify({
+					lane: turn.lane,
+					model: turn.model,
+					quick_score: Number(laneDecision.quickScore.toFixed(3)),
+					deep_score: Number(laneDecision.deepScore.toFixed(3)),
+					...timer.timings
+				})
+			);
+			sendTurnAnalytics();
 		}
 	});
 
