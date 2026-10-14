@@ -70,12 +70,19 @@ const CLIENT_TOOL_NAMES = new Set([
 type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
 
 /** Cheap heuristic (chunk count + length) reused to decide whether the router / fallback
- *  search LLM calls are worth their round trip, without invoking a model. */
+ *  search LLM calls are worth their round trip, without invoking a model.
+ *  Full-page site entries count double: retrieval collapses every hit on a site page into a single
+ *  `[CHUNK-site-…]` entry carrying that page's full text, so two relevant pages are strong
+ *  evidence — counting them as just "2 chunks" sent nearly every site question to the router. */
 function assessConfidence(contextText: string): ContextConfidence {
 	const chunkCount = (contextText.match(/\[CHUNK-/g) || []).length;
 	if (!contextText.trim() || chunkCount === 0) return 'empty';
-	if (contextText.length < 200 || chunkCount === 1) return 'thin';
-	if (chunkCount >= 3 && contextText.length >= 400) return 'strong';
+	// Only full-page entries (`[CHUNK-site-…] Source: <url>`) — supplemental/fallback search
+	// results reuse the site id prefix but carry a single chunk, not a whole page.
+	const fullPageCount = (contextText.match(/\[CHUNK-site-[^\]]+\] Source: /g) || []).length;
+	if (contextText.length < 200 || (chunkCount === 1 && fullPageCount === 0)) return 'thin';
+	const evidence = chunkCount + fullPageCount;
+	if (evidence >= 3 && contextText.length >= 400) return 'strong';
 	return 'moderate';
 }
 
