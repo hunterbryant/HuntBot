@@ -1,9 +1,11 @@
 import { env } from '$env/dynamic/private';
 import { formatNavPagesForPrompt, getSiteNavCatalog } from '$lib/server/site-nav-routes';
 import { json, type RequestHandler } from '@sveltejs/kit';
-import OpenAI from 'openai';
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText, Output } from 'ai';
+import { z } from 'zod';
 
-const openai = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 
 /** AI SDK UI messages use `parts`; older code used `content`. */
 function plainTextFromMessage(m: { role?: string; content?: unknown; parts?: unknown }): string {
@@ -81,7 +83,7 @@ Current page: ${path}
 
 Generate 3 short suggestions (each under 10 words). Usually they are questions someone reading this passage would ask — specific to the content, not generic. Match the subject matter: travel → the trip; design → the work.${navAppendix}
 
-Return ONLY a JSON array of strings, nothing else.
+Put the suggestions in the questions list.
 
 Example: ${
 				navAppendix
@@ -101,7 +103,7 @@ Rules:
 					: ''
 			}${navAppendix}
 
-Return ONLY a JSON array of strings, nothing else
+Put the suggestions in the questions list.
 
 Example: ${
 				navAppendix
@@ -123,7 +125,7 @@ Rules:
 					: ''
 			}${navAppendix}
 
-Return ONLY a JSON array of strings, nothing else
+Put the suggestions in the questions list.
 
 Example: ${
 				navAppendix
@@ -144,40 +146,24 @@ Example: ${
 					.join('\n')
 			: null;
 
-		const response = await openai.chat.completions.create({
-			model: 'gpt-6-luna',
-			messages: [
-				{ role: 'system', content: systemPrompt },
-				...(conversationContext
-					? [
-							{
-								role: 'user' as const,
-								content: `Recent conversation (most recent last):\n${conversationContext}`
-							}
-						]
-					: [])
-			],
-			max_tokens: 200
+		const { output } = await generateText({
+			model: openai('gpt-6-luna'),
+			reasoning: 'low',
+			// Includes reasoning tokens, so leave headroom beyond the short output itself.
+			maxOutputTokens: 400,
+			providerOptions: { openai: { reasoningSummary: null } },
+			output: Output.object({ schema: z.object({ questions: z.array(z.string()) }) }),
+			instructions: systemPrompt,
+			prompt: conversationContext
+				? `Recent conversation (most recent last):\n${conversationContext}`
+				: 'No conversation yet — suggest openers.'
 		});
 
-		const raw = response.choices[0]?.message?.content ?? '[]';
-
-		let suggestions: string[] = [];
-		try {
-			const match = raw.match(/\[[\s\S]*\]/);
-			if (match) {
-				suggestions = JSON.parse(match[0]);
-			}
-		} catch {
-			suggestions = [];
-		}
-
-		suggestions = suggestions
-			.filter((s): s is string => typeof s === 'string' && s.trim().length > 0)
-			.slice(0, 3);
+		const suggestions = output.questions.filter((s) => s.trim().length > 0).slice(0, 3);
 
 		return json({ suggestions });
-	} catch {
+	} catch (err) {
+		console.warn('Chat suggestions failed:', err);
 		return json({ suggestions: [] });
 	}
 };

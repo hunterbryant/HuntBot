@@ -17,7 +17,9 @@ async function hydeExpand(query: string): Promise<string> {
 		const { text } = await generateText({
 			model: openai('gpt-6-luna'),
 			maxOutputTokens: 400, // includes reasoning tokens
-			providerOptions: { openai: { reasoningEffort: 'low' } },
+			reasoning: 'low',
+			// AI SDK 7 turns on detailed reasoning summaries whenever reasoning is set — not needed here.
+			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `Write a brief 2-3 sentence answer to this question as if you were a portfolio website for a product designer named Hunter Bryant. Be specific with names, projects, and details. Output ONLY the answer, nothing else.
 
 Question: "${query}"`
@@ -72,7 +74,9 @@ export async function rewriteRetrievalQuery(
 		const { text } = await generateText({
 			model: openai('gpt-6-luna'),
 			maxOutputTokens: 400, // includes reasoning tokens
-			providerOptions: { openai: { reasoningEffort: 'low' } },
+			reasoning: 'low',
+			// AI SDK 7 turns on detailed reasoning summaries whenever reasoning is set — not needed here.
+			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `Rewrite the follow-up message into a standalone search query that captures the full intent. Include any names, topics, or specifics from the conversation that the follow-up refers to. Output ONLY the rewritten query, nothing else.
 
 ${pageHint}

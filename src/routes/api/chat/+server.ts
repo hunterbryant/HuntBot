@@ -21,9 +21,10 @@ import {
 	convertToModelMessages,
 	createUIMessageStream,
 	createUIMessageStreamResponse,
+	isStepCount,
 	smoothStream,
-	stepCountIs,
 	streamText,
+	toUIMessageStream,
 	tool,
 	type UIMessage
 } from 'ai';
@@ -654,20 +655,22 @@ ${contextForModel}`;
 					// Responses API (not chat completions) — required to get back reasoning
 					// summaries for a reasoning model, and to use promptCacheKey below.
 					model: openai.responses(modelConfig.model),
-					system: systemPrompt,
+					instructions: systemPrompt,
 					messages: modelMessages,
 					tools,
-					stopWhen: stepCountIs(3),
+					stopWhen: isStepCount(3),
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
 					// at a natural pace instead of the bursty cadence of a reasoning model's output.
 					experimental_transform: smoothStream({ chunking: 'word' }),
+					// Low effort by default — replies are 1-3 sentences and deeper reasoning only
+					// adds latency. The deep lane bumps this for open-ended questions.
+					reasoning: modelConfig.reasoningEffort,
 					providerOptions: {
 						openai: {
-							// Low effort by default — replies are 1-3 sentences and deeper reasoning
-							// only adds latency. The deep lane bumps this for open-ended questions.
-							reasoningEffort: modelConfig.reasoningEffort,
+							// Explicit: AI SDK 7 defaults this to 'detailed' whenever reasoning is set,
+							// which would make the streamed reasoning parts much chattier.
 							reasoningSummary: 'auto',
 							// Stable key (not per-session) so requests share the same cache partition —
 							// the system prompt's static prefix (everything above "## Live details")
@@ -681,7 +684,20 @@ ${contextForModel}`;
 							timer.mark('first_token');
 						}
 					},
-					onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
+					onStepEnd: async ({ stepNumber, toolCalls, toolResults, text, performance }) => {
+						// Per-step model + tool latency, so multi-step turns (tool call → answer)
+						// show where the time went, not just the turn total.
+						timer.timings[`step${stepNumber}`] = Math.round(performance.stepTimeMs);
+						if (performance.timeToFirstOutputMs != null) {
+							timer.timings[`step${stepNumber}_first_output`] = Math.round(
+								performance.timeToFirstOutputMs
+							);
+						}
+						for (const tc of toolCalls ?? []) {
+							const ms = performance.toolExecutionMs[tc.toolCallId];
+							if (ms != null) timer.timings[`tool_${tc.toolName}`] = Math.round(ms);
+						}
+
 						const callNames =
 							toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
 						const resultSummary =
@@ -693,7 +709,7 @@ ${contextForModel}`;
 							textLen: text?.length ?? 0
 						});
 					},
-					onFinish: ({ text, toolCalls }) => {
+					onEnd: ({ text, toolCalls }) => {
 						timer.mark('total');
 						// One line per turn, always on, so latency can be attributed to a stage
 						// straight from the Vercel logs.
@@ -761,7 +777,7 @@ ${contextForModel}`;
 				// Forward the model stream ourselves (instead of writer.merge) so a turn can never
 				// end silently: if the model produced no text and no client-visible action — e.g.
 				// reasoning used up the whole output budget — send a fallback line before `finish`.
-				const reader = result.toUIMessageStream({ sendFinish: false }).getReader();
+				const reader = toUIMessageStream({ stream: result.stream, sendFinish: false }).getReader();
 				let producedReply = false;
 				for (;;) {
 					const { done, value } = await reader.read();

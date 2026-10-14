@@ -12,7 +12,7 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 
 | Layer | Technology |
 |---|---|
-| Framework | SvelteKit 2 + Svelte 4 |
+| Framework | SvelteKit 2 + Svelte 5 |
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants) |
 | CMS | Prismic (Slice Machine) |
@@ -20,12 +20,12 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 | Vector DB | Qdrant Cloud (free tier, 1GB) |
 | Embeddings | OpenAI `text-embedding-3-small`, 512 dimensions |
 | RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`) |
-| Streaming | Vercel AI SDK (`ai` package) — `streamText` + `createUIMessageStream`/`toUIMessageStreamResponse` |
+| Streaming | Vercel AI SDK 7 (`ai` package) — `streamText` + `createUIMessageStream` + stateless `toUIMessageStream` |
 | Observability | LangSmith (`langsmith`) for tracing RAG pipeline runs |
 | Analytics | Vercel Analytics + Speed Insights |
 | Auth | JWT (`jsonwebtoken`) stored as a cookie |
 | Package manager | pnpm |
-| Node version | 20.x (required, see `engines` in `package.json`) |
+| Node version | 22+ (required by AI SDK 7; Vercel runs Node 24 — see `engines` in `package.json`) |
 | Deployment | Vercel (`@sveltejs/adapter-vercel`) |
 | Dev runner | `mprocs` — runs SvelteKit dev server + Slice Machine UI concurrently |
 
@@ -48,7 +48,7 @@ HuntBot/
 │   │   ├── types.ts          # Core shared types (SupportedRoutes, SupportedActions, etc.)
 │   │   ├── ChatBox/          # HuntBot chat UI components + state
 │   │   │   ├── ChatBox.svelte        # Root chat widget
-│   │   │   ├── MessageStore.ts       # Svelte stores + Vercel AI SDK useChat() setup
+│   │   │   ├── MessageStore.svelte.ts # Svelte stores + Vercel AI SDK `Chat` setup
 │   │   │   ├── TextInput.svelte
 │   │   │   ├── UserMessage.svelte
 │   │   │   ├── BotMessage.svelte
@@ -60,7 +60,7 @@ HuntBot/
 │   │   │   └── navstore.ts           # Svelte stores for nav/chat state
 │   │   ├── server/
 │   │   │   ├── auth.ts               # JWT cookie verification helper
-│   │   │   ├── rerank.ts             # LLM-based chunk reranking (over-retrieve → rerank → top K)
+│   │   │   ├── rerank.ts             # Chunk reranking via OpenAI Decisions API (over-retrieve → rerank → top K)
 │   │   │   ├── query-lane.ts         # Adaptive-compute lane classifier (quick / standard / deep)
 │   │   │   ├── timing.ts             # Per-request stage timer for latency logging
 │   │   │   ├── rag-router.ts         # Supplemental search planning via structured LLM call
@@ -175,7 +175,7 @@ GOOGLE_CALENDAR_TIMEZONE=      # Optional: IANA timezone for resolving "today"/r
 RAG_DEBUG=               # Set to 1 to log RAG / agent tool steps in production (dev logs them by default)
 RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_reflection` event: thinking, citations, confidence)
 RAG_ROUTER=              # Set to 0 to skip the pre-turn structured router (saves one small LLM call per message; default = router on)
-RERANK_ENABLED=          # Set to 0 to disable LLM reranking of retrieved chunks (default: on). When enabled, 16 chunks are fetched and reranked to top 5.
+RERANK_ENABLED=          # Set to 0 to disable reranking of retrieved chunks (default: on). When enabled, 16 chunks are fetched and reranked to top 5.
 SELF_CRITIQUE=           # Set to 0 to disable pre-generation context sufficiency check and fallback search (default: on)
 QUERY_LANES=             # Set to 0 to disable adaptive-compute lanes and send every message down the standard pipeline (default: on)
 ```
@@ -193,21 +193,22 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 2. Server uses `getContext()` (`src/lib/utilities/context.ts`) to retrieve relevant docs:
    - **Query rewrite + HyDE expansion** (`src/lib/rewrite.ts`): standalone search query via AI SDK `generateText`, then HyDE (Hypothetical Document Embeddings) generates a brief hypothetical answer and concatenates it with the query to improve vector similarity for vague questions
    - Embeds with `text-embedding-3-small` (512 dims) — once per query, shared across branches — and queries Qdrant (`k=16` per branch: main site + optional iMessage + optional entity-filtered search), deduped and ordered by vector score
-   - **LLM reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored by `gpt-6-luna` for relevance and reduced to top 5. Disable with `RERANK_ENABLED=0`.
+   - **Reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored with OpenAI's Decisions API via AI SDK 7's `experimental_decide` + `openai.decisionModel('gpt-6-luna')` — one `score` question per chunk on a 4-level relevance rubric, answered in a single call, returning probability-weighted fractional scores — and reduced to top 5. The API is experimental; any failure falls back to vector-score order. Disable with `RERANK_ENABLED=0`.
    - **Source diversity filter**: max 2 chunks per unique source URL to avoid redundant context
    - **Entity-aware search**: queries mentioning a person name trigger an additional Qdrant search filtered on `metadata.contact` / `metadata.participants`
    - CONTEXT chunks are labeled with `[CHUNK-...]` ids for grounding
    - **Caching** (per warm serverless instance): full site-page text is cached for 30 min instead of re-fetching hunterbryant.io every turn, and first-turn CONTEXT is cached for 10 min keyed on lane + page + normalized message, so repeated opening questions (suggestion chips) skip rewrite, search and rerank
    - **Qdrant vector naming**: Retrieval uses `src/lib/server/qdrant-search.ts`, which matches LangChain’s embed shape. It reads the collection config and uses a **named** vector (`{ name, vector }`) when the collection defines named dense vectors (common for Qdrant Cloud / dashboard-created collections). Set `QDRANT_VECTOR_NAME` if auto-detection picks the wrong vector on multi-vector collections.
-3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-6-luna` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
+3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateText` + `Output.object` + `gpt-6-luna` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
 4. **Context sufficiency check**: if CONTEXT has zero or one chunk, a fallback `searchKnowledgeBase` call appends broader results. Disable with `SELF_CRITIQUE=0`.
 5. Retrieved context (including any pre-run and fallback searches) is injected into the system prompt alongside the full message history. The system prompt is written with a stable static prefix (voice/rules/tools) and all turn-specific content (today's date, current page, approved routes, router hint, CONTEXT) pushed into a single `## Live details` section at the end, so OpenAI's automatic prompt caching can reuse the cached prefix across turns and visitors. A matching `providerOptions.openai.promptCacheKey` is set on the model call to keep those requests on the same cache partition.
-6. OpenAI `gpt-6-astra` is called via the **Responses API** (`openai.responses(...)`, not the chat completions helper) with streaming + tools (Vercel AI SDK `streamText`). The Responses API is required to get reasoning summaries back for a reasoning model. `gpt-6-astra`/`gpt-6-luna` are reasoning models and reject a `temperature` param, so none is set anywhere in the pipeline; `providerOptions.openai.reasoningEffort` is set to `'low'` instead (replies are short, deep reasoning isn't needed). `experimental_transform: smoothStream({ chunking: 'word' })` paces the token stream into natural word-sized chunks for the client instead of raw provider deltas.
-7. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`. Reasoning summary deltas stream through as `reasoning` UI parts (`sendReasoning` defaults to `true`). The server also emits `source-url` UI parts for every distinct SITE CONTENT page URL that grounded the reply (parsed off the `[CHUNK-site-...] Source: <url>` lines in CONTEXT) — the client renders these as small linked citations under the bot message via `getMessageSources()` in `MessageStore.svelte.ts`.
+6. OpenAI `gpt-6-astra` is called via the **Responses API** (`openai.responses(...)`, not the chat completions helper) with streaming + tools (Vercel AI SDK `streamText`). The Responses API is required to get reasoning summaries back for a reasoning model. `gpt-6-astra`/`gpt-6-luna` are reasoning models and reject a `temperature` param, so none is set anywhere in the pipeline; the AI SDK 7 top-level `reasoning` option is set instead (`'low'` for quick/standard lanes and every helper call, `'medium'` for the deep lane). AI SDK 7 defaults OpenAI reasoning summaries to `'detailed'` whenever `reasoning` is set, so the chat call pins `reasoningSummary: 'auto'` and helper calls pass `reasoningSummary: null`. `experimental_transform: smoothStream({ chunking: 'word' })` paces the token stream into natural word-sized chunks for the client instead of raw provider deltas.
+7. Vercel AI SDK streams the response back to the client via `toUIMessageStream({ stream: result.stream })` inside `createUIMessageStream`. Reasoning summary deltas stream through as `reasoning` UI parts (`sendReasoning` defaults to `true`). The server also emits `source-url` UI parts for every distinct SITE CONTENT page URL that grounded the reply (parsed off the `[CHUNK-site-...] Source: <url>` lines in CONTEXT) — the client renders these as small linked citations under the bot message via `getMessageSources()` in `MessageStore.svelte.ts`.
 8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
    - **Never a silent turn**: the model's UI stream is forwarded chunk-by-chunk rather than merged, and if a turn ends with no text and no client-visible tool call (e.g. reasoning used up the output budget), a short fallback line is sent before `finish` and an `Model produced an empty reply` warning is logged. Note that `maxOutputTokens` includes reasoning tokens, so caps are set well above the length of a 1–3 sentence reply.
-   - `gpt-6-*` models need `@ai-sdk/openai` ≥ 3.0.127 to be recognized as reasoning models — older versions silently drop `reasoningEffort`/`reasoningSummary` (watch for `AI SDK Warning … not supported for non-reasoning models` in logs).
-9. **Latency logging** (`src/lib/server/timing.ts`): every turn logs one `[HuntBot timing]` JSON line (lane, model, lane scores, and ms per stage: `classify`, `rewrite`, `vector_search`, `rerank`, `page_fetch`, `retrieval`, `router`, `supplemental`, `fallback`, `model_start`, `first_token`, `total`) and attaches the same `timings_ms` + `lane` to the PostHog `chat_message` event
+   - `gpt-6-*` models need `@ai-sdk/openai` ≥ 3.0.127 (now on 4.x with AI SDK 7) to be recognized as reasoning models — older versions silently drop reasoning settings (watch for `AI SDK Warning … not supported for non-reasoning models` in logs).
+   - All structured helper calls (router, reflection, suggestions) use `generateText` + `Output.object` — `generateObject` is deprecated in AI SDK 7. The suggestion and proactive endpoints also go through the AI SDK rather than the raw `openai` client, and log failures instead of silently returning empty results.
+9. **Latency logging** (`src/lib/server/timing.ts`): every turn logs one `[HuntBot timing]` JSON line (lane, model, lane scores, and ms per stage: `classify`, `rewrite`, `vector_search`, `rerank`, `page_fetch`, `retrieval`, `router`, `supplemental`, `fallback`, `model_start`, `first_token`, `total`, plus per model step `stepN` / `stepN_first_output` and per tool `tool_<name>` from AI SDK 7's `step.performance`) and attaches the same `timings_ms` + `lane` to the PostHog `chat_message` event
 
 ### Function calling
 
@@ -224,9 +225,9 @@ Beyond the two client-visible actions above, the model also has server-executed 
 
 A fifth server-executed tool, `get_calendar_events` (`src/lib/server/calendar.ts`), answers "what was Hunter up to on [date]" style questions by querying Hunter's Google Calendar live via OAuth2 (refresh-token flow, no user login involved — see `GOOGLE_CALENDAR_*` env vars). It intentionally returns only event titles and times, never attendees, locations, or descriptions, since results are exposed to anonymous site visitors. Requires a one-time OAuth consent flow to mint `GOOGLE_CALENDAR_REFRESH_TOKEN`; without it configured, the tool degrades gracefully ("Calendar is not connected.") rather than erroring.
 
-### Client-side chat state (`MessageStore.ts`)
+### Client-side chat state (`MessageStore.svelte.ts`)
 
-- Uses Vercel AI SDK's `useChat()` (`ai/svelte`)
+- Uses the Vercel AI SDK `Chat` class from `@ai-sdk/svelte`
 - Chat ID is hardcoded as `'uniquechatid'` — this keeps a single persistent conversation across navigations
 - `botEngaged` and `minimized` are Svelte writable stores that control chat visibility
 - Function call results are appended to the message list as `role: 'function'` messages
