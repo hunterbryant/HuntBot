@@ -22,7 +22,7 @@
 <div
 	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1 text-stone-600 dark:text-stone-400"
 >
-	<Huntbotlogo />
+	<Huntbotlogo mode="sketchy" />
 	<p class="grow text-stone-600 dark:text-stone-400">{greeting}</p>
 
 	{#if $minimized}

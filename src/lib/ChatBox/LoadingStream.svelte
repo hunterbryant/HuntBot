@@ -82,7 +82,7 @@
 	in:slide|global
 	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-start gap-1 rounded px-1 text-stone-800 dark:text-stone-200"
 >
-	<Huntbotlogo thinking />
+	<Huntbotlogo mode="thinking" />
 
 	<p class="mr-6 mt-3.5 grow whitespace-pre-line" aria-label="HuntBot is thinking">
 		<span class="shimmer" use:typeReveal={displayText}></span>
