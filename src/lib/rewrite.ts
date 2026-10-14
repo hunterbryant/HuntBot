@@ -6,6 +6,11 @@ import { logRag } from '$lib/server/rag-debug';
 
 const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']);
 
+// The follow-up rewrite sits on the critical path before any search runs, and it measured
+// 1.9–6.4s in production. Past this budget, fall back to a plain concatenation of the recent
+// turns — slightly blurrier retrieval beats a visitor watching a spinner.
+const REWRITE_TIMEOUT_MS = 2500;
+
 /**
  * Generate a hypothetical answer (HyDE) to improve vector retrieval.
  * The expanded text contains words that actually appear in stored chunks,
@@ -19,6 +24,7 @@ async function hydeExpand(query: string): Promise<string> {
 			model: openai('gpt-6-luna'),
 			maxOutputTokens: 400, // includes reasoning tokens
 			reasoning: 'low',
+			abortSignal: AbortSignal.timeout(REWRITE_TIMEOUT_MS),
 			// AI SDK 7 turns on detailed reasoning summaries whenever reasoning is set — not needed here.
 			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `Write a brief 2-3 sentence answer to this question as if you were a portfolio website for a product designer named Hunter Bryant. Be specific with names, projects, and details. Output ONLY the answer, nothing else.
@@ -79,6 +85,9 @@ export async function rewriteRetrievalQuery(
 		? `The user is currently viewing: ${currentPage}`
 		: '';
 	const recent = priorUserMessages.slice(-3);
+	// No-LLM standalone query: "tell me more" alone retrieves nothing useful, but with the
+	// previous user turn attached it lands on the right topic.
+	const concatenated = `${priorUserMessages.slice(-1).join(' ')} ${currentMessage}`.trim();
 
 	const history = `${pageHint}
 
@@ -94,6 +103,7 @@ Follow-up: "${currentMessage}"`;
 				output: Output.object({ schema: rewriteWithHydeSchema }),
 				maxOutputTokens: 600, // includes reasoning tokens
 				reasoning: 'low',
+				abortSignal: AbortSignal.timeout(REWRITE_TIMEOUT_MS),
 				// AI SDK 7 turns on detailed reasoning summaries whenever reasoning is set — not needed here.
 				providerOptions: { openai: { reasoningSummary: null } },
 				prompt: `Do two things for this chat with a visitor to product designer Hunter Bryant's portfolio site.
@@ -113,25 +123,26 @@ ${history}`
 			return hypothetical.length >= 10 ? `${query} ${hypothetical}` : query;
 		} catch (err) {
 			logRag('rewrite + hyde failed', { error: String(err) });
-			return currentMessage;
+			return concatenated;
 		}
 	}
 
-	let rewritten = currentMessage;
+	let rewritten = concatenated;
 	try {
 		const { text } = await generateText({
 			model: openai('gpt-6-luna'),
 			maxOutputTokens: 400, // includes reasoning tokens
 			reasoning: 'low',
+			abortSignal: AbortSignal.timeout(REWRITE_TIMEOUT_MS),
 			// AI SDK 7 turns on detailed reasoning summaries whenever reasoning is set — not needed here.
 			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `Rewrite the follow-up message into a standalone search query that captures the full intent. Include any names, topics, or specifics from the conversation that the follow-up refers to. Output ONLY the rewritten query, nothing else.
 
 ${history}`
 		});
-		rewritten = text.trim() || currentMessage;
-	} catch {
-		// keep original message
+		rewritten = text.trim() || concatenated;
+	} catch (err) {
+		logRag('rewrite failed', { error: String(err) });
 	}
 
 	return rewritten;

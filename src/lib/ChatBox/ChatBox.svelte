@@ -489,9 +489,16 @@
 	}
 
 	function retryLastResponse() {
+		// Include the exchange being flagged so the event can be read on its own.
+		const lastBot = [...$messages]
+			.reverse()
+			.find((m) => m.role === 'assistant' && getMessageText(m).trim());
+		const lastUser = [...$messages].reverse().find((m) => m.role === 'user');
 		captureEvent('not_helpful', SESSION_ID, {
 			session_id: SESSION_ID,
-			current_page: $page.url.pathname
+			current_page: $page.url.pathname,
+			user_message: lastUser ? getMessageText(lastUser) : null,
+			bot_response: lastBot ? getMessageText(lastBot) : null
 		});
 		append({
 			role: 'user',

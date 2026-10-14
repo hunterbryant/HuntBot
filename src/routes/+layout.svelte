@@ -9,7 +9,8 @@
 	import Links from '$lib/nav/Links.svelte';
 	import ChatBox from '$lib/ChatBox/ChatBox.svelte';
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen, keyboardOpen } from '$lib/nav/navstore';
-	import { botEngaged, chat, minimized } from '$lib/ChatBox/MessageStore.svelte';
+	import { botEngaged, chat, minimized, SESSION_ID } from '$lib/ChatBox/MessageStore.svelte';
+	import { captureEvent } from '$lib/analytics';
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
@@ -94,7 +95,13 @@
 		}
 	});
 
-	afterNavigate(() => {
+	afterNavigate((navData) => {
+		// Pageviews share the chat's session id as distinct_id, so the share of visits that
+		// open HuntBot (and where they were when they did) can be measured.
+		captureEvent('$pageview', SESSION_ID, {
+			session_id: SESSION_ID,
+			...(navData.from ? { $referrer: navData.from.url.href } : {})
+		});
 		window.scrollTo({
 			top: 0,
 			behavior: 'smooth'

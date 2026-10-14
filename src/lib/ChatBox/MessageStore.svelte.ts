@@ -359,6 +359,14 @@ function handleToolCall(toolCall: {
 	}
 
 	const baseMessages = stripTrailingAssistantToolTurns(chatInstance.messages);
+	// Any answer the model wrote before calling the tool lives in the turn that was just
+	// stripped; keep it so routing or lead capture adds to the reply instead of replacing it.
+	const streamedText = chatInstance.messages
+		.slice(baseMessages.length)
+		.filter((m) => m.role === 'assistant')
+		.map(getMessageText)
+		.join('\n\n')
+		.trim();
 
 	if (toolCall.toolName === 'minimize_chat') {
 		const args = toolCall.args as { message: string };
@@ -393,7 +401,7 @@ function handleToolCall(toolCall: {
 		const textMessage: UIMessage = {
 			id: generateId(),
 			role: 'assistant',
-			parts: [{ type: 'text', text: args.message ?? `Taking you to ${args.page}.` }]
+			parts: [{ type: 'text', text: streamedText || args.message || `Taking you to ${args.page}.` }]
 		};
 
 		chatInstance.messages = [
@@ -429,7 +437,8 @@ function handleToolCall(toolCall: {
 		];
 	} else if (toolCall.toolName === 'capture_lead_intent') {
 		const args = toolCall.args as { intent_type: string; message: string };
-		const warmMessage = args.message ?? "Sounds like you're interested in working with Hunter.";
+		const warmMessage =
+			streamedText || args.message || "Sounds like you're interested in working with Hunter.";
 		chatInstance.messages = [
 			...baseMessages,
 			{
