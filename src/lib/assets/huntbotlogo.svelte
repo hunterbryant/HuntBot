@@ -1,7 +1,8 @@
 <script lang="ts">
-	// When true, HuntBot strikes a "hmm" pose: head tilted, eyes up to the side, mouth pushed
-	// over, with thought bubbles rising one by one. The line also "boils" like a hand-drawn
-	// sketch being redrawn frame by frame.
+	// When true, HuntBot looks like it's working something out: brows sketch in and furrow while
+	// the eyes scan back and forth like they're reading, then it glances up with a raised brow
+	// and a "hmm" mouth. The line also "boils" like a hand-drawn sketch being redrawn frame by
+	// frame.
 	export let thinking = false;
 
 	// Unique per instance so multiple avatars on the page don't share a filter.
@@ -60,24 +61,28 @@
 				<path class="eye fill-current" d="M25.3991 23.618C24.9866 24.0306 25.0121 24.5377 25.4675 24.9801C25.7358 25.2406 25.886 25.3127 26.1603 25.3127C26.6012 25.3127 26.9009 25.0753 26.9912 24.6542C27.0496 24.3826 27.0166 24.2624 26.7927 23.9313C26.3402 23.2622 25.8624 23.1548 25.3991 23.618Z" />
 			</g>
 			<path class="mouth fill-current" d="M19.7787 26.769C19.7131 26.848 19.6409 27.1117 19.6183 27.3549C19.5854 27.7083 19.6211 27.8617 19.7964 28.1187C20.0781 28.5318 21.1206 29.0989 21.877 29.2504C22.1939 29.314 22.7696 29.441 23.1563 29.5329C23.6097 29.6405 24.4089 29.7173 25.4063 29.7489C27.5985 29.8184 27.8013 29.6992 27.8583 28.3093C27.8901 27.5365 27.8862 27.5199 27.6415 27.4008C27.2927 27.2311 26.9706 27.3758 26.6633 27.8402L26.4126 28.219H25.1656C24.4797 28.219 23.8052 28.176 23.6669 28.1233C23.5284 28.0707 23.0299 27.9622 22.5591 27.8822C21.5067 27.7036 20.7188 27.3712 20.7188 27.1059C20.7188 26.6877 20.0462 26.4466 19.7787 26.769Z" />
+			{#if thinking}
+				<g
+					class="brows"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="0.85"
+					stroke-linecap="round"
+				>
+					<path class="brow brow-left" pathLength="1" d="M19.7 21.2 Q20.9 20.5 22.1 20.9" />
+					<path class="brow brow-right" pathLength="1" d="M25 21.3 Q26.3 20.7 27.5 21.4" />
+				</g>
+			{/if}
 		</g>
-		{#if thinking}
-			<g class="bubbles" fill="none" stroke="currentColor" stroke-width="0.8">
-				<circle class="bubble" cx="36.2" cy="15" r="0.9" />
-				<circle class="bubble" cx="39.4" cy="11" r="1.4" />
-				<circle class="bubble" cx="43.2" cy="6" r="2.2" />
-			</g>
-		{/if}
 	</g>
 </svg>
 
 <style>
-	/* One slow beat: settle into the pose, hold it while the bubbles rise, then relax. */
+	/* One slow beat: furrow and scan like it's reading, glance up and mull it over, repeat. */
 	.thinking .head,
 	.thinking .eyes,
 	.thinking .eye,
-	.thinking .mouth,
-	.thinking .bubble {
+	.thinking .mouth {
 		animation-duration: 5s;
 		animation-iteration-count: infinite;
 		animation-timing-function: ease-in-out;
@@ -90,7 +95,7 @@
 	}
 
 	.thinking .eyes {
-		animation-name: look-up;
+		animation-name: scan;
 	}
 
 	.thinking .eye {
@@ -105,138 +110,150 @@
 		animation-name: hmm;
 	}
 
-	.thinking .bubble {
+	/* Brows get sketched in once, then keep furrowing and raising with the loop. */
+	.thinking .brow {
 		transform-box: fill-box;
 		transform-origin: center;
-		animation-name: bubble;
+		stroke-dasharray: 1;
+		animation:
+			sketch-in 0.5s ease-out both,
+			brow-left 5s ease-in-out infinite;
 	}
 
-	.thinking .bubble:nth-child(2) {
-		animation-name: bubble-2;
+	.thinking .brow-right {
+		animation:
+			sketch-in 0.5s 0.15s ease-out both,
+			brow-right 5s ease-in-out infinite;
 	}
 
-	.thinking .bubble:nth-child(3) {
-		animation-name: bubble-3;
+	@keyframes sketch-in {
+		from {
+			stroke-dashoffset: 1;
+		}
+		to {
+			stroke-dashoffset: 0;
+		}
 	}
 
-	/* Tilt toward the bubbles, with a slow nod partway through the hold. */
+	/* Slight lean in while reading, then tip back the other way to mull it over. */
 	@keyframes ponder {
 		0%,
 		100% {
 			transform: rotate(0deg);
 		}
-		14%,
-		45% {
-			transform: rotate(6deg);
+		8%,
+		58% {
+			transform: rotate(-3deg);
 		}
-		58%,
-		84% {
-			transform: rotate(4deg) translateY(0.4px);
+		68%,
+		90% {
+			transform: rotate(5deg);
 		}
 	}
 
-	/* Eyes roll up toward the bubbles and stay there. */
-	@keyframes look-up {
+	/* Two lines of reading: hop left to right, sweep back, hop again. Then look up and away. */
+	@keyframes scan {
 		0%,
 		100% {
 			transform: translate(0, 0);
 		}
-		14%,
-		45% {
-			transform: translate(1.3px, -1.4px);
+		6%,
+		12% {
+			transform: translate(-1.1px, -0.2px);
 		}
-		58%,
-		84% {
-			transform: translate(1.6px, -1.1px);
+		16%,
+		22% {
+			transform: translate(0, -0.2px);
+		}
+		26%,
+		32% {
+			transform: translate(1.1px, -0.2px);
+		}
+		36%,
+		40% {
+			transform: translate(-1.1px, 0.4px);
+		}
+		44%,
+		48% {
+			transform: translate(0, 0.4px);
+		}
+		52%,
+		58% {
+			transform: translate(1.1px, 0.4px);
+		}
+		66%,
+		90% {
+			transform: translate(1.3px, -0.9px);
 		}
 	}
 
+	/* A blink as it looks up from "reading". */
 	@keyframes blink {
 		0%,
-		49%,
-		55%,
+		60%,
+		66%,
 		100% {
 			transform: scaleY(1);
 		}
-		52% {
+		63% {
 			transform: scaleY(0.1);
 		}
 	}
 
-	/* Mouth scrunches and slides to one side, a "hmm" face. */
+	/* Pursed while reading, pushed to one side while mulling. */
 	@keyframes hmm {
 		0%,
 		100% {
 			transform: translateX(0) scale(1, 1);
 		}
-		14%,
-		84% {
+		8%,
+		58% {
+			transform: translateX(0) scale(0.8, 0.9);
+		}
+		68%,
+		90% {
 			transform: translateX(0.8px) scale(0.65, 0.85);
 		}
 	}
 
-	/* Bubbles pop in smallest to largest, hold, then fade together. */
-	@keyframes bubble {
+	/* Inner ends dip toward each other to furrow while reading. */
+	@keyframes brow-left {
 		0%,
-		16% {
-			opacity: 0;
-			transform: scale(0.3);
-		}
-		22%,
-		82% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		92%,
 		100% {
-			opacity: 0;
-			transform: scale(1);
+			transform: translateY(0) rotate(0deg);
+		}
+		8%,
+		58% {
+			transform: translateY(0.4px) rotate(12deg);
+		}
+		68%,
+		90% {
+			transform: translateY(-0.3px) rotate(4deg);
 		}
 	}
 
-	@keyframes bubble-2 {
+	/* Furrows with the other brow, then pops up skeptically while mulling. */
+	@keyframes brow-right {
 		0%,
-		28% {
-			opacity: 0;
-			transform: scale(0.3);
-		}
-		34%,
-		82% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		92%,
 		100% {
-			opacity: 0;
-			transform: scale(1);
+			transform: translateY(0) rotate(0deg);
+		}
+		8%,
+		58% {
+			transform: translateY(0.4px) rotate(-12deg);
+		}
+		68%,
+		90% {
+			transform: translateY(-1px) rotate(-6deg);
 		}
 	}
 
-	@keyframes bubble-3 {
-		0%,
-		40% {
-			opacity: 0;
-			transform: scale(0.3);
-		}
-		46%,
-		82% {
-			opacity: 1;
-			transform: scale(1);
-		}
-		92%,
-		100% {
-			opacity: 0;
-			transform: scale(1);
-		}
-	}
-
-	/* Without motion, the bubbles just sit there, which still reads as thinking. */
 	@media (prefers-reduced-motion: reduce) {
 		.thinking .head,
 		.thinking .eyes,
 		.thinking .eye,
 		.thinking .mouth,
-		.thinking .bubble {
+		.thinking .brow {
 			animation: none;
 		}
 	}
