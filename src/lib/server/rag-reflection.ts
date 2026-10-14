@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateObject, zodSchema } from 'ai';
+import { generateText, Output, zodSchema } from 'ai';
 import { ragReflectionSchema } from '$lib/schemas/ragResponse';
 
 const CONTEXT_EXCERPT_MAX = 12_000;
@@ -27,10 +27,11 @@ export async function sendRagReflectionToPosthog(options: {
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 	const excerpt = contextExcerpt.slice(0, CONTEXT_EXCERPT_MAX);
 
-	const { object } = await generateObject({
-		model: openai('gpt-4.1-mini'),
-		schema: zodSchema(ragReflectionSchema),
-		temperature: 0.2,
+	const { output: object } = await generateText({
+		model: openai('gpt-6-luna'),
+		output: Output.object({ schema: zodSchema(ragReflectionSchema) }),
+		reasoning: 'low',
+		providerOptions: { openai: { reasoningSummary: null } },
 		prompt: `You are auditing a RAG assistant reply for grounding.
 
 User message:

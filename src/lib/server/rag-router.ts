@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateObject, zodSchema } from 'ai';
+import { generateText, Output, zodSchema } from 'ai';
 import { ragRouterSchema, type RagRouterPlan } from '$lib/schemas/ragRouter';
 import { logRag } from '$lib/server/rag-debug';
 
@@ -38,9 +38,11 @@ export async function planSupplementalSearches(options: {
 
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
-		const { object } = await generateObject({
-			model: openai('gpt-5.6-terra'),
-			schema: zodSchema(ragRouterSchema),
+		const { output: object } = await generateText({
+			model: openai('gpt-6-luna'),
+			output: Output.object({ schema: zodSchema(ragRouterSchema) }),
+			reasoning: 'low',
+			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `You route retrieval for HuntBot (Hunter Bryant's portfolio + Notion notes + optional iMessage chunks).
 
 Decide if the INITIAL CONTEXT below is sufficient for a grounded answer to the LATEST user message, or if 1–3 extra vector searches will materially help.

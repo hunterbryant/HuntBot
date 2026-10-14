@@ -8,10 +8,12 @@ import {
 	readRepoFile,
 	searchRepoCode
 } from '$lib/server/github-repo';
+import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
 import { getAvailableRoutes } from '$lib/server/site-nav-routes';
+import { createStageTimer } from '$lib/server/timing';
 import { getContext, searchKnowledgeBase, type StatusReporter } from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -19,9 +21,10 @@ import {
 	convertToModelMessages,
 	createUIMessageStream,
 	createUIMessageStreamResponse,
+	isStepCount,
 	smoothStream,
-	stepCountIs,
 	streamText,
+	toUIMessageStream,
 	tool,
 	type UIMessage
 } from 'ai';
@@ -43,15 +46,43 @@ function isTrivialMessage(text: string): boolean {
 	return TRIVIAL_MESSAGE_RE.test(trimmed);
 }
 
+// Model + effort per adaptive-compute lane (see $lib/server/query-lane). Quick replies go to
+// the fast model; deep questions get more reasoning. Reasoning tokens count against
+// maxOutputTokens, so every lane leaves headroom beyond the 1–3 sentence reply itself
+// (a 180-token cap let reasoning swallow the whole budget and return an empty reply).
+const LANE_MODEL_CONFIG: Record<
+	QueryLane,
+	{ model: string; reasoningEffort: 'low' | 'medium'; maxOutputTokens: number }
+> = {
+	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 600 },
+	standard: { model: 'gpt-6-astra', reasoningEffort: 'low', maxOutputTokens: 600 },
+	deep: { model: 'gpt-6-astra', reasoningEffort: 'medium', maxOutputTokens: 1500 }
+};
+
+// Tools with no server `execute` — the client renders their input as the reply/action.
+const CLIENT_TOOL_NAMES = new Set([
+	'minimize_chat',
+	'route_to_page',
+	'ask_clarifying_question',
+	'capture_lead_intent'
+]);
+
 type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
 
 /** Cheap heuristic (chunk count + length) reused to decide whether the router / fallback
- *  search LLM calls are worth their round trip, without invoking a model. */
+ *  search LLM calls are worth their round trip, without invoking a model.
+ *  Full-page site entries count double: retrieval collapses every hit on a site page into a single
+ *  `[CHUNK-site-…]` entry carrying that page's full text, so two relevant pages are strong
+ *  evidence — counting them as just "2 chunks" sent nearly every site question to the router. */
 function assessConfidence(contextText: string): ContextConfidence {
 	const chunkCount = (contextText.match(/\[CHUNK-/g) || []).length;
 	if (!contextText.trim() || chunkCount === 0) return 'empty';
-	if (contextText.length < 200 || chunkCount === 1) return 'thin';
-	if (chunkCount >= 3 && contextText.length >= 400) return 'strong';
+	// Only full-page entries (`[CHUNK-site-…] Source: <url>`) — supplemental/fallback search
+	// results reuse the site id prefix but carry a single chunk, not a whole page.
+	const fullPageCount = (contextText.match(/\[CHUNK-site-[^\]]+\] Source: /g) || []).length;
+	if (contextText.length < 200 || (chunkCount === 1 && fullPageCount === 0)) return 'thin';
+	const evidence = chunkCount + fullPageCount;
+	if (evidence >= 3 && contextText.length >= 400) return 'strong';
 	return 'moderate';
 }
 
@@ -124,37 +155,69 @@ export const POST: RequestHandler = async ({ request }) => {
 				writer.write({ type: 'finish' });
 			}
 
+			const timer = createStageTimer();
+			let laneDecision: LaneDecision = {
+				lane: 'quick',
+				quickScore: 0,
+				deepScore: 0,
+				embedding: null
+			};
+
 			try {
 				reportStatus('Reading your question…');
 
-				// Get context and available routes in parallel; degrade gracefully if retrieval fails.
-				// Trivial acknowledgements ("thanks", "ok") skip retrieval entirely — there's nothing
-				// to ground and running the full pipeline just adds latency for no benefit.
+				// Routes come from a cached Prismic catalog; start the fetch now so it overlaps
+				// classification + retrieval. The no-op catch only prevents an unhandled-rejection
+				// warning while we're awaiting other work — the await below still throws.
+				const routesPromise = getAvailableRoutes();
+				routesPromise.catch(() => {});
+
+				// Trivial acknowledgements ("thanks", "ok") skip classification and retrieval
+				// entirely — there's nothing to ground. Everything else gets a lane.
+				if (!fastPath) {
+					laneDecision = await timer.time('classify', () => classifyQueryLane(lastMessageText));
+				}
+				const { lane } = laneDecision;
+
+				// Degrade gracefully if retrieval fails.
 				const [context, availableRoutes] = await Promise.all([
 					fastPath
 						? Promise.resolve('')
-						: getContext(lastMessageText, priorUserMessages, currentPage, reportStatus).catch(
-								(err: { data?: string; message?: string }) => {
+						: timer
+								.time('retrieval', () =>
+									getContext(lastMessageText, priorUserMessages, currentPage, reportStatus, {
+										lane,
+										messageEmbedding: laneDecision.embedding,
+										timer
+									})
+								)
+								.catch((err: { data?: string; message?: string }) => {
 									console.warn(
 										'Context retrieval failed, continuing without context:',
 										err?.data ?? err?.message ?? err
 									);
 									return '';
-								}
-							),
-					getAvailableRoutes()
+								}),
+					routesPromise
 				]);
 
 				// RAG router: only worth a full LLM round trip when initial retrieval isn't already
-				// a confident match. Most well-covered questions land here and skip it outright.
+				// a confident match. The quick lane never pays for it; the deep lane always does,
+				// since open-ended questions usually benefit from extra targeted searches.
 				let routerPlan: RagRouterPlan = { supplemental_searches: [], assistant_hint: null };
-				if (!fastPath && assessConfidence(context) !== 'strong') {
+				if (
+					!fastPath &&
+					lane !== 'quick' &&
+					(lane === 'deep' || assessConfidence(context) !== 'strong')
+				) {
 					reportStatus('Checking if I need more info…');
-					routerPlan = await planSupplementalSearches({
-						userMessage: lastMessageText,
-						priorUserMessages,
-						contextText: context
-					});
+					routerPlan = await timer.time('router', () =>
+						planSupplementalSearches({
+							userMessage: lastMessageText,
+							priorUserMessages,
+							contextText: context
+						})
+					);
 				}
 
 				const seenSearchKeys = new Set<string>();
@@ -168,16 +231,18 @@ export const POST: RequestHandler = async ({ request }) => {
 				let supplementalBlocks: string[] = [];
 				if (uniqueSearches.length > 0) {
 					reportStatus('Running a follow-up search…');
-					const results = await Promise.all(
-						uniqueSearches.map(async (s) => {
-							try {
-								const result = await searchKnowledgeBase(s.query, s.source_filter);
-								return `### Supplemental search (${s.source_filter}): "${s.query}"\n${result}`;
-							} catch (e) {
-								console.warn('Supplemental search failed:', s.query, e);
-								return null;
-							}
-						})
+					const results = await timer.time('supplemental', () =>
+						Promise.all(
+							uniqueSearches.map(async (s) => {
+								try {
+									const result = await searchKnowledgeBase(s.query, s.source_filter);
+									return `### Supplemental search (${s.source_filter}): "${s.query}"\n${result}`;
+								} catch (e) {
+									console.warn('Supplemental search failed:', s.query, e);
+									return null;
+								}
+							})
+						)
 					);
 					supplementalBlocks = results.filter((r): r is string => r !== null);
 				}
@@ -187,16 +252,16 @@ export const POST: RequestHandler = async ({ request }) => {
 					contextForModel = `${context}\n\n========\n\n### PRE-RUN VECTOR SEARCHES (router — same grounding rules as CONTEXT)\n${supplementalBlocks.join('\n\n---\n\n')}`;
 				}
 
-				// Pre-generation confidence check: if context is thin/empty, run a fallback search
-				if (!fastPath && env.SELF_CRITIQUE !== '0') {
+				// Pre-generation confidence check: if context is thin/empty, run a fallback search.
+				// Skipped in the quick lane — the model can still call search_knowledge_base itself.
+				if (!fastPath && lane !== 'quick' && env.SELF_CRITIQUE !== '0') {
 					const confidence = assessConfidence(contextForModel);
 					if (confidence === 'empty' || confidence === 'thin') {
 						reportStatus('Widening the search a bit…');
 						logRag('context insufficient, running fallback search', { confidence });
 						try {
-							const fallback = await searchKnowledgeBase(
-								`${lastMessageText} Hunter Bryant portfolio design`,
-								'all'
+							const fallback = await timer.time('fallback', () =>
+								searchKnowledgeBase(`${lastMessageText} Hunter Bryant portfolio design`, 'all')
 							);
 							if (fallback && !fallback.includes('No relevant results')) {
 								contextForModel += `\n\n========\n\n### FALLBACK SEARCH\n${fallback}`;
@@ -589,24 +654,30 @@ ${contextForModel}`;
 
 				reportStatus('Putting together a reply…');
 
+				const modelConfig = LANE_MODEL_CONFIG[lane];
+				timer.mark('model_start');
+				let sawFirstToken = false;
+
 				const result = streamText({
 					// Responses API (not chat completions) — required to get back reasoning
 					// summaries for a reasoning model, and to use promptCacheKey below.
-					model: openai.responses('gpt-5.6-terra'),
-					system: systemPrompt,
+					model: openai.responses(modelConfig.model),
+					instructions: systemPrompt,
 					messages: modelMessages,
 					tools,
-					stopWhen: stepCountIs(3),
-					// Keeps replies brief; raise if answers feel clipped after tool calls
-					maxOutputTokens: 180,
+					stopWhen: isStepCount(3),
+					// Includes reasoning tokens — reply length itself is governed by the system prompt
+					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
 					// at a natural pace instead of the bursty cadence of a reasoning model's output.
 					experimental_transform: smoothStream({ chunking: 'word' }),
+					// Low effort by default — replies are 1-3 sentences and deeper reasoning only
+					// adds latency. The deep lane bumps this for open-ended questions.
+					reasoning: modelConfig.reasoningEffort,
 					providerOptions: {
 						openai: {
-							// Low effort — replies are 1-3 sentences, deep reasoning isn't needed and
-							// would only add latency.
-							reasoningEffort: 'low',
+							// Explicit: AI SDK 7 defaults this to 'detailed' whenever reasoning is set,
+							// which would make the streamed reasoning parts much chattier.
 							reasoningSummary: 'auto',
 							// Stable key (not per-session) so requests share the same cache partition —
 							// the system prompt's static prefix (everything above "## Live details")
@@ -614,7 +685,26 @@ ${contextForModel}`;
 							promptCacheKey: 'huntbot-chat-system-v1'
 						}
 					},
-					onStepFinish: async ({ stepNumber, toolCalls, toolResults, text }) => {
+					onChunk: ({ chunk }) => {
+						if (!sawFirstToken && chunk.type === 'text-delta') {
+							sawFirstToken = true;
+							timer.mark('first_token');
+						}
+					},
+					onStepEnd: async ({ stepNumber, toolCalls, toolResults, text, performance }) => {
+						// Per-step model + tool latency, so multi-step turns (tool call → answer)
+						// show where the time went, not just the turn total.
+						timer.timings[`step${stepNumber}`] = Math.round(performance.stepTimeMs);
+						if (performance.timeToFirstOutputMs != null) {
+							timer.timings[`step${stepNumber}_first_output`] = Math.round(
+								performance.timeToFirstOutputMs
+							);
+						}
+						for (const tc of toolCalls ?? []) {
+							const ms = performance.toolExecutionMs[tc.toolCallId];
+							if (ms != null) timer.timings[`tool_${tc.toolName}`] = Math.round(ms);
+						}
+
 						const callNames =
 							toolCalls?.map((tc) => ('toolName' in tc ? tc.toolName : 'unknown')) ?? [];
 						const resultSummary =
@@ -626,7 +716,21 @@ ${contextForModel}`;
 							textLen: text?.length ?? 0
 						});
 					},
-					onFinish: ({ text, toolCalls }) => {
+					onEnd: ({ text, toolCalls }) => {
+						timer.mark('total');
+						// One line per turn, always on, so latency can be attributed to a stage
+						// straight from the Vercel logs.
+						console.log(
+							'[HuntBot timing]',
+							JSON.stringify({
+								lane,
+								model: modelConfig.model,
+								quick_score: Number(laneDecision.quickScore.toFixed(3)),
+								deep_score: Number(laneDecision.deepScore.toFixed(3)),
+								...timer.timings
+							})
+						);
+
 						const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
 						if (!posthogKey) return;
 
@@ -652,7 +756,11 @@ ${contextForModel}`;
 											: null,
 									current_page: currentPage,
 									run_id: runID,
-									session_id: sessionId ?? null
+									session_id: sessionId ?? null,
+									lane,
+									lane_quick_score: laneDecision.quickScore,
+									lane_deep_score: laneDecision.deepScore,
+									timings_ms: timer.timings
 								}
 							})
 						}).catch(() => {
@@ -673,7 +781,37 @@ ${contextForModel}`;
 					}
 				});
 
-				writer.merge(result.toUIMessageStream());
+				// Forward the model stream ourselves (instead of writer.merge) so a turn can never
+				// end silently: if the model produced no text and no client-visible action — e.g.
+				// reasoning used up the whole output budget — send a fallback line before `finish`.
+				const reader = toUIMessageStream({ stream: result.stream, sendFinish: false }).getReader();
+				let producedReply = false;
+				for (;;) {
+					const { done, value } = await reader.read();
+					if (done) break;
+					if (
+						(value.type === 'text-delta' && value.delta.trim()) ||
+						(value.type === 'tool-input-available' && CLIENT_TOOL_NAMES.has(value.toolName))
+					) {
+						producedReply = true;
+					}
+					writer.write(value);
+				}
+				if (!producedReply) {
+					const finishReason = await Promise.resolve(result.finishReason).catch(() => 'error');
+					console.warn('Model produced an empty reply', { lane, finishReason, runID });
+					const id = crypto.randomUUID();
+					writer.write({ type: 'start-step' });
+					writer.write({ type: 'text-start', id });
+					writer.write({
+						type: 'text-delta',
+						id,
+						delta: 'Sorry, I blanked on that one — mind asking again?'
+					});
+					writer.write({ type: 'text-end', id });
+					writer.write({ type: 'finish-step' });
+				}
+				writer.write({ type: 'finish' });
 			} catch (error) {
 				console.error('Chat API error:', error);
 				writeFallbackReply(
