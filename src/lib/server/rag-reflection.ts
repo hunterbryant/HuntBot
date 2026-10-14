@@ -28,9 +28,8 @@ export async function sendRagReflectionToPosthog(options: {
 	const excerpt = contextExcerpt.slice(0, CONTEXT_EXCERPT_MAX);
 
 	const { object } = await generateObject({
-		model: openai('gpt-4.1-mini'),
+		model: openai('gpt-6-luna'),
 		schema: zodSchema(ragReflectionSchema),
-		temperature: 0.2,
 		prompt: `You are auditing a RAG assistant reply for grounding.
 
 User message:

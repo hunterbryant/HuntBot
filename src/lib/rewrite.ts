@@ -15,9 +15,9 @@ async function hydeExpand(query: string): Promise<string> {
 
 	try {
 		const { text } = await generateText({
-			model: openai('gpt-4.1-mini'),
-			temperature: 0,
+			model: openai('gpt-6-luna'),
 			maxOutputTokens: 100,
+			providerOptions: { openai: { reasoningEffort: 'low' } },
 			prompt: `Write a brief 2-3 sentence answer to this question as if you were a portfolio website for a product designer named Hunter Bryant. Be specific with names, projects, and details. Output ONLY the answer, nothing else.
 
 Question: "${query}"`
@@ -66,9 +66,9 @@ export async function rewriteRetrievalQuery(
 	let rewritten = currentMessage;
 	try {
 		const { text } = await generateText({
-			model: openai('gpt-4.1-mini'),
-			temperature: 0.2,
+			model: openai('gpt-6-luna'),
 			maxOutputTokens: 150,
+			providerOptions: { openai: { reasoningEffort: 'low' } },
 			prompt: `Rewrite the follow-up message into a standalone search query that captures the full intent. Include any names, topics, or specifics from the conversation that the follow-up refers to. Output ONLY the rewritten query, nothing else.
 
 ${pageHint}

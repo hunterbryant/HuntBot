@@ -592,7 +592,7 @@ ${contextForModel}`;
 				const result = streamText({
 					// Responses API (not chat completions) — required to get back reasoning
 					// summaries for a reasoning model, and to use promptCacheKey below.
-					model: openai.responses('gpt-5.6-terra'),
+					model: openai.responses('gpt-6-astra'),
 					system: systemPrompt,
 					messages: modelMessages,
 					tools,

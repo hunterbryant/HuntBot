@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
 
 		const response = await openai.chat.completions.create({
-			model: 'gpt-4.1-mini',
+			model: 'gpt-6-luna',
 			max_tokens: 100,
 			messages: [
 				{

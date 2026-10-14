@@ -17,7 +17,7 @@ HuntBot has been built using the following technologies:
 
 ## Setup
 
-The main chat model is `gpt-5.6-terra` (OpenAI's current balanced/mid-tier model), called through the Vercel AI SDK's `streamText`. Reranking retrieved chunks uses the cheaper `gpt-5.6-luna`. Both are reasoning models, which means they reject a `temperature` param — none is set anywhere in the pipeline; persona consistency comes entirely from the system prompt instead.
+The main chat model is `gpt-6-astra` (OpenAI's most capable model), called through the Vercel AI SDK's `streamText`. Reranking retrieved chunks uses the cheaper `gpt-6-luna`, which also handles every other helper call (query rewrite, HyDE, routing, suggestions, reflection). Both are reasoning models, which means they reject a `temperature` param — none is set anywhere in the pipeline; persona consistency comes entirely from the system prompt instead.
 
 The project expects several environmental variables to connect with various APIs and hold various secrets:
 
@@ -99,10 +99,10 @@ At the time of this commit, the pipeline used for the LLM is as follows:
 - The `/api/chat` endpoint receives the message
   1. Rewrite the user's message into a standalone search query using the recent chat history as context, then run HyDE (Hypothetical Document Embeddings) — generate a brief hypothetical answer and concatenate it with the query — to improve vector similarity for vague questions like `"what classes did he take?"` instead of `"what engineering classes did Hunter take while at USC?"`
   2. Embed the rewritten query and search Qdrant across parallel branches (main site content, iMessage if enabled, and an entity-filtered branch when the message mentions a specific person), over-retrieving 16 chunks per branch
-  3. LLM-rerank the over-retrieved candidates down to the top 5 using `gpt-5.6-luna`, then apply a source-diversity filter (max 2 chunks per source) so one document can't dominate the context
-  4. A structured "RAG router" call (`gpt-5.6-terra`) decides whether the initial context is thin or off-topic and, if so, plans up to 3 more targeted vector searches before generation even starts
+  3. LLM-rerank the over-retrieved candidates down to the top 5 using `gpt-6-luna`, then apply a source-diversity filter (max 2 chunks per source) so one document can't dominate the context
+  4. A structured "RAG router" call (`gpt-6-luna`) decides whether the initial context is thin or off-topic and, if so, plans up to 3 more targeted vector searches before generation even starts
   5. If context still comes back empty or nearly empty after all that, a broader fallback search runs as a last resort
-  6. Submit the full chat history plus all retrieved context to `gpt-5.6-terra` with tool definitions via the Vercel AI SDK's `streamText`
+  6. Submit the full chat history plus all retrieved context to `gpt-6-astra` with tool definitions via the Vercel AI SDK's `streamText`
   7. Stream the response back to the client, and handle any function calls returned from the LLM via the AI SDK's tool-call handling
 
 Any step in this pipeline is subject to change. Things on my list:
