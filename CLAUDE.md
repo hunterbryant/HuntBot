@@ -16,7 +16,7 @@ The site is CMS-driven via **Prismic** and deployed to **Vercel**.
 | Language | TypeScript (strict) |
 | Styling | Tailwind CSS 3 (utility-first, dark mode via `dark:` variants) |
 | CMS | Prismic (Slice Machine) |
-| LLM | OpenAI `gpt-6-astra` (main chat) + `gpt-6-luna` (all helper calls) via the `openai` npm package |
+| LLM | OpenAI `gpt-6-astra` (main chat, standard/deep lanes) + `gpt-6-luna` (quick lane + all helper calls) via the `openai` npm package |
 | Vector DB | Qdrant Cloud (free tier, 1GB) |
 | Embeddings | OpenAI `text-embedding-3-small`, 512 dimensions |
 | RAG / retrieval | LangChain JS (`@langchain/openai`, `@langchain/qdrant`) |
@@ -61,6 +61,8 @@ HuntBot/
 │   │   ├── server/
 │   │   │   ├── auth.ts               # JWT cookie verification helper
 │   │   │   ├── rerank.ts             # LLM-based chunk reranking (over-retrieve → rerank → top K)
+│   │   │   ├── query-lane.ts         # Adaptive-compute lane classifier (quick / standard / deep)
+│   │   │   ├── timing.ts             # Per-request stage timer for latency logging
 │   │   │   ├── rag-router.ts         # Supplemental search planning via structured LLM call
 │   │   │   ├── rag-reflection.ts     # Post-hoc grounding audit for PostHog
 │   │   │   ├── rag-debug.ts          # RAG logging helpers
@@ -175,6 +177,7 @@ RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_refl
 RAG_ROUTER=              # Set to 0 to skip the pre-turn structured router (saves one small LLM call per message; default = router on)
 RERANK_ENABLED=          # Set to 0 to disable LLM reranking of retrieved chunks (default: on). When enabled, 16 chunks are fetched and reranked to top 5.
 SELF_CRITIQUE=           # Set to 0 to disable pre-generation context sufficiency check and fallback search (default: on)
+QUERY_LANES=             # Set to 0 to disable adaptive-compute lanes and send every message down the standard pipeline (default: on)
 ```
 
 The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repository name used (useful for staging environments).
@@ -186,13 +189,15 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 ### How the chat pipeline works (`/api/chat`)
 
 1. Client sends `POST /api/chat` with the full message history
+   - **Adaptive-compute lanes** (`src/lib/server/query-lane.ts`): the message is embedded once and compared against quick/deep exemplar questions (nearest-neighbour cosine, no LLM call). **Quick** (overview/navigation, e.g. "tell me about him") skips HyDE, LLM rerank, the router and the fallback search, and answers with `gpt-6-luna`. **Standard** (default) runs the full pipeline on `gpt-6-astra` at low effort. **Deep** (open-ended/analytical) always runs the router and uses `gpt-6-astra` at medium effort with a bigger output budget. Trivial acknowledgements ("thanks", "ok") skip classification and retrieval entirely and use the quick model. Thresholds are conservative and should be tuned from the timing logs; disable with `QUERY_LANES=0`.
 2. Server uses `getContext()` (`src/lib/utilities/context.ts`) to retrieve relevant docs:
    - **Query rewrite + HyDE expansion** (`src/lib/rewrite.ts`): standalone search query via AI SDK `generateText`, then HyDE (Hypothetical Document Embeddings) generates a brief hypothetical answer and concatenates it with the query to improve vector similarity for vague questions
-   - Embeds with `text-embedding-3-small` (512 dims) and queries Qdrant (`k=16` per branch: main site + optional iMessage + optional entity-filtered search), deduped and ordered by vector score
+   - Embeds with `text-embedding-3-small` (512 dims) — once per query, shared across branches — and queries Qdrant (`k=16` per branch: main site + optional iMessage + optional entity-filtered search), deduped and ordered by vector score
    - **LLM reranking** (`src/lib/server/rerank.ts`): over-retrieved 16 candidates are scored by `gpt-6-luna` for relevance and reduced to top 5. Disable with `RERANK_ENABLED=0`.
    - **Source diversity filter**: max 2 chunks per unique source URL to avoid redundant context
    - **Entity-aware search**: queries mentioning a person name trigger an additional Qdrant search filtered on `metadata.contact` / `metadata.participants`
    - CONTEXT chunks are labeled with `[CHUNK-...]` ids for grounding
+   - **Caching** (per warm serverless instance): full site-page text is cached for 30 min instead of re-fetching hunterbryant.io every turn, and first-turn CONTEXT is cached for 10 min keyed on lane + page + normalized message, so repeated opening questions (suggestion chips) skip rewrite, search and rerank
    - **Qdrant vector naming**: Retrieval uses `src/lib/server/qdrant-search.ts`, which matches LangChain’s embed shape. It reads the collection config and uses a **named** vector (`{ name, vector }`) when the collection defines named dense vectors (common for Qdrant Cloud / dashboard-created collections). Set `QDRANT_VECTOR_NAME` if auto-detection picks the wrong vector on multi-vector collections.
 3. **RAG router** (`src/lib/server/rag-router.ts`, schema `src/lib/schemas/ragRouter.ts`): optional structured plan via `generateObject` + `gpt-6-luna` — up to **3 supplemental vector searches** (`searchKnowledgeBase` under the hood) when initial CONTEXT is thin or off-topic. Results are appended as `PRE-RUN VECTOR SEARCHES` in the same CONTEXT block. Optional `assistant_hint` is injected above CONTEXT. Set `RAG_ROUTER=0` to disable.
 4. **Context sufficiency check**: if CONTEXT has zero or one chunk, a fallback `searchKnowledgeBase` call appends broader results. Disable with `SELF_CRITIQUE=0`.
@@ -200,6 +205,7 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 6. OpenAI `gpt-6-astra` is called via the **Responses API** (`openai.responses(...)`, not the chat completions helper) with streaming + tools (Vercel AI SDK `streamText`). The Responses API is required to get reasoning summaries back for a reasoning model. `gpt-6-astra`/`gpt-6-luna` are reasoning models and reject a `temperature` param, so none is set anywhere in the pipeline; `providerOptions.openai.reasoningEffort` is set to `'low'` instead (replies are short, deep reasoning isn't needed). `experimental_transform: smoothStream({ chunking: 'word' })` paces the token stream into natural word-sized chunks for the client instead of raw provider deltas.
 7. Vercel AI SDK streams the response back to the client via `toUIMessageStreamResponse()`. Reasoning summary deltas stream through as `reasoning` UI parts (`sendReasoning` defaults to `true`). The server also emits `source-url` UI parts for every distinct SITE CONTENT page URL that grounded the reply (parsed off the `[CHUNK-site-...] Source: <url>` lines in CONTEXT) — the client renders these as small linked citations under the bot message via `getMessageSources()` in `MessageStore.svelte.ts`.
 8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
+9. **Latency logging** (`src/lib/server/timing.ts`): every turn logs one `[HuntBot timing]` JSON line (lane, model, lane scores, and ms per stage: `classify`, `rewrite`, `vector_search`, `rerank`, `page_fetch`, `retrieval`, `router`, `supplemental`, `fallback`, `model_start`, `first_token`, `total`) and attaches the same `timings_ms` + `lane` to the PostHog `chat_message` event
 
 ### Function calling
 

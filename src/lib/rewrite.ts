@@ -42,19 +42,23 @@ Question: "${query}"`
  * Rewrite the latest user message into a standalone retrieval query (multi-turn).
  * First message: run HyDE expansion; no multi-turn rewrite needed.
  * Follow-up messages: rewrite for context, then run HyDE on the result.
+ * Pass `hyde: false` to skip the HyDE call (quick lane — saves a serial LLM round trip).
  */
 export async function rewriteRetrievalQuery(
 	currentMessage: string,
 	priorUserMessages: string[],
-	currentPage: string
+	currentPage: string,
+	{ hyde = true }: { hyde?: boolean } = {}
 ): Promise<string> {
+	const expand = (query: string) => (hyde ? hydeExpand(query) : Promise.resolve(query));
+
 	if (priorUserMessages.length === 0) {
 		let base = currentMessage;
 		if (currentPage && !BROWSE_PAGES.has(currentPage)) {
 			const slug = currentPage.split('/').pop();
 			if (slug) base = `${currentMessage} ${slug}`;
 		}
-		return hydeExpand(base);
+		return expand(base);
 	}
 
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -83,5 +87,5 @@ Follow-up: "${currentMessage}"`
 		// keep original message
 	}
 
-	return hydeExpand(rewritten);
+	return expand(rewritten);
 }
