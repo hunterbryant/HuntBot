@@ -4,7 +4,8 @@
 	import { HUNTBOT_PATHS, SKETCH_FRAMES } from './huntbot-sketch-frames';
 
 	// still:    the plain avatar.
-	// sketchy:  idle. Just a slow "line boil", like a hand-drawn sketch redrawn frame by frame.
+	// sketchy:  idle. A slow "line boil", like a hand-drawn sketch redrawn frame by frame, and
+	//           a blink every few seconds.
 	// thinking: working something out. The line boils a little faster, the smile flattens while
 	//           the eyes drift across like they're reading, then it glances up with a wavy
 	//           "hmm" mouth.
@@ -15,6 +16,14 @@
 
 	const BOIL_MS = { sketchy: 480, thinking: 220 };
 	const BLINK_MS = 260;
+	// Idle blinks land at a random point in this window, sometimes as a quick double blink.
+	const IDLE_BLINK_MIN_MS = 2500;
+	const IDLE_BLINK_MAX_MS = 6500;
+	const DOUBLE_BLINK_CHANCE = 0.25;
+	const DOUBLE_BLINK_GAP_MS = 140;
+
+	const prefersReducedMotion = () =>
+		browser && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 	// The boil swaps between pre-wobbled copies of the drawing (see
 	// scripts/generate-huntbot-sketch-frames.mjs) in steps, like animation drawn on twos. It's
@@ -25,8 +34,7 @@
 	function startBoil(m: typeof mode) {
 		clearInterval(boilTimer);
 		frame = -1;
-		if (!browser || m === 'still') return;
-		if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		if (!browser || m === 'still' || prefersReducedMotion()) return;
 		frame = 0;
 		boilTimer = setInterval(() => {
 			frame = (frame + 1) % SKETCH_FRAMES.length;
@@ -40,19 +48,43 @@
 	let blinkTimer: ReturnType<typeof setTimeout> | undefined;
 	let lastBlinkOn = blinkOn;
 
+	function blink(then?: () => void) {
+		clearTimeout(blinkTimer);
+		blinking = true;
+		blinkTimer = setTimeout(() => {
+			blinking = false;
+			then?.();
+		}, BLINK_MS);
+	}
+
 	$: if (blinkOn !== lastBlinkOn) {
 		lastBlinkOn = blinkOn;
 		// Thinking already blinks on its own loop.
-		if (mode !== 'thinking') {
-			clearTimeout(blinkTimer);
-			blinking = true;
-			blinkTimer = setTimeout(() => (blinking = false), BLINK_MS);
-		}
+		if (mode !== 'thinking') blink();
 	}
+
+	let idleBlinkTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function scheduleIdleBlinks(m: typeof mode) {
+		clearTimeout(idleBlinkTimer);
+		if (!browser || m !== 'sketchy' || prefersReducedMotion()) return;
+		const wait = IDLE_BLINK_MIN_MS + Math.random() * (IDLE_BLINK_MAX_MS - IDLE_BLINK_MIN_MS);
+		idleBlinkTimer = setTimeout(() => {
+			const double = Math.random() < DOUBLE_BLINK_CHANCE;
+			blink(() => {
+				// Gap before the second blink so the CSS animation restarts.
+				if (double) blinkTimer = setTimeout(() => blink(), DOUBLE_BLINK_GAP_MS);
+			});
+			scheduleIdleBlinks(m);
+		}, wait);
+	}
+
+	$: scheduleIdleBlinks(mode);
 
 	onDestroy(() => {
 		clearInterval(boilTimer);
 		clearTimeout(blinkTimer);
+		clearTimeout(idleBlinkTimer);
 	});
 </script>
 
