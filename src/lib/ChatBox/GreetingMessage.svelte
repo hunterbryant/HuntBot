@@ -22,8 +22,22 @@
 <div
 	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1 text-stone-600 dark:text-stone-400"
 >
-	<Huntbotlogo mode="sketchy" />
-	<p class="grow text-stone-600 dark:text-stone-400">{greeting}</p>
+	{#if $minimized}
+		<!-- The whole greeting is a tap target that opens the chat, same as "Ask HuntBot". Kept out
+		of the tab order since that button already covers keyboard users. -->
+		<button
+			type="button"
+			tabindex="-1"
+			on:click={handleGreet}
+			class="flex min-w-0 grow flex-row flex-nowrap items-center gap-1 text-left text-stone-600 transition hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200"
+		>
+			<Huntbotlogo mode="sketchy" />
+			<p class="grow">{greeting}</p>
+		</button>
+	{:else}
+		<Huntbotlogo mode="sketchy" />
+		<p class="grow text-stone-600 dark:text-stone-400">{greeting}</p>
+	{/if}
 
 	{#if $minimized}
 		<button
