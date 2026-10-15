@@ -267,99 +267,162 @@ def system_map():
 	return page(1200, 710, "".join(parts))
 
 
-# ---------------------------------------------------------------- the chat pipeline
+# ---------------------------------------------------------------- the chat pipeline, as one row
 
 
 def pipeline():
-	x0, w, h, step = 110, 1040, 120, 160
-	icon_x, text_x = 190, 262
-	stages = [
-		("ask", "Message", "The question plus the chat so far", None),
-		("fork", "Pick a lane", "Compare it to example questions", None),
-		("draft", "Rewrite + HyDE", "Standalone query + a draft answer", "quick lane skips"),
-		("memory", "Embed + vector search", "16 nearest chunks per branch", None),
-		("funnel", "Rerank", "Keep the 5 most relevant", "quick lane skips"),
-		("diamond", "Enough context?", "If not, plan up to 3 more searches", "deep lane always checks"),
-		("blocks", "Build the prompt", "Cached prefix + live details", None),
-		("sparkle", "Reason + call tools", "Up to 3 steps", None),
-		("reply", "Stream the reply", "Word by word, with sources", None),
+	steps = [
+		("ask", "Message", ""),
+		("fork", "Lane", "quick · standard · deep"),
+		("draft", "Rewrite", "+ HyDE draft"),
+		("memory", "Search", "16 per branch"),
+		("funnel", "Rerank", "keep top 5"),
+		("diamond", "Check", "enough context?"),
+		("sparkle", "Generate", "+ tool calls"),
+		("reply", "Reply", "with sources"),
 	]
-	ys = [40 + i * step for i in range(len(stages))]
+	xs = [80 + i * 148 for i in range(len(steps))]
+	y = 220
 	parts = []
-	for i, (name, title, sub, tag) in enumerate(stages):
-		y = ys[i]
-		parts.append(card(x0, y, w, h))
-		parts.append(icon(name, icon_x, y + h / 2, 70))
-		parts.append(text(text_x, y + 54, title, cls="title", anchor="start"))
-		parts.append(text(text_x, y + 88, sub, cls="note", anchor="start"))
-		if tag:
-			tw = len(tag) * 8.4 + 28
-			parts.append(pill(x0 + w - 20 - tw, y + 14, tw, 30, tag, dashed=True))
-		if i < len(stages) - 1:
-			parts.append(line(icon_x, y + h + 6, icon_x, ys[i + 1] - 8))
+	for i, (name, label, sub) in enumerate(steps):
+		parts.append(icon(name, xs[i], y, 72))
+		parts.append(text(xs[i], y + 82, label))
+		if sub:
+			parts.append(text(xs[i], y + 108, sub, cls="small"))
+		if i < len(steps) - 1:
+			parts.append(line(xs[i] + 44, y, xs[i + 1] - 44, y))
 
-	def mid(i, tagged=False):
-		return ys[i] + (74 if tagged else 60)
+	def bypass(a, b, top, da=0, db=0):
+		xa, xb = xs[a] + da, xs[b] + db
+		return f'<path d="M{xa},{y - 48} V{top + 16} Q{xa},{top} {xa + 16},{top} H{xb - 16} Q{xb},{top} {xb},{top + 16} V{y - 52}" fill="none" stroke="{MUTED}" stroke-width="2.5" stroke-dasharray="6 7" stroke-linecap="round" />'
 
-	# Lanes, with bars for how much work each does
-	cy = mid(1)
-	x = 742
-	for lane, bars in (("quick", 1), ("standard", 2), ("deep", 3)):
-		pw = len(lane) * 10.5 + 62
-		parts.append(f'<rect x="{x}" y="{cy - 20}" width="{pw}" height="40" rx="20" fill="{MUD_LIGHT if lane == "standard" else "#fff"}" stroke="{INK}" stroke-width="2" />')
-		for b in range(3):
-			bh = 6 + b * 5
-			parts.append(f'<rect x="{x + 16 + b * 8}" y="{cy + 8 - bh}" width="5" height="{bh}" rx="1.5" fill="{INK if b < bars else LINE}" />')
-		parts.append(text(x + 48, cy + 6, lane, cls="small", anchor="start"))
-		x += pw + 12
+	# The quick lane skips rewriting, reranking and the context check
+	parts.append(bypass(1, 3, 120, db=-22))
+	parts.append(bypass(3, 6, 120, da=22))
+	parts.append(text((xs[1] + xs[3]) / 2, 108, "quick lane", cls="small"))
+	parts.append(text((xs[3] + xs[6]) / 2, 108, "quick lane", cls="small"))
 
-	# Search branches
-	cy = mid(3)
-	x = 700
-	for label in ("site + notes", "iMessage", "people by name"):
-		pw = len(label) * 8.6 + 32
-		parts.append(pill(x, cy - 18, pw, 36, label))
-		x += pw + 12
-
-	# Rerank: 16 in, 5 out
-	cy = mid(4, tagged=True)
-	for c in range(16):
-		cx = 760 + (c % 8) * 17
-		parts.append(f'<rect x="{cx}" y="{cy - 14 + (c // 8) * 17}" width="12" height="12" rx="2" fill="#fff" stroke="{INK}" stroke-width="2" />')
-	parts.append(line(912, cy, 960, cy))
-	for c in range(5):
-		parts.append(f'<rect x="{976 + c * 17}" y="{cy - 6}" width="12" height="12" rx="2" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2" />')
-	parts.append(text(822, cy + 36, "16", cls="small"))
-	parts.append(text(1010, cy + 36, "5", cls="small"))
-
-	# Not enough context: loop back to search, in the left gutter
-	y1, y2 = ys[5] + h / 2, ys[3] + h / 2
+	# Not enough context: search again
+	ly = 392
 	parts.append(
-		f'<path d="M{x0},{y1} H84 Q70,{y1} 70,{y1 - 14} V{y2 + 14} Q70,{y2} 84,{y2} H{x0 - 6}" fill="none" stroke="{INK}" stroke-width="3" stroke-linecap="round" marker-end="url(#head)" />'
+		f'<path d="M{xs[5]},{y + 124} V{ly - 14} Q{xs[5]},{ly} {xs[5] - 14},{ly} H{xs[3] + 14} Q{xs[3]},{ly} {xs[3]},{ly - 14} V{y + 126}" fill="none" stroke="{INK}" stroke-width="2.5" stroke-linecap="round" marker-end="url(#head)" />'
 	)
-	ly = (y1 + y2) / 2
-	parts.append(text(46, ly, "search again", cls="small", extra=f' transform="rotate(-90 46 {ly})"'))
+	parts.append(text((xs[3] + xs[5]) / 2, ly + 34, "not enough? search again", cls="small"))
+	return page(1200, 460, "".join(parts))
 
-	# Prompt layout
-	cy = mid(6)
-	parts.append(f'<rect x="742" y="{cy - 20}" width="290" height="40" rx="8" fill="#fff" stroke="{INK}" stroke-width="2" />')
-	parts.append(text(887, cy + 6, "cached prefix", cls="small"))
-	parts.append(f'<rect x="1040" y="{cy - 20}" width="90" height="40" rx="8" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2" />')
-	parts.append(text(1085, cy + 6, "live", cls="small"))
 
-	# Tools
-	cy = ys[7] + 50
-	for k, (name, label) in enumerate((("browser", "navigate"), ("magnifier", "search"), ("code", "GitHub"), ("calendar", "calendar"))):
-		tx = 790 + k * 98
-		parts.append(icon(name, tx, cy, 44))
-		parts.append(text(tx, cy + 50, label, cls="small"))
+# ---------------------------------------------------------------- step slides (a carousel on the page)
+# 3:2 so the carousel shows them whole on desktop. Mobile trims the top and bottom slightly, so
+# everything stays between y=60 and y=540.
 
-	# Sources under the reply
-	cy = mid(8)
-	parts.append(pill(760, cy - 18, 150, 36, "source link"))
-	parts.append(pill(922, cy - 18, 150, 36, "source link"))
 
-	return page(1200, ys[-1] + h + 40, "".join(parts))
+def slide(title, body):
+	return page(900, 600, text(50, 92, title, cls="title", anchor="start") + body)
+
+
+def slide_lanes():
+	parts = [icon("ask", 150, 330, 130)]
+	lanes = [("quick", 1, "gpt-6-luna"), ("standard", 2, "gpt-6-astra, low effort"), ("deep", 3, "gpt-6-astra, medium effort")]
+	for k, (lane, bars, model) in enumerate(lanes):
+		y = 200 + k * 130
+		fill = MUD_LIGHT if lane == "standard" else "#fff"
+		parts.append(line(232, 330, 412, y))
+		parts.append(f'<rect x="420" y="{y - 46}" width="430" height="92" rx="46" fill="{fill}" stroke="{INK}" stroke-width="2.5" />')
+		for b in range(3):
+			bh = 10 + b * 9
+			parts.append(f'<rect x="{458 + b * 13}" y="{y + 14 - bh}" width="8" height="{bh}" rx="2" fill="{INK if b < bars else LINE}" />')
+		parts.append(text(518, y - 2, lane, cls="label", anchor="start"))
+		parts.append(text(518, y + 26, model, cls="small", anchor="start"))
+	return slide("1  Pick a lane", "".join(parts))
+
+
+def bubble(x, y, w, h, value, fill="#fff"):
+	r = 22
+	d = (
+		f"M{x + r},{y} H{x + w - r} Q{x + w},{y} {x + w},{y + r} V{y + h - r} Q{x + w},{y + h} {x + w - r},{y + h} "
+		f"H{x + 66} L{x + 38},{y + h + 24} L{x + 42},{y + h} H{x + r} Q{x},{y + h} {x},{y + h - r} V{y + r} Q{x},{y} {x + r},{y} Z"
+	)
+	return f'<path d="{d}" fill="{fill}" stroke="{INK}" stroke-width="2.5" stroke-linejoin="round" />' + text(
+		x + 30, y + h / 2 + 10, value, cls="label", anchor="start"
+	)
+
+
+def slide_rewrite():
+	parts = [
+		text(80, 172, "What you typed", cls="small", anchor="start"),
+		bubble(80, 188, 380, 84, "Tell me more about it"),
+		line(270, 318, 270, 366),
+		text(80, 408, "What gets searched", cls="small", anchor="start"),
+		bubble(80, 424, 740, 84, "Tell me more about the Dovetail case study", fill=MUD_LIGHT),
+	]
+	return slide("2  Rewrite the question", "".join(parts))
+
+
+def slide_embed():
+	values = [0.6, -0.3, 0.8, 0.2, -0.7, 0.4, -0.1, 0.9, -0.5, 0.3, 0.7, -0.8, 0.1, 0.5, -0.4, 0.6,
+	          -0.2, 0.8, -0.6, 0.3, 0.9, -0.3, 0.4, -0.7, 0.2, 0.6, -0.5, 0.7, -0.1, 0.5, -0.8, 0.3]
+	parts = [
+		f'<rect x="70" y="190" width="230" height="250" rx="12" fill="#fff" stroke="{INK}" stroke-width="2.5" />',
+	]
+	for k, w in enumerate((170, 170, 150, 170, 120, 160, 90)):
+		parts.append(f'<line x1="100" y1="{232 + k * 30}" x2="{100 + w}" y2="{232 + k * 30}" stroke="{LINE}" stroke-width="5" stroke-linecap="round" />')
+	parts.append(text(185, 486, "a chunk of text", cls="small"))
+	parts.append(line(330, 315, 420, 315))
+	mid = 315
+	for k, v in enumerate(values):
+		x = 450 + k * 12.5
+		h = abs(v) * 90
+		top = mid - h if v > 0 else mid
+		parts.append(f'<rect x="{x}" y="{top}" width="8" height="{max(h, 3)}" rx="2" fill="{MUD if v > 0 else INK}" />')
+	parts.append(f'<line x1="444" y1="{mid}" x2="852" y2="{mid}" stroke="{LINE}" stroke-width="2" />')
+	parts.append(text(648, 486, "512 numbers (32 shown)", cls="small"))
+	return slide("3  Turn it into an embedding", "".join(parts))
+
+
+def slide_rerank():
+	# True relevance is filled. Reranking pulls the relevant chunks to the top.
+	before = ["A", "B", "C", "D", "E", "F", "G", "H"]
+	relevant = {"B", "D", "E", "G"}
+	after = ["B", "D", "G", "E", "A", "C", "F", "H"]
+	y0, step = 168, 46
+	lx, rx, w = 140, 560, 200
+	parts = [text(lx + w / 2, 142, "Vector order", cls="small"), text(rx + w / 2, 142, "Reranked", cls="small")]
+	for i, item in enumerate(before):
+		j = after.index(item)
+		ya, yb = y0 + i * step + 17, y0 + j * step + 17
+		color = INK if item in relevant else LINE
+		parts.append(f'<line x1="{lx + w + 8}" y1="{ya}" x2="{rx - 8}" y2="{yb}" stroke="{color}" stroke-width="2.5" stroke-linecap="round" />')
+	for col, x in ((before, lx), (after, rx)):
+		for i, item in enumerate(col):
+			y = y0 + i * step
+			kept = x == lx or i < 5
+			fill = MUD_LIGHT if item in relevant else "#fff"
+			stroke = INK if kept else LINE
+			parts.append(f'<rect x="{x}" y="{y}" width="{w}" height="34" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="2" />')
+			parts.append(text(x + 22, y + 24, str(i + 1), cls="small", anchor="start"))
+			parts.append(f'<line x1="{x + 56}" y1="{y + 17}" x2="{x + w - 24}" y2="{y + 17}" stroke="{LINE if item not in relevant else MUD}" stroke-width="5" stroke-linecap="round" />')
+	cut = y0 + 5 * step - 6
+	parts.append(f'<line x1="{rx - 10}" y1="{cut}" x2="{rx + w + 10}" y2="{cut}" stroke="{INK}" stroke-width="2.5" stroke-dasharray="6 6" />')
+	parts.append(text(rx + w + 22, cut + 6, "top 5", cls="small", anchor="start"))
+	return slide("4  Rerank", "".join(parts))
+
+
+def slide_check():
+	y = 300
+	parts = [
+		text(130, y - 92, "search", cls="small"),
+		icon("magnifier", 130, y, 100),
+		line(196, y, 296, y),
+		text(390, y - 92, "enough context?", cls="small"),
+		icon("diamond", 390, y, 130),
+		line(470, y, 640, y),
+		text(555, y - 16, "yes", cls="small"),
+		text(730, y - 92, "write the reply", cls="small"),
+		icon("reply", 730, y, 110),
+		f'<path d="M390,{y + 72} V{y + 128} Q390,{y + 142} 376,{y + 142} H144 Q130,{y + 142} 130,{y + 128} V{y + 62}" fill="none" stroke="{INK}" stroke-width="2.5" stroke-linecap="round" marker-end="url(#head)" />',
+		text(260, y + 182, "no: up to 3 more searches", cls="small"),
+	]
+	return slide("5  Check for enough context", "".join(parts))
 
 
 # ---------------------------------------------------------------- HyDE
@@ -400,63 +463,6 @@ def hyde():
 		parts.append(text(x + 38, ly, label, cls="note", anchor="start"))
 		x += 38 + len(label) * 10 + 44
 	return page(1200, 610, "".join(parts))
-
-
-# ---------------------------------------------------------------- rerank
-
-
-def rerank_figure():
-	before = "A B A C D A E B F G C H A I J K".split()
-	after = ["A", "C", "A", "B", "A"]
-	parts = [
-		text(251, 90, "16 nearest chunks"),
-		text(600, 90, "Cross-encoder"),
-		text(875, 90, "Top 5"),
-	]
-	for i, letter in enumerate(before):
-		x, y = 90 + (i % 4) * 84, 140 + (i // 4) * 60
-		parts.append(f'<rect x="{x}" y="{y}" width="70" height="46" rx="6" fill="#fff" stroke="{INK}" stroke-width="2" />')
-		parts.append(text(x + 35, y + 31, letter, cls="label"))
-	parts.append(line(432, 253, 512, 253))
-	parts.append(icon("funnel", 600, 253, 140))
-	parts.append(line(690, 253, 790, 253))
-	for i, letter in enumerate(after):
-		y = 118 + i * 56
-		dropped = i == 4
-		stroke = MUTED if dropped else INK
-		dash = ' stroke-dasharray="5 5"' if dropped else ""
-		fill = "#fff" if dropped else MUD_LIGHT
-		parts.append(f'<rect x="820" y="{y}" width="110" height="46" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="2"{dash} />')
-		parts.append(text(875, y + 31, letter, cls="label", extra=f' style="fill:{MUTED}"' if dropped else ""))
-		if dropped:
-			parts.append(text(956, y + 18, "Third chunk from page A,", cls="small", anchor="start"))
-			parts.append(text(956, y + 40, "dropped: max 2 per page", cls="small", anchor="start"))
-	parts.append(text(251, 420, "Letters mark each chunk’s source page", cls="small"))
-	return page(1200, 460, "".join(parts))
-
-
-# ---------------------------------------------------------------- prompt caching
-
-
-def prompt_cache():
-	rows = [(170, 190), (290, 270), (410, 140)]
-	parts = [
-		f'<path d="M160,104 v-14 h690 v14" fill="none" stroke="{INK}" stroke-width="3" />',
-		f'<path d="M862,104 v-14 h270 v14" fill="none" stroke="{INK}" stroke-width="3" />',
-		text(505, 70, "Same for every visitor, so it’s cached"),
-		text(997, 70, "Changes every turn", cls="note"),
-	]
-	for i, (y, tail) in enumerate(rows):
-		parts.append(icon("person", 90, y, 64))
-		parts.append(f'<rect x="160" y="{y - 32}" width="690" height="64" rx="10" fill="#fff" stroke="{INK}" stroke-width="2.5" />')
-		parts.append(f'<rect x="862" y="{y - 32}" width="{tail}" height="64" rx="10" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2.5" />')
-		if i == 0:
-			parts.append(text(505, y + 7, "voice · rules · tools · about Hunter", cls="note"))
-			parts.append(text(862 + tail / 2, y + 7, "live details", cls="note"))
-		else:
-			for k in range(6):
-				parts.append(f'<line x1="{195 + k * 110}" y1="{y}" x2="{275 + k * 110}" y2="{y}" stroke="{LINE}" stroke-width="3" stroke-linecap="round" />')
-	return page(1200, 470, "".join(parts))
 
 
 # ---------------------------------------------------------------- tool calling
@@ -537,9 +543,12 @@ for name, build in {
 	"hero": hero,
 	"system-map": system_map,
 	"pipeline": pipeline,
+	"step-1-lanes": slide_lanes,
+	"step-2-rewrite": slide_rewrite,
+	"step-3-embed": slide_embed,
+	"step-4-rerank": slide_rerank,
+	"step-5-check": slide_check,
 	"hyde": hyde,
-	"rerank": rerank_figure,
-	"prompt-cache": prompt_cache,
 	"tool-loop": tool_loop,
 	"timeline": timeline,
 }.items():

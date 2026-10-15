@@ -13,12 +13,14 @@ of a few words. Explanations belong in the post, not the image.
 |---|---|
 | `hero` | Highlight + meta image: HuntBot and the things it draws on |
 | `system-map` | How the services fit together |
-| `pipeline` | The full chat flow, one card per step |
+| `pipeline` | The whole chat flow in one row |
+| `step-1-lanes` … `step-5-check` | Carousel slides, one small concept per pipeline step |
 | `hyde` | Searching with the question vs. with a HyDE draft |
-| `rerank` | 16 nearest chunks → cross-encoder → top 5, max 2 per page |
-| `prompt-cache` | The shared, cached prompt prefix vs. per-turn details |
 | `tool-loop` | How a tool call works |
 | `timeline` | Commits per month, with each era marked |
+
+Slides are 3:2 so the page's carousel shows them whole on desktop; mobile trims the top
+and bottom a little, so keep slide content between y=60 and y=540.
 
 ## Updating
 
