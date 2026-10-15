@@ -11,3 +11,6 @@ node_modules
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
+
+# Hand-positioned SVG diagram sources for the Building HuntBot page
+/docs/site-story
