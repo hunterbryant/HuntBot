@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="_shared.css" />
+</head>
+<body>
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+			<path d="M0,0 L10,5 L0,10 z" fill="#a8a29e" />
+		</marker>
+		<marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+			<path d="M0,0 L10,5 L0,10 z" fill="#ad6e5e" />
+		</marker>
+	</defs>
+
+	<text x="60" y="82" class="title">The system <tspan class="serif">at a glance</tspan></text>
+	<text x="60" y="120" class="sub">Everything involved in rendering a page or answering a question</text>
+
+	<!-- Visitor -->
+	<rect x="60" y="360" width="230" height="150" rx="12" class="card" />
+	<text x="84" y="396" class="label">Visitor</text>
+	<text x="84" y="432" class="h">Browser</text>
+	<text x="84" y="462" class="p">Pages + the HuntBot</text>
+	<text x="84" y="486" class="p">chat widget</text>
+
+	<!-- Knowledge base sources -->
+	<rect x="60" y="590" width="230" height="260" rx="12" class="card" />
+	<text x="84" y="626" class="label">Indexed sources</text>
+	<text x="84" y="664" class="p">Site crawl</text>
+	<text x="84" y="692" class="p">Notion pages</text>
+	<text x="84" y="720" class="p">iMessage history</text>
+	<text x="84" y="748" class="p">Text + CSV files</text>
+	<line x1="84" y1="770" x2="266" y2="770" class="line" />
+	<text x="84" y="800" class="small">1,000-char chunks,</text>
+	<text x="84" y="822" class="small">512-d vectors</text>
+
+	<!-- Vercel container -->
+	<rect x="370" y="170" width="420" height="680" rx="16" fill="#f5f5f4" stroke="#e7e5e4" stroke-width="1.5" />
+	<text x="395" y="207" class="label">Vercel · SvelteKit 2 + Svelte 5</text>
+
+	<rect x="395" y="228" width="370" height="100" rx="12" class="card" />
+	<text x="419" y="270" class="h">Site pages</text>
+	<text x="419" y="300" class="p">Built from Prismic slices</text>
+
+	<rect x="395" y="344" width="370" height="100" rx="12" class="accent" />
+	<text x="419" y="386" class="h">/api/chat</text>
+	<text x="419" y="416" class="p">Retrieval, GPT-6, tools, streaming</text>
+
+	<rect x="395" y="460" width="370" height="100" rx="12" class="card" />
+	<text x="419" y="502" class="h">/api/suggestions</text>
+	<text x="419" y="532" class="p">Question chips it can answer</text>
+
+	<rect x="395" y="576" width="370" height="100" rx="12" class="card" />
+	<text x="419" y="618" class="h">/api/embed/*</text>
+	<text x="419" y="648" class="p">Admin-only indexing jobs</text>
+
+	<rect x="395" y="692" width="370" height="100" rx="12" class="card" />
+	<text x="419" y="734" class="h">Daily cron</text>
+	<text x="419" y="764" class="p">Pings Qdrant so it never sleeps</text>
+
+	<!-- Visitor to app -->
+	<path d="M290,410 C340,410 340,278 391,278" class="line" marker-end="url(#arrow)" />
+	<path d="M290,435 C340,435 340,394 391,394" class="aline" marker-end="url(#arrowA)" />
+	<path d="M290,460 C340,460 340,510 391,510" class="line" marker-end="url(#arrow)" />
+	<!-- Sources to embed -->
+	<path d="M290,720 C340,720 340,626 391,626" class="line" stroke-dasharray="6 6" marker-end="url(#arrow)" />
+
+	<!-- Bus to services -->
+	<line x1="790" y1="510" x2="835" y2="510" class="line" />
+	<line x1="835" y1="206" x2="835" y2="808" class="line" />
+	<circle cx="835" cy="510" r="5" fill="#a8a29e" />
+
+	<!-- Services -->
+	<g>
+		<line x1="835" y1="206" x2="880" y2="206" class="line" />
+		<rect x="880" y="170" width="260" height="72" rx="12" class="card" />
+		<text x="902" y="201" class="h" style="font-size:21px">Prismic</text>
+		<text x="902" y="226" class="p" style="font-size:16px">Page content + images</text>
+	</g>
+	<g>
+		<line x1="835" y1="292" x2="880" y2="292" class="line" />
+		<rect x="880" y="256" width="260" height="72" rx="12" class="accent" />
+		<text x="902" y="287" class="h" style="font-size:21px">OpenAI</text>
+		<text x="902" y="312" class="p" style="font-size:16px">GPT-6 models + embeddings</text>
+	</g>
+	<g>
+		<line x1="835" y1="378" x2="880" y2="378" class="line" />
+		<rect x="880" y="342" width="260" height="72" rx="12" class="card" />
+		<text x="902" y="373" class="h" style="font-size:21px">Cohere</text>
+		<text x="902" y="398" class="p" style="font-size:16px">Reranks search results</text>
+	</g>
+	<g>
+		<line x1="835" y1="464" x2="880" y2="464" class="line" />
+		<rect x="880" y="428" width="260" height="72" rx="12" class="accent" />
+		<text x="902" y="459" class="h" style="font-size:21px">Qdrant Cloud</text>
+		<text x="902" y="484" class="p" style="font-size:16px">Vector search (free tier)</text>
+	</g>
+	<g>
+		<line x1="835" y1="550" x2="880" y2="550" class="line" />
+		<rect x="880" y="514" width="260" height="72" rx="12" class="card" />
+		<text x="902" y="545" class="h" style="font-size:21px">Notion</text>
+		<text x="902" y="570" class="p" style="font-size:16px">Writing + notes to index</text>
+	</g>
+	<g>
+		<line x1="835" y1="636" x2="880" y2="636" class="line" />
+		<rect x="880" y="600" width="260" height="72" rx="12" class="card" />
+		<text x="902" y="631" class="h" style="font-size:21px">GitHub</text>
+		<text x="902" y="656" class="p" style="font-size:16px">Live reads of this code</text>
+	</g>
+	<g>
+		<line x1="835" y1="722" x2="880" y2="722" class="line" />
+		<rect x="880" y="686" width="260" height="72" rx="12" class="card" />
+		<text x="902" y="717" class="h" style="font-size:21px">Google Calendar</text>
+		<text x="902" y="742" class="p" style="font-size:16px">Event titles + times only</text>
+	</g>
+	<g>
+		<line x1="835" y1="808" x2="880" y2="808" class="line" />
+		<rect x="880" y="772" width="260" height="72" rx="12" class="card" />
+		<text x="902" y="803" class="h" style="font-size:21px">PostHog</text>
+		<text x="902" y="828" class="p" style="font-size:16px">Conversation analytics</text>
+	</g>
+</svg>
+</body>
+</html>

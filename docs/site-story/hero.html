@@ -1,0 +1,51 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="_shared.css" />
+<style>
+	.pill { font-size: 26px; font-weight: 500; fill: #292524; }
+	.cap { font-size: 17px; fill: #a8a29e; }
+	.big { font-size: 96px; font-weight: 700; fill: #292524; letter-spacing: -3px; }
+</style>
+</head>
+<body>
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" fill="#a8a29e" />
+		</marker>
+		<pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+			<circle cx="2" cy="2" r="1.4" fill="#e7e5e4" />
+		</pattern>
+	</defs>
+	<rect width="1200" height="630" fill="#fafaf9" />
+	<rect width="1200" height="630" fill="url(#dots)" />
+
+	<text x="600" y="210" text-anchor="middle" class="label" style="font-size:16px">A living writeup · AI-generated</text>
+	<text x="600" y="310" text-anchor="middle" class="big">Building <tspan class="serif" style="font-size:104px">HuntBot</tspan></text>
+
+	<!-- Pipeline -->
+	<g transform="translate(0,20)">
+		<rect x="105" y="370" width="200" height="72" rx="36" class="card" />
+		<text x="205" y="415" text-anchor="middle" class="pill">Prismic</text>
+		<text x="205" y="472" text-anchor="middle" class="cap">content</text>
+		<line x1="309" y1="406" x2="351" y2="406" class="line" marker-end="url(#arrow)" />
+
+		<rect x="355" y="370" width="200" height="72" rx="36" class="card" />
+		<text x="455" y="415" text-anchor="middle" class="pill">SvelteKit</text>
+		<text x="455" y="472" text-anchor="middle" class="cap">on Vercel</text>
+		<line x1="559" y1="406" x2="601" y2="406" class="line" marker-end="url(#arrow)" />
+
+		<rect x="605" y="370" width="200" height="72" rx="36" class="card" />
+		<text x="705" y="415" text-anchor="middle" class="pill">Qdrant</text>
+		<text x="705" y="472" text-anchor="middle" class="cap">what it knows</text>
+		<line x1="809" y1="406" x2="851" y2="406" class="line" marker-end="url(#arrow)" />
+
+		<rect x="855" y="370" width="240" height="72" rx="36" class="accent" />
+		<text x="975" y="415" text-anchor="middle" class="pill">GPT-6</text>
+		<text x="975" y="472" text-anchor="middle" class="cap">how it talks</text>
+	</g>
+</svg>
+</body>
+</html>

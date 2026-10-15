@@ -1,0 +1,116 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link rel="stylesheet" href="_shared.css" />
+<style>
+	.num { font-size: 20px; font-weight: 700; fill: #ffffff; }
+	.mono { font-family: ui-monospace, 'DejaVu Sans Mono', monospace; font-size: 16px; fill: #44403c; }
+</style>
+</head>
+<body>
+<svg width="1200" height="1400" viewBox="0 0 1200 1400" xmlns="http://www.w3.org/2000/svg">
+	<defs>
+		<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+			<path d="M0,0 L10,5 L0,10 z" fill="#a8a29e" />
+		</marker>
+	</defs>
+
+	<text x="60" y="82" class="title">Life of a <tspan class="serif">message</tspan></text>
+	<text x="60" y="120" class="sub">What happens between hitting enter and the first word on screen</text>
+
+	<!-- Rail -->
+	<line x1="95" y1="192" x2="95" y2="1292" class="line" />
+
+	<!-- 1. Lane -->
+	<circle cx="95" cy="192" r="22" fill="#ad6e5e" />
+	<text x="95" y="199" text-anchor="middle" class="num">1</text>
+	<text x="150" y="200" class="h">Pick a lane</text>
+	<text x="150" y="230" class="p">The message is embedded once and compared to example questions. No LLM call.</text>
+
+	<rect x="150" y="255" width="316" height="110" rx="12" class="card" />
+	<text x="174" y="295" class="h" style="font-size:21px">Quick</text>
+	<text x="174" y="323" class="p" style="font-size:17px">gpt-6-luna</text>
+	<text x="174" y="347" class="small">Skips HyDE, rerank, router</text>
+
+	<rect x="487" y="255" width="316" height="110" rx="12" class="accent" />
+	<text x="511" y="295" class="h" style="font-size:21px">Standard</text>
+	<text x="511" y="323" class="p" style="font-size:17px">gpt-6-astra, low effort</text>
+	<text x="511" y="347" class="small">The full pipeline (default)</text>
+
+	<rect x="824" y="255" width="316" height="110" rx="12" class="card" />
+	<text x="848" y="295" class="h" style="font-size:21px">Deep</text>
+	<text x="848" y="323" class="p" style="font-size:17px">gpt-6-astra, medium effort</text>
+	<text x="848" y="347" class="small">Always plans extra searches</text>
+
+	<!-- 2. Context -->
+	<circle cx="95" cy="432" r="22" fill="#ad6e5e" />
+	<text x="95" y="439" text-anchor="middle" class="num">2</text>
+	<text x="150" y="440" class="h">Find context</text>
+	<text x="150" y="470" class="p">Sharpen the question, then search the knowledge base and keep only the best chunks.</text>
+
+	<rect x="150" y="495" width="220" height="64" rx="32" class="chip" />
+	<text x="260" y="533" text-anchor="middle" class="chipt">Rewrite + HyDE</text>
+	<line x1="372" y1="527" x2="402" y2="527" class="line" marker-end="url(#arrow)" />
+	<rect x="406" y="495" width="220" height="64" rx="32" class="chip" />
+	<text x="516" y="533" text-anchor="middle" class="chipt">Embed · 512-d</text>
+	<line x1="628" y1="527" x2="658" y2="527" class="line" marker-end="url(#arrow)" />
+	<rect x="662" y="495" width="220" height="64" rx="32" class="chip" />
+	<text x="772" y="533" text-anchor="middle" class="chipt">Qdrant · 16 per branch</text>
+	<line x1="884" y1="527" x2="914" y2="527" class="line" marker-end="url(#arrow)" />
+	<rect x="918" y="495" width="220" height="64" rx="32" class="accent" />
+	<text x="1028" y="533" text-anchor="middle" class="chipt">Rerank to top 5</text>
+
+	<text x="150" y="596" class="label">Branches</text>
+	<text x="268" y="596" class="p" style="font-size:17px">Site + Notion  ·  iMessage  ·  people mentioned by name</text>
+
+	<!-- 3. Top up -->
+	<circle cx="95" cy="662" r="22" fill="#ad6e5e" />
+	<text x="95" y="669" text-anchor="middle" class="num">3</text>
+	<text x="150" y="670" class="h">Top up if it&#8217;s thin</text>
+	<text x="150" y="700" class="p">A small router plans up to three extra searches when context comes back empty or thin.</text>
+	<text x="150" y="726" class="p">If there&#8217;s one chunk or none, a broader fallback search runs too.</text>
+
+	<!-- 4. Prompt -->
+	<circle cx="95" cy="802" r="22" fill="#ad6e5e" />
+	<text x="95" y="809" text-anchor="middle" class="num">4</text>
+	<text x="150" y="810" class="h">Build the prompt</text>
+	<text x="150" y="840" class="p">The stable part goes first so OpenAI can cache it; everything about this turn goes last.</text>
+
+	<rect x="150" y="865" width="720" height="64" rx="12" class="card" />
+	<text x="174" y="904" class="chipt">Voice  ·  rules  ·  tools  ·  About Hunter</text>
+	<text x="846" y="903" text-anchor="end" class="label">Cached</text>
+	<rect x="880" y="865" width="258" height="64" rx="12" class="accent" />
+	<text x="904" y="904" class="chipt">Live details</text>
+	<text x="174" y="960" class="small">Identical for every visitor</text>
+	<text x="904" y="960" class="small">Date, page, CONTEXT</text>
+
+	<!-- 5. Stream -->
+	<circle cx="95" cy="1032" r="22" fill="#ad6e5e" />
+	<text x="95" y="1039" text-anchor="middle" class="num">5</text>
+	<text x="150" y="1040" class="h">Stream the answer</text>
+	<text x="150" y="1070" class="p">gpt-6-astra over the Responses API, with ten tools it can call mid-reply.</text>
+
+	<rect x="150" y="1095" width="486" height="130" rx="12" class="card" />
+	<text x="174" y="1130" class="label">On the page</text>
+	<text x="174" y="1170" class="mono">route_to_page</text>
+	<text x="174" y="1202" class="mono">minimize_chat</text>
+	<text x="384" y="1170" class="mono">capture_lead_intent</text>
+	<text x="384" y="1202" class="mono">ask_clarifying_question</text>
+
+	<rect x="652" y="1095" width="486" height="130" rx="12" class="card" />
+	<text x="676" y="1130" class="label">Behind the scenes</text>
+	<text x="676" y="1170" class="mono">search_knowledge_base</text>
+	<text x="676" y="1202" class="mono">get_calendar_events</text>
+	<text x="914" y="1170" class="mono">read_github_file</text>
+	<text x="914" y="1202" class="mono">+ 3 GitHub tools</text>
+
+	<!-- 6. Wrap up -->
+	<circle cx="95" cy="1292" r="22" fill="#ad6e5e" />
+	<text x="95" y="1299" text-anchor="middle" class="num">6</text>
+	<text x="150" y="1300" class="h">Wrap up</text>
+	<text x="150" y="1330" class="p">Source links (or related pages) under the reply, a fallback line if it ever goes quiet,</text>
+	<text x="150" y="1356" class="p">and one timing log + PostHog event per turn.</text>
+</svg>
+</body>
+</html>

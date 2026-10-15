@@ -54,7 +54,8 @@ export enum SupportedRoutes {
 	fender = '/projects/fender',
 	karooOne = '/projects/karoo-1',
 	terminalCancerCouloir = '/projects/terminal-cancer',
-	weCameToSauna = '/projects/we-came-to-sauna'
+	weCameToSauna = '/projects/we-came-to-sauna',
+	buildingHuntbot = '/projects/building-huntbot'
 }
 
 export enum UserRole {
