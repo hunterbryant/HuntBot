@@ -78,6 +78,28 @@ def page(width, height, body):
 # Each icon is drawn in a 100x100 box and placed with icon(name, cx, cy, size).
 
 ICONS = {
+	"fork": """
+		<path d="M50,94 V58 M50,58 C50,42 24,40 22,14 M50,58 V12 M50,58 C50,42 76,40 78,14" class="ink" />
+		<polyline points="13,24 22,13 31,22" class="ink" />
+		<polyline points="41,22 50,11 59,22" class="ink" />
+		<polyline points="69,22 78,13 87,24" class="ink" />""",
+	"ghost": """
+		<path d="M40,6 h46 a8,8 0 0 1 8,8 v28 a8,8 0 0 1 -8,8 h-6 v12 l-12,-12 h-28 a8,8 0 0 1 -8,-8 v-28 a8,8 0 0 1 8,-8 z" class="ink fill dash" stroke-dasharray="8 7" />
+		<path d="M14,40 h44 a8,8 0 0 1 8,8 v28 a8,8 0 0 1 -8,8 h-26 l-12,12 v-12 h-6 a8,8 0 0 1 -8,-8 v-28 a8,8 0 0 1 8,-8 z" class="ink paper" />
+		<path d="M30,56 c0,-6 12,-7 12,0 c0,5 -6,5 -6,10" class="ink thin" stroke="{mud}" />
+		<circle cx="36" cy="73" r="2.5" fill="{mud}" />""",
+	"funnel": """
+		<path d="M8,16 H92 L60,54 V82 L40,94 V54 Z" class="ink fill" />
+		<line x1="8" y1="16" x2="92" y2="16" class="ink" />""",
+	"diamond": """
+		<path d="M50,6 L94,50 L50,94 L6,50 Z" class="ink paper" />
+		<path d="M41,38 c0,-8 18,-10 18,0 c0,7 -9,7 -9,15" class="ink" stroke="{mud}" />
+		<circle cx="50" cy="65" r="3" fill="{mud}" />""",
+	"blocks": """
+		<rect x="8" y="8" width="84" height="56" rx="6" class="ink paper" />
+		<line x1="20" y1="24" x2="78" y2="24" class="ink thin" /><line x1="20" y1="36" x2="78" y2="36" class="ink thin" />
+		<line x1="20" y1="48" x2="60" y2="48" class="ink thin" />
+		<rect x="8" y="70" width="84" height="22" rx="6" class="ink fill" />""",
 	"browser": """
 		<rect x="6" y="14" width="88" height="72" rx="8" class="ink paper" />
 		<line x1="6" y1="32" x2="94" y2="32" class="ink thin" />
@@ -222,69 +244,206 @@ def system_map():
 		{icon("code", 790, 140, 80)}
 	</g>
 	{text(120, 470, "You")}
-	{text(bot[0], 236, "HuntBot")}
+	{text(bot[0], 200, "HuntBot")}
+	{text(bot[0], 232, "SvelteKit on Vercel", cls="note")}
 	{text(800, 475, "Memory")}
-	{text(bot[0] + 70, 645, "AI model", anchor="start")}
+	{text(800, 505, "Qdrant", cls="note")}
+	{text(bot[0] + 70, 630, "AI model", anchor="start")}
+	{text(bot[0] + 70, 660, "OpenAI", cls="note", anchor="start")}
 	{text(740, 225, "Live lookups", cls="note")}
-	{text(1080, 270, "Site", cls="note")}
-	{text(1080, 430, "Notes", cls="note")}
-	{text(1080, 590, "Texts", cls="note")}
+	{text(1080, 270, "Site · Prismic", cls="note")}
+	{text(1080, 430, "Notes · Notion", cls="note")}
+	{text(1080, 590, "Texts · iMessage", cls="note")}
 	"""
 	return page(1200, 720, body)
 
 
-# ---------------------------------------------------------------- life of a message
+# ---------------------------------------------------------------- the chat pipeline
 
 
-def card_grid(x0, y0, picked=(), faded=False):
-	"""A 4x4 grid of little note cards. `picked` are indexes drawn as the keepers."""
-	out = []
-	for i in range(16):
-		x, y = x0 + (i % 4) * 62, y0 + (i // 4) * 46
-		if i in picked:
-			out.append(f'<rect x="{x}" y="{y}" width="50" height="34" rx="5" class="ink thin fill" />')
-			out.append(f'<line x1="{x + 10}" y1="{y + 13}" x2="{x + 40}" y2="{y + 13}" class="ink thin" />')
-			out.append(f'<line x1="{x + 10}" y1="{y + 23}" x2="{x + 30}" y2="{y + 23}" class="ink thin" />')
-		else:
-			opacity = ' stroke-opacity="0.3"' if faded else ""
-			out.append(f'<rect x="{x}" y="{y}" width="50" height="34" rx="5" class="ink thin paper"{opacity} />')
-	return "".join(out)
+def tag(x, y, value):
+	"""A small dashed pill for notes like which lanes skip a step."""
+	w = len(value) * 9.6 + 28
+	return (
+		f'<rect x="{x}" y="{y - 21}" width="{w}" height="30" rx="15" fill="none" stroke="{MUTED}" stroke-width="2" stroke-dasharray="5 5" />'
+		+ f'<text x="{x + 14}" y="{y}" class="note" style="font-size:18px">{value}</text>'
+	)
 
 
-def step(n, x, y, label):
-	return f"""
-	<circle cx="{x}" cy="{y - 10}" r="22" fill="{MUD}" />
-	<text x="{x}" y="{y - 1}" text-anchor="middle" class="label" style="fill:#fff;font-size:24px">{n}</text>
-	{text(x + 38, y, label, anchor="start")}"""
+def pipeline():
+	sp, tx, y0, gap = 190, 280, 110, 156
+	stages = [
+		("ask", "Message", ["the whole chat so far"], None),
+		("fork", "Pick a lane", ["cosine match against", "example questions"], None),
+		("ghost", "Rewrite + HyDE", ["one structured call, 2.5 s cap"], "skipped in quick lane"),
+		("memory", "Vector search", ["512-d embedding", "k = 16 per branch"], None),
+		("funnel", "Rerank", ["cross-encoder keeps the top 5,", "max 2 chunks per page"], "skipped in quick lane"),
+		("diamond", "Enough context?", ["if not, a router plans", "up to 3 more searches"], "always runs in deep lane"),
+		("blocks", "Build the prompt", ["cached prefix + live details"], None),
+		("sparkle", "Reason + use tools", ["Responses API, effort set by lane"], None),
+		("reply", "Stream the reply", ["word by word, with source links"], None),
+	]
+	ys = [y0 + i * gap for i in range(len(stages))]
+	drawn, words = [], []
+	for i, (name, label, subs, note) in enumerate(stages):
+		y = ys[i]
+		drawn.append(icon(name, sp, y, 96))
+		if i < len(stages) - 1:
+			drawn.append(arrow(sp, y + 56, sp, ys[i + 1] - 56))
+		words.append(text(tx, y - 6, label, anchor="start"))
+		for j, sub in enumerate(subs):
+			words.append(text(tx, y + 26 + j * 26, sub, cls="note", anchor="start"))
+		if note:
+			words.append(tag(tx + len(label) * 16 + 24, y - 12, note))
 
+	# Lanes: how much work each one does
+	lane_y = ys[1]
+	x = 760
+	for lane, bars in (("quick", 1), ("standard", 2), ("deep", 3)):
+		w = len(lane) * 11.5 + 64
+		drawn.append(f'<rect x="{x}" y="{lane_y - 26}" width="{w}" height="52" rx="26" class="ink thin {"fill" if lane == "standard" else "paper"}" />')
+		for b in range(3):
+			h = 8 + b * 7
+			fill = INK if b < bars else "#d6d3d1"
+			drawn.append(f'<rect x="{x + 18 + b * 9}" y="{lane_y + 10 - h}" width="6" height="{h}" rx="2" fill="{fill}" />')
+		words.append(text(x + 50, lane_y + 8, lane, cls="note", anchor="start"))
+		x += w + 14
 
-def life_of_a_message():
-	# 2x2 panels: 1 2 / 3 4
-	keep = (1, 6, 8, 11, 14)
+	# Search fans out over three branches
+	sy = ys[3]
+	for dy, label in ((-52, "site + notes"), (0, "iMessage"), (52, "people by name")):
+		drawn.append(arrow(760, sy, 880, sy + dy, bend=0))
+		words.append(text(894, sy + dy + 8, label, cls="note", anchor="start"))
+
+	# Rerank: 16 in, 5 out
+	ry = ys[4]
+	for c in range(16):
+		x, y = 760 + (c % 4) * 30, ry - 46 + (c // 4) * 24
+		drawn.append(f'<rect x="{x}" y="{y}" width="24" height="16" rx="3" class="ink thin paper" />')
+	drawn.append(arrow(895, ry, 960, ry))
+	for c in range(5):
+		drawn.append(f'<rect x="{975}" y="{ry - 52 + c * 22}" width="34" height="16" rx="3" class="ink thin fill" />')
+	words.append(text(820, ry + 74, "16", cls="note"))
+	words.append(text(992, ry + 74, "5", cls="note"))
+
+	# Not enough context: loop back to search
+	dy5, dy3 = ys[5], ys[3]
+	drawn.append(
+		f'<path d="M{sp - 50},{dy5} C70,{dy5} 70,{dy3} {sp - 56},{dy3}" class="ink thin" marker-end="url(#head)" />'
+	)
+	words.append(f'<text x="58" y="{(dy5 + dy3) / 2}" text-anchor="middle" class="note" transform="rotate(-90 58 {(dy5 + dy3) / 2})">search again</text>')
+
+	# Tools the model can call mid-reply
+	ty = ys[7]
+	drawn.append(arrow(690, ty, 752, ty, both=True))
+	drawn.append(f'<rect x="760" y="{ty - 62}" width="390" height="124" rx="20" fill="none" stroke="{INK}" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round" />')
+	for k, (name, label) in enumerate((("browser", "go to page"), ("magnifier", "search"), ("code", "GitHub"), ("calendar", "calendar"))):
+		x = 812 + k * 95
+		drawn.append(icon(name, x, ty - 12, 58))
+		words.append(text(x, ty + 44, label, cls="note"))
+	words[-4:] = [w.replace('class="note"', 'class="note" style="font-size:17px"') for w in words[-4:]]
+
 	body = f"""
-	<rect x="40" y="40" width="540" height="420" rx="24" fill="#fff" stroke="#e7e5e4" stroke-width="2" />
-	<rect x="620" y="40" width="540" height="420" rx="24" fill="#fff" stroke="#e7e5e4" stroke-width="2" />
-	<rect x="40" y="500" width="540" height="420" rx="24" fill="#fff" stroke="#e7e5e4" stroke-width="2" />
-	<rect x="620" y="500" width="540" height="420" rx="24" fill="#fff" stroke="#e7e5e4" stroke-width="2" />
-
-	<g filter="url(#sketch)">
-		{icon("person", 250, 270, 150)}
-		{icon("ask", 375, 175, 140)}
-
-		{card_grid(768, 110)}
-		{icon("magnifier", 960, 240, 170)}
-
-		{card_grid(188, 570, picked=keep, faded=True)}
-
-		{avatar(790, 740, 80)}
-		{icon("reply", 990, 650, 170)}
-	</g>
-	{step(1, 80, 420, "You ask")}
-	{step(2, 660, 420, "It searches")}
-	{step(3, 80, 880, "Keeps the best")}
-	{step(4, 660, 880, "It answers")}
+	<g filter="url(#sketch)">{''.join(drawn)}</g>
+	{''.join(words)}
 	"""
-	return page(1200, 960, body)
+	return page(1200, ys[-1] + 90, body)
+
+
+# ---------------------------------------------------------------- HyDE
+
+
+def hyde():
+	others = [(190, 170), (330, 140), (540, 120), (1010, 470), (760, 520), (430, 500), (1040, 150), (150, 330)]
+	cluster = [(850, 230), (915, 255), (870, 300), (950, 310), (820, 285)]
+	q, a, s = (250, 470), (690, 215), (575, 330)
+	parts = []
+	for x, y in others:
+		parts.append(f'<rect x="{x - 22}" y="{y - 15}" width="44" height="30" rx="5" class="ink thin paper" stroke-opacity="0.3" />')
+	for x, y in cluster[:2]:
+		parts.append(f'<line x1="{s[0]}" y1="{s[1]}" x2="{x}" y2="{y}" class="ink thin dash" />')
+	parts.append(f'<line x1="{s[0]}" y1="{s[1]}" x2="{cluster[4][0]}" y2="{cluster[4][1]}" class="ink thin dash" />')
+	for x, y in cluster:
+		parts.append(f'<rect x="{x - 26}" y="{y - 18}" width="52" height="36" rx="5" class="ink thin fill" />')
+		parts.append(f'<line x1="{x - 14}" y1="{y - 4}" x2="{x + 14}" y2="{y - 4}" class="ink thin" />')
+		parts.append(f'<line x1="{x - 14}" y1="{y + 6}" x2="{x + 4}" y2="{y + 6}" class="ink thin" />')
+	parts.append(icon("ask", *q, 110))
+	parts.append(f'<g transform="translate({a[0] - 50},{a[1] - 45}) scale(1)"><path d="M10,10 h76 a10,10 0 0 1 10,10 v36 a10,10 0 0 1 -10,10 h-12 v14 l-16,-14 h-48 a10,10 0 0 1 -10,-10 v-36 a10,10 0 0 1 10,-10 z" class="ink paper" stroke-dasharray="9 8" /><line x1="22" y1="30" x2="74" y2="30" class="ink thin" /><line x1="22" y1="44" x2="56" y2="44" class="ink thin" /></g>')
+	parts.append(arrow(q[0] + 50, q[1] - 70, a[0] - 60, a[1] + 10, dashed=True, bend=-40))
+	parts.append(f'<line x1="{q[0] + 40}" y1="{q[1] - 30}" x2="{s[0] - 14}" y2="{s[1] + 8}" class="ink thin" stroke-opacity="0.35" />')
+	parts.append(f'<line x1="{a[0] - 30}" y1="{a[1] + 40}" x2="{s[0] + 10}" y2="{s[1] - 12}" class="ink thin" stroke-opacity="0.35" />')
+	parts.append(f'<circle cx="{s[0]}" cy="{s[1]}" r="14" fill="{MUD}" stroke="{INK}" stroke-width="3" />')
+	body = f"""
+	<rect x="30" y="30" width="1140" height="580" rx="24" fill="#fff" stroke="#e7e5e4" stroke-width="2" />
+	{text(60, 76, "embedding space, sketched in 2-D", cls="note", anchor="start")}
+	<g filter="url(#sketch)">{''.join(parts)}</g>
+	{text(q[0], q[1] + 90, "your question")}
+	{text(400, 268, "HyDE", cls="note")}
+	{text(a[0], a[1] - 62, "a made-up answer")}
+	{text(s[0] + 10, s[1] + 54, "search here", anchor="start")}
+	{text(885, 375, "pages that answer it", cls="note")}
+	"""
+	return page(1200, 640, body)
+
+
+# ---------------------------------------------------------------- rerank
+
+
+def rerank_figure():
+	before = "A B A C D A E B F G C H A I J K".split()
+	after = ["A", "C", "A", "B", "A"]
+	parts, words = [], []
+	for i, letter in enumerate(before):
+		x, y = 70 + (i % 4) * 84, 170 + (i // 4) * 62
+		parts.append(f'<rect x="{x}" y="{y}" width="70" height="48" rx="6" class="ink thin paper" />')
+		words.append(f'<text x="{x + 35}" y="{y + 33}" text-anchor="middle" class="label" style="font-size:24px">{letter}</text>')
+	parts.append(arrow(420, 290, 470, 290))
+	parts.append(icon("funnel", 570, 290, 170))
+	parts.append(arrow(670, 290, 740, 290))
+	for i, letter in enumerate(after):
+		y = 140 + i * 66
+		dropped = i == 4
+		parts.append(f'<rect x="770" y="{y}" width="90" height="52" rx="6" class="ink thin {"paper" if dropped else "fill"}"{" stroke-opacity=\'0.35\'" if dropped else ""} />')
+		words.append(f'<text x="815" y="{y + 36}" text-anchor="middle" class="label" style="font-size:26px{";fill:#d6d3d1" if dropped else ""}">{letter}</text>')
+		if dropped:
+			parts.append(f'<line x1="760" y1="{y + 4}" x2="870" y2="{y + 48}" class="ink" stroke="{MUD}" />')
+			parts.append(f'<line x1="760" y1="{y + 48}" x2="870" y2="{y + 4}" class="ink" stroke="{MUD}" />')
+			words.append(text(900, y + 22, "3rd chunk from page A,", cls="note", anchor="start"))
+			words.append(text(900, y + 50, "over the 2-per-page cap", cls="note", anchor="start"))
+	body = f"""
+	<g filter="url(#sketch)">{''.join(parts)}</g>
+	{''.join(words)}
+	{text(225, 130, "16 nearest chunks")}
+	{text(570, 130, "cross-encoder")}
+	{text(815, 108, "top 5")}
+	{text(570, 470, "letters = source page", cls="note")}
+	"""
+	return page(1200, 520, body)
+
+
+# ---------------------------------------------------------------- prompt caching
+
+
+def prompt_cache():
+	rows = [(170, 190), (290, 270), (410, 140)]
+	parts, words = [], []
+	for i, (y, tail) in enumerate(rows):
+		parts.append(icon("person", 90, y, 70))
+		parts.append(f'<rect x="160" y="{y - 34}" width="690" height="68" rx="10" class="ink thin paper" />')
+		for k in range(6 if i else 0):
+			parts.append(f'<line x1="{190 + k * 110}" y1="{y - 8}" x2="{270 + k * 110}" y2="{y - 8}" class="ink thin" stroke-opacity="0.25" />')
+			parts.append(f'<line x1="{190 + k * 110}" y1="{y + 10}" x2="{245 + k * 110}" y2="{y + 10}" class="ink thin" stroke-opacity="0.25" />')
+		parts.append(f'<rect x="862" y="{y - 34}" width="{tail}" height="68" rx="10" class="ink thin fill" />')
+	parts.append(f'<path d="M160,100 v-14 h690 v14" class="ink thin" />')
+	parts.append(f'<path d="M862,100 v-14 h270 v14" class="ink thin" />')
+	body = f"""
+	<g filter="url(#sketch)">{''.join(parts)}</g>
+	{text(505, 70, "same for every visitor, so it’s cached")}
+	{text(997, 70, "changes every turn", cls="note")}
+	{text(505, 178, "voice · rules · tools · about Hunter", cls="note")}
+	{text(957, 178, "live details", cls="note")}
+	"""
+	return page(1200, 480, body)
 
 
 # ---------------------------------------------------------------- timeline
@@ -346,7 +505,10 @@ def timeline():
 for name, build in {
 	"hero": hero,
 	"system-map": system_map,
-	"life-of-a-message": life_of_a_message,
+	"pipeline": pipeline,
+	"hyde": hyde,
+	"rerank": rerank_figure,
+	"prompt-cache": prompt_cache,
 	"timeline": timeline,
 }.items():
 	(HERE / f"{name}.html").write_text(build())
