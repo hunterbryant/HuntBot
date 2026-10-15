@@ -4,8 +4,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 CHROME="${1:-${CHROME:-chromium}}"
-python3 timeline.py
-for spec in hero:1200x630 system-map:1200x900 life-of-a-message:1200x1400 timeline:1200x1046; do
+python3 build.py
+for spec in hero:1200x630 system-map:1200x720 life-of-a-message:1200x960 timeline:1200x560; do
 	name="${spec%%:*}"; size="${spec##*:}"; w="${size%x*}"; h="${size#*x}"
 	# Headless Chrome eats part of the window height, so render taller and crop.
 	"$CHROME" --headless --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
