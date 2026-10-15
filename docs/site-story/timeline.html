@@ -13,39 +13,23 @@ svg { display: block; font-family: Favorit, sans-serif; }
 .fill { fill: #fddbd2; }
 .paper { fill: #ffffff; }
 .dash { stroke-dasharray: 2 12; }
-.label { font-size: 30px; font-weight: 500; fill: #292524; }
-.note { font-size: 22px; fill: #78716c; }
+.title { font-size: 28px; font-weight: 500; fill: #292524; }
+.label { font-size: 24px; font-weight: 500; fill: #292524; }
+.note { font-size: 20px; fill: #78716c; }
+.small { font-size: 16px; fill: #78716c; }
+.mono { font-family: ui-monospace, 'DejaVu Sans Mono', monospace; font-size: 18px; fill: #292524; }
 </style>
 </head>
 <body>
-<svg width="1200" height="560" viewBox="0 0 1200 560" xmlns="http://www.w3.org/2000/svg">
+<svg width="1200" height="540" viewBox="0 0 1200 540" xmlns="http://www.w3.org/2000/svg">
 
 <defs>
-	<filter id="sketch" x="-5%" y="-5%" width="110%" height="110%">
-		<feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" result="noise" />
-		<feDisplacementMap in="SourceGraphic" in2="noise" scale="4" />
-	</filter>
-	<marker id="head" viewBox="0 0 12 12" refX="8" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-		<path d="M2,2 L9,6 L2,10" fill="none" stroke="#292524" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+	<marker id="head" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+		<path d="M2,2 L10,6 L2,10" fill="none" stroke="#292524" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
 	</marker>
 </defs>
 
-
-	<path d="M106.42857142857142,470 v-55.935483870967744 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v55.935483870967744 z" fill="#ad6e5e" /><path d="M136.7142857142857,470 v-62.817204301075265 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v62.817204301075265 z" fill="#ad6e5e" /><path d="M167.0,470 v-31.8494623655914 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v31.8494623655914 z" fill="#ad6e5e" /><path d="M742.4285714285713,470 v--1 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v-1 z" fill="#ad6e5e" /><path d="M863.5714285714286,470 v-314.0 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v314.0 z" fill="#ad6e5e" /><path d="M893.8571428571428,470 v-7.763440860215054 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v7.763440860215054 z" fill="#ad6e5e" /><path d="M1014.9999999999999,470 v-76.58064516129032 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v76.58064516129032 z" fill="#ad6e5e" /><path d="M1075.5714285714287,470 v-69.6989247311828 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v69.6989247311828 z" fill="#ad6e5e" />
-	<g filter="url(#sketch)">
-		<line x1="70" y1="470" x2="1130" y2="470" class="ink" />
-		<line x1="70.0" y1="470" x2="70.0" y2="484" class="ink thin" /><text x="78.0" y="520" text-anchor="start" class="note">2024</text><line x1="433.42857142857144" y1="470" x2="433.42857142857144" y2="484" class="ink thin" /><text x="441.42857142857144" y="520" text-anchor="start" class="note">2025</text><line x1="796.8571428571429" y1="470" x2="796.8571428571429" y2="484" class="ink thin" /><text x="804.8571428571429" y="520" text-anchor="start" class="note">2026</text>
-		<circle cx="448.5714285714286" cy="400" r="52" class="ink paper" /><image href="../../src/lib/assets/huntbotlogo.svg" x="388.7714285714286" y="337.59999999999997" width="119.6" height="119.6" />
-		<text x="498.5714285714286" y="340" class="label" style="font-size:28px;fill:#a8a29e">z</text>
-		<text x="520.5714285714287" y="310" class="label" style="font-size:36px;fill:#a8a29e">z</text>
-		<text x="548.5714285714287" y="274" class="label" style="font-size:44px;fill:#a8a29e">z</text>
-	</g>
-	<line x1="145.7142857142857" y1="391.18279569892474" x2="145.7142857142857" y2="351.18279569892474" class="ink thin dash" /><text x="145.7142857142857" y="341.18279569892474" text-anchor="middle" class="label">Launch</text>
-	<text x="448.5714285714286" y="320" text-anchor="middle" class="note">Quiet</text>
-	<line x1="872.5714285714286" y1="140.0" x2="872.5714285714286" y2="130.0" class="ink thin dash" /><text x="886.5714285714286" y="120.0" text-anchor="end" class="label">The rebuild</text>
-	<line x1="1023.9999999999999" y1="377.4193548387097" x2="1023.9999999999999" y2="267.4193548387097" class="ink thin dash" /><text x="1038.0" y="257.4193548387097" text-anchor="end" class="label">New tools</text>
-	<line x1="1084.5714285714287" y1="384.3010752688172" x2="1084.5714285714287" y2="344.3010752688172" class="ink thin dash" /><text x="1070.5714285714287" y="334.3010752688172" text-anchor="start" class="label">Faster</text>
-	
+<path d="M106.42857142857142,400 v-50.12903225806451 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v50.12903225806451 z" fill="#ad6e5e" /><path d="M136.7142857142857,400 v-56.36559139784946 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v56.36559139784946 z" fill="#ad6e5e" /><path d="M167.0,400 v-28.3010752688172 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v28.3010752688172 z" fill="#ad6e5e" /><path d="M742.4285714285713,400 v--1 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v-1 z" fill="#ad6e5e" /><path d="M863.5714285714286,400 v-284.0 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v284.0 z" fill="#ad6e5e" /><path d="M893.8571428571428,400 v-6.473118279569892 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v6.473118279569892 z" fill="#ad6e5e" /><path d="M1014.9999999999999,400 v-68.83870967741936 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v68.83870967741936 z" fill="#ad6e5e" /><path d="M1075.5714285714287,400 v-62.6021505376344 a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v62.6021505376344 z" fill="#ad6e5e" /><text x="872.5714285714286" y="96.0" text-anchor="middle" class="small">93 commits</text><line x1="70" y1="400" x2="1130" y2="400" stroke="#292524" stroke-width="3" /><path d="M103.28571428571428,418 v10 H188.14285714285714 v-10" fill="none" stroke="#292524" stroke-width="2.5" /><text x="145.71428571428572" y="462" text-anchor="middle" class="label">Launch</text><path d="M194.14285714285714,418 v10 H733.2857142857142 v-10" fill="none" stroke="#a8a29e" stroke-width="2.5" /><text x="463.71428571428567" y="462" text-anchor="middle" class="note">Quiet stretch</text><path d="M860.4285714285714,418 v10 H914.9999999999999 v-10" fill="none" stroke="#292524" stroke-width="2.5" /><text x="887.7142857142857" y="462" text-anchor="middle" class="label">Rebuild</text><path d="M1011.8571428571428,418 v10 H1096.7142857142858 v-10" fill="none" stroke="#292524" stroke-width="2.5" /><text x="1054.2857142857142" y="462" text-anchor="middle" class="label">Tools + speed</text><line x1="70.0" y1="400" x2="70.0" y2="390" stroke="#292524" stroke-width="3" /><text x="76.0" y="512" text-anchor="start" class="small">2024</text><line x1="433.42857142857144" y1="400" x2="433.42857142857144" y2="390" stroke="#292524" stroke-width="3" /><text x="439.42857142857144" y="512" text-anchor="start" class="small">2025</text><line x1="796.8571428571429" y1="400" x2="796.8571428571429" y2="390" stroke="#292524" stroke-width="3" /><text x="802.8571428571429" y="512" text-anchor="start" class="small">2026</text><circle cx="448.5714285714286" cy="336" r="46" class="ink paper" /><image href="../../src/lib/assets/huntbotlogo.svg" x="395.67142857142863" y="280.8" width="105.8" height="105.8" /><text x="502.5714285714286" y="290" class="label" style="font-size:24px;fill:#a8a29e">z</text><text x="522.5714285714287" y="262" class="label" style="font-size:30px;fill:#a8a29e">z</text><text x="546.5714285714287" y="230" class="label" style="font-size:38px;fill:#a8a29e">z</text>
 </svg>
 </body>
 </html>

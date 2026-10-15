@@ -1,7 +1,11 @@
 """Builds the diagram HTML files for the Building HuntBot page. Run ./render.sh to turn them into PNGs.
 
-Everything is drawn in the same hand-drawn ink style as HuntBot's avatar. Keep labels to a word
-or two and let the drawings do the explaining.
+Style rules, so the figures stay clean:
+- Line drawings in one ink color with the site's mud accent; HuntBot's own avatar is the only
+  hand-drawn element.
+- Every label sits in clear space. Lines never cross text, and nothing overlaps.
+- A detail belongs inside (or directly beside) the thing it describes.
+- Labels are a few words. Explanations go in the post, not the image.
 """
 
 from pathlib import Path
@@ -11,6 +15,8 @@ AVATAR = "../../src/lib/assets/huntbotlogo.svg"
 
 INK = "#292524"
 MUTED = "#a8a29e"
+LINE = "#d6d3d1"
+CARD_STROKE = "#e7e5e4"
 MUD = "#ad6e5e"
 MUD_LIGHT = "#fddbd2"
 PAPER = "#fafaf9"
@@ -28,15 +34,10 @@ COMMITS = {
 	"2026-10": 22,
 }
 
-# Same idea as the avatar's "line boil" filter, scaled up for bigger drawings.
 DEFS = f"""
 <defs>
-	<filter id="sketch" x="-5%" y="-5%" width="110%" height="110%">
-		<feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="3" result="noise" />
-		<feDisplacementMap in="SourceGraphic" in2="noise" scale="4" />
-	</filter>
-	<marker id="head" viewBox="0 0 12 12" refX="8" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-		<path d="M2,2 L9,6 L2,10" fill="none" stroke="{INK}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+	<marker id="head" viewBox="0 0 12 12" refX="9" refY="6" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+		<path d="M2,2 L10,6 L2,10" fill="none" stroke="{INK}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
 	</marker>
 </defs>
 """
@@ -51,8 +52,11 @@ svg {{ display: block; font-family: Favorit, sans-serif; }}
 .fill {{ fill: {MUD_LIGHT}; }}
 .paper {{ fill: #ffffff; }}
 .dash {{ stroke-dasharray: 2 12; }}
-.label {{ font-size: 30px; font-weight: 500; fill: {INK}; }}
-.note {{ font-size: 22px; fill: #78716c; }}
+.title {{ font-size: 28px; font-weight: 500; fill: {INK}; }}
+.label {{ font-size: 24px; font-weight: 500; fill: {INK}; }}
+.note {{ font-size: 20px; fill: #78716c; }}
+.small {{ font-size: 16px; fill: #78716c; }}
+.mono {{ font-family: ui-monospace, 'DejaVu Sans Mono', monospace; font-size: 18px; fill: {INK}; }}
 """
 
 
@@ -74,32 +78,9 @@ def page(width, height, body):
 """
 
 
-# ---------------------------------------------------------------- icons
-# Each icon is drawn in a 100x100 box and placed with icon(name, cx, cy, size).
+# ---------------------------------------------------------------- primitives
 
 ICONS = {
-	"fork": """
-		<path d="M50,94 V58 M50,58 C50,42 24,40 22,14 M50,58 V12 M50,58 C50,42 76,40 78,14" class="ink" />
-		<polyline points="13,24 22,13 31,22" class="ink" />
-		<polyline points="41,22 50,11 59,22" class="ink" />
-		<polyline points="69,22 78,13 87,24" class="ink" />""",
-	"ghost": """
-		<path d="M40,6 h46 a8,8 0 0 1 8,8 v28 a8,8 0 0 1 -8,8 h-6 v12 l-12,-12 h-28 a8,8 0 0 1 -8,-8 v-28 a8,8 0 0 1 8,-8 z" class="ink fill dash" stroke-dasharray="8 7" />
-		<path d="M14,40 h44 a8,8 0 0 1 8,8 v28 a8,8 0 0 1 -8,8 h-26 l-12,12 v-12 h-6 a8,8 0 0 1 -8,-8 v-28 a8,8 0 0 1 8,-8 z" class="ink paper" />
-		<path d="M30,56 c0,-6 12,-7 12,0 c0,5 -6,5 -6,10" class="ink thin" stroke="{mud}" />
-		<circle cx="36" cy="73" r="2.5" fill="{mud}" />""",
-	"funnel": """
-		<path d="M8,16 H92 L60,54 V82 L40,94 V54 Z" class="ink fill" />
-		<line x1="8" y1="16" x2="92" y2="16" class="ink" />""",
-	"diamond": """
-		<path d="M50,6 L94,50 L50,94 L6,50 Z" class="ink paper" />
-		<path d="M41,38 c0,-8 18,-10 18,0 c0,7 -9,7 -9,15" class="ink" stroke="{mud}" />
-		<circle cx="50" cy="65" r="3" fill="{mud}" />""",
-	"blocks": """
-		<rect x="8" y="8" width="84" height="56" rx="6" class="ink paper" />
-		<line x1="20" y1="24" x2="78" y2="24" class="ink thin" /><line x1="20" y1="36" x2="78" y2="36" class="ink thin" />
-		<line x1="20" y1="48" x2="60" y2="48" class="ink thin" />
-		<rect x="8" y="70" width="84" height="22" rx="6" class="ink fill" />""",
 	"browser": """
 		<rect x="6" y="14" width="88" height="72" rx="8" class="ink paper" />
 		<line x1="6" y1="32" x2="94" y2="32" class="ink thin" />
@@ -144,7 +125,7 @@ ICONS = {
 		<circle cx="50" cy="32" r="18" class="ink paper" />
 		<path d="M16,92 c0,-24 14,-36 34,-36 c20,0 34,12 34,36" class="ink fill" />""",
 	"magnifier": """
-		<circle cx="42" cy="42" r="26" class="ink paper" fill-opacity="0.6" />
+		<circle cx="42" cy="42" r="26" class="ink paper" />
 		<line x1="61" y1="61" x2="88" y2="88" class="ink" stroke-width="9" />""",
 	"ask": """
 		<path d="M12,12 h76 a10,10 0 0 1 10,10 v40 a10,10 0 0 1 -10,10 h-46 l-18,16 v-16 h-12 a10,10 0 0 1 -10,-10 v-40 a10,10 0 0 1 10,-10 z" class="ink paper" />
@@ -154,6 +135,26 @@ ICONS = {
 		<path d="M12,12 h76 a10,10 0 0 1 10,10 v40 a10,10 0 0 1 -10,10 h-12 v16 l-18,-16 h-46 a10,10 0 0 1 -10,-10 v-40 a10,10 0 0 1 10,-10 z" class="ink fill" />
 		<line x1="24" y1="30" x2="76" y2="30" class="ink thin" /><line x1="24" y1="43" x2="76" y2="43" class="ink thin" />
 		<line x1="24" y1="56" x2="56" y2="56" class="ink thin" />""",
+	"fork": """
+		<path d="M50,94 V58 M50,58 C50,42 24,40 22,14 M50,58 V12 M50,58 C50,42 76,40 78,14" class="ink" />
+		<polyline points="13,24 22,13 31,22" class="ink" />
+		<polyline points="41,22 50,11 59,22" class="ink" />
+		<polyline points="69,22 78,13 87,24" class="ink" />""",
+	"draft": """
+		<rect x="10" y="10" width="80" height="80" rx="8" class="ink paper" stroke-dasharray="10 8" />
+		<line x1="24" y1="32" x2="76" y2="32" class="ink thin" /><line x1="24" y1="48" x2="76" y2="48" class="ink thin" />
+		<line x1="24" y1="64" x2="56" y2="64" class="ink thin" />""",
+	"funnel": """
+		<path d="M8,16 H92 L60,54 V82 L40,94 V54 Z" class="ink fill" />""",
+	"diamond": """
+		<path d="M50,6 L94,50 L50,94 L6,50 Z" class="ink paper" />
+		<path d="M41,38 c0,-8 18,-10 18,0 c0,7 -9,7 -9,15" class="ink" stroke="{mud}" />
+		<circle cx="50" cy="65" r="3" fill="{mud}" />""",
+	"blocks": """
+		<rect x="8" y="8" width="84" height="56" rx="6" class="ink paper" />
+		<line x1="20" y1="24" x2="78" y2="24" class="ink thin" /><line x1="20" y1="36" x2="78" y2="36" class="ink thin" />
+		<line x1="20" y1="48" x2="60" y2="48" class="ink thin" />
+		<rect x="8" y="70" width="84" height="22" rx="6" class="ink fill" />""",
 }
 
 
@@ -163,26 +164,42 @@ def icon(name, cx, cy, size=100):
 	return f'<g transform="translate({cx - size / 2},{cy - size / 2}) scale({s})">{body}</g>'
 
 
-def avatar(cx, cy, r, ring=True):
-	"""HuntBot's own avatar in a circle. The logo art sits in a 48x48 box with some padding."""
+def avatar(cx, cy, r, fill="paper"):
+	"""HuntBot's own avatar in a circle."""
 	size = r * 2.3
-	ring_svg = f'<circle cx="{cx}" cy="{cy}" r="{r}" class="ink paper" />' if ring else ""
-	return f'{ring_svg}<image href="{AVATAR}" x="{cx - size / 2}" y="{cy - size / 2 - r * 0.05}" width="{size}" height="{size}" />'
+	return (
+		f'<circle cx="{cx}" cy="{cy}" r="{r}" class="ink {fill}" />'
+		f'<image href="{AVATAR}" x="{cx - size / 2}" y="{cy - size / 2 - r * 0.05}" width="{size}" height="{size}" />'
+	)
 
 
-def arrow(x1, y1, x2, y2, both=False, dashed=False, bend=0):
-	"""A loose, slightly curved arrow between two points."""
-	mx, my = (x1 + x2) / 2, (y1 + y2) / 2
-	dx, dy = x2 - x1, y2 - y1
-	length = (dx * dx + dy * dy) ** 0.5 or 1
-	cx, cy = mx - dy / length * bend, my + dx / length * bend
+def line(x1, y1, x2, y2, both=False, arrow=True, dashed=False, color=INK):
 	start = ' marker-start="url(#head)"' if both else ""
-	dash = " dash" if dashed else ""
-	return f'<path d="M{x1},{y1} Q{cx},{cy} {x2},{y2}" class="ink thin{dash}" marker-end="url(#head)"{start} />'
+	end = ' marker-end="url(#head)"' if arrow else ""
+	dash = ' stroke-dasharray="2 10"' if dashed else ""
+	return (
+		f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}" stroke-width="3" '
+		f'stroke-linecap="round"{dash}{start}{end} />'
+	)
 
 
-def text(x, y, value, cls="label", anchor="middle"):
-	return f'<text x="{x}" y="{y}" text-anchor="{anchor}" class="{cls}">{value}</text>'
+def text(x, y, value, cls="label", anchor="middle", extra=""):
+	return f'<text x="{x}" y="{y}" text-anchor="{anchor}" class="{cls}"{extra}>{value}</text>'
+
+
+def pill(x, y, w, h, label, fill="paper", cls="small", dashed=False):
+	"""A rounded pill with centered text. (x, y) is the top-left corner."""
+	dash = ' stroke-dasharray="5 5"' if dashed else ""
+	stroke = MUTED if dashed else INK
+	return (
+		f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{h / 2}" fill="{"#fff" if fill == "paper" else MUD_LIGHT}" '
+		f'stroke="{stroke}" stroke-width="2"{dash} />'
+		+ text(x + w / 2, y + h / 2 + 6, label, cls=cls)
+	)
+
+
+def card(x, y, w, h):
+	return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="18" fill="#fff" stroke="{CARD_STROKE}" stroke-width="2" />'
 
 
 # ---------------------------------------------------------------- hero
@@ -203,187 +220,186 @@ def hero():
 		)
 	icons = "".join(icon(n, x, y, 120) for n, x, y in orbit)
 	body = f"""
-	<g filter="url(#sketch)">
-		{''.join(lines)}
-		{icons}
-		<circle cx="{cx}" cy="{cy}" r="150" class="ink fill" />
-		{avatar(cx, cy, 128)}
-	</g>"""
+	{''.join(lines)}
+	{icons}
+	<circle cx="{cx}" cy="{cy}" r="150" class="ink fill" />
+	{avatar(cx, cy, 128)}
+	"""
 	return page(1200, 630, body)
 
 
-# ---------------------------------------------------------------- how it fits together
+# ---------------------------------------------------------------- system map
 
 
 def system_map():
-	bot = (470, 360)
-	body = f"""
-	<g filter="url(#sketch)">
-		{icon("person", 120, 360, 130)}
-		{arrow(200, 335, 360, 335, bend=-18)}
-		{arrow(360, 385, 200, 385, bend=-18)}
-
-		{avatar(*bot, 95)}
-
-		{arrow(580, 335, 720, 335, bend=-18)}
-		{arrow(720, 385, 580, 385, bend=-18)}
-		{icon("memory", 800, 360, 140)}
-
-		{icon("browser", 1080, 200, 100)}
-		{icon("notebook", 1080, 360, 100)}
-		{icon("messages", 1080, 520, 100)}
-		{arrow(1020, 215, 885, 320, bend=10)}
-		{arrow(1022, 360, 885, 360)}
-		{arrow(1020, 505, 885, 400, bend=-10)}
-
-		{arrow(bot[0], 470, bot[0], 560, both=True)}
-		{icon("sparkle", bot[0], 630, 110)}
-
-		{arrow(560, 290, 640, 200, dashed=True, bend=-10)}
-		{icon("calendar", 690, 140, 80)}
-		{icon("code", 790, 140, 80)}
-	</g>
-	{text(120, 470, "You")}
-	{text(bot[0], 200, "HuntBot")}
-	{text(bot[0], 232, "SvelteKit on Vercel", cls="note")}
-	{text(800, 475, "Memory")}
-	{text(800, 505, "Qdrant", cls="note")}
-	{text(bot[0] + 70, 630, "AI model", anchor="start")}
-	{text(bot[0] + 70, 660, "OpenAI", cls="note", anchor="start")}
-	{text(740, 225, "Live lookups", cls="note")}
-	{text(1080, 270, "Site · Prismic", cls="note")}
-	{text(1080, 430, "Notes · Notion", cls="note")}
-	{text(1080, 590, "Texts · iMessage", cls="note")}
-	"""
-	return page(1200, 720, body)
+	bot = (420, 290)
+	mem = (760, 290)
+	sources = [("browser", 160, "Site", "Prismic"), ("notebook", 300, "Notes", "Notion"), ("messages", 440, "Texts", "iMessage")]
+	parts = [
+		icon("person", 120, 290, 120),
+		text(120, 395, "You"),
+		line(195, 290, 318, 290, both=True),
+		text(bot[0], 170, "HuntBot"),
+		text(bot[0], 196, "SvelteKit on Vercel", cls="small"),
+		avatar(*bot, 82),
+		line(512, 290, 682, 290, both=True),
+		icon("memory", *mem, 130),
+		text(mem[0], 395, "Memory"),
+		text(mem[0], 421, "Qdrant", cls="small"),
+	]
+	for name, y, label, sub in sources:
+		parts.append(icon(name, 1070, y - 14, 80))
+		parts.append(text(1070, y + 46, label, cls="note"))
+		parts.append(text(1070, y + 70, sub, cls="small"))
+		parts.append(line(1018, y - 14, 836, 290 + (y - 300) * 0.35))
+	# What HuntBot uses directly, below it
+	parts += [
+		line(380, 372, 300, 488),
+		line(460, 372, 560, 488),
+		icon("sparkle", 290, 550, 100),
+		text(290, 640, "AI model"),
+		text(290, 666, "OpenAI", cls="small"),
+		icon("calendar", 520, 550, 76),
+		icon("code", 620, 550, 76),
+		text(570, 640, "Live lookups"),
+		text(570, 666, "Calendar · GitHub", cls="small"),
+	]
+	return page(1200, 710, "".join(parts))
 
 
 # ---------------------------------------------------------------- the chat pipeline
 
 
-def tag(x, y, value):
-	"""A small dashed pill for notes like which lanes skip a step."""
-	w = len(value) * 9.6 + 28
-	return (
-		f'<rect x="{x}" y="{y - 21}" width="{w}" height="30" rx="15" fill="none" stroke="{MUTED}" stroke-width="2" stroke-dasharray="5 5" />'
-		+ f'<text x="{x + 14}" y="{y}" class="note" style="font-size:18px">{value}</text>'
-	)
-
-
 def pipeline():
-	sp, tx, y0, gap = 190, 280, 110, 156
+	x0, w, h, step = 110, 1040, 120, 160
+	icon_x, text_x = 190, 262
 	stages = [
-		("ask", "Message", ["the whole chat so far"], None),
-		("fork", "Pick a lane", ["cosine match against", "example questions"], None),
-		("ghost", "Rewrite + HyDE", ["one structured call, 2.5 s cap"], "skipped in quick lane"),
-		("memory", "Vector search", ["512-d embedding", "k = 16 per branch"], None),
-		("funnel", "Rerank", ["cross-encoder keeps the top 5,", "max 2 chunks per page"], "skipped in quick lane"),
-		("diamond", "Enough context?", ["if not, a router plans", "up to 3 more searches"], "always runs in deep lane"),
-		("blocks", "Build the prompt", ["cached prefix + live details"], None),
-		("sparkle", "Reason + use tools", ["Responses API, effort set by lane"], None),
-		("reply", "Stream the reply", ["word by word, with source links"], None),
+		("ask", "Message", "The question plus the chat so far", None),
+		("fork", "Pick a lane", "Compare it to example questions", None),
+		("draft", "Rewrite + HyDE", "Standalone query + a draft answer", "quick lane skips"),
+		("memory", "Embed + vector search", "16 nearest chunks per branch", None),
+		("funnel", "Rerank", "Keep the 5 most relevant", "quick lane skips"),
+		("diamond", "Enough context?", "If not, plan up to 3 more searches", "deep lane always checks"),
+		("blocks", "Build the prompt", "Cached prefix + live details", None),
+		("sparkle", "Reason + call tools", "Up to 3 steps", None),
+		("reply", "Stream the reply", "Word by word, with sources", None),
 	]
-	ys = [y0 + i * gap for i in range(len(stages))]
-	drawn, words = [], []
-	for i, (name, label, subs, note) in enumerate(stages):
+	ys = [40 + i * step for i in range(len(stages))]
+	parts = []
+	for i, (name, title, sub, tag) in enumerate(stages):
 		y = ys[i]
-		drawn.append(icon(name, sp, y, 96))
+		parts.append(card(x0, y, w, h))
+		parts.append(icon(name, icon_x, y + h / 2, 70))
+		parts.append(text(text_x, y + 54, title, cls="title", anchor="start"))
+		parts.append(text(text_x, y + 88, sub, cls="note", anchor="start"))
+		if tag:
+			tw = len(tag) * 8.4 + 28
+			parts.append(pill(x0 + w - 20 - tw, y + 14, tw, 30, tag, dashed=True))
 		if i < len(stages) - 1:
-			drawn.append(arrow(sp, y + 56, sp, ys[i + 1] - 56))
-		words.append(text(tx, y - 6, label, anchor="start"))
-		for j, sub in enumerate(subs):
-			words.append(text(tx, y + 26 + j * 26, sub, cls="note", anchor="start"))
-		if note:
-			words.append(tag(tx + len(label) * 16 + 24, y - 12, note))
+			parts.append(line(icon_x, y + h + 6, icon_x, ys[i + 1] - 8))
 
-	# Lanes: how much work each one does
-	lane_y = ys[1]
-	x = 760
+	def mid(i, tagged=False):
+		return ys[i] + (74 if tagged else 60)
+
+	# Lanes, with bars for how much work each does
+	cy = mid(1)
+	x = 742
 	for lane, bars in (("quick", 1), ("standard", 2), ("deep", 3)):
-		w = len(lane) * 11.5 + 64
-		drawn.append(f'<rect x="{x}" y="{lane_y - 26}" width="{w}" height="52" rx="26" class="ink thin {"fill" if lane == "standard" else "paper"}" />')
+		pw = len(lane) * 10.5 + 62
+		parts.append(f'<rect x="{x}" y="{cy - 20}" width="{pw}" height="40" rx="20" fill="{MUD_LIGHT if lane == "standard" else "#fff"}" stroke="{INK}" stroke-width="2" />')
 		for b in range(3):
-			h = 8 + b * 7
-			fill = INK if b < bars else "#d6d3d1"
-			drawn.append(f'<rect x="{x + 18 + b * 9}" y="{lane_y + 10 - h}" width="6" height="{h}" rx="2" fill="{fill}" />')
-		words.append(text(x + 50, lane_y + 8, lane, cls="note", anchor="start"))
-		x += w + 14
+			bh = 6 + b * 5
+			parts.append(f'<rect x="{x + 16 + b * 8}" y="{cy + 8 - bh}" width="5" height="{bh}" rx="1.5" fill="{INK if b < bars else LINE}" />')
+		parts.append(text(x + 48, cy + 6, lane, cls="small", anchor="start"))
+		x += pw + 12
 
-	# Search fans out over three branches
-	sy = ys[3]
-	for dy, label in ((-52, "site + notes"), (0, "iMessage"), (52, "people by name")):
-		drawn.append(arrow(760, sy, 880, sy + dy, bend=0))
-		words.append(text(894, sy + dy + 8, label, cls="note", anchor="start"))
+	# Search branches
+	cy = mid(3)
+	x = 700
+	for label in ("site + notes", "iMessage", "people by name"):
+		pw = len(label) * 8.6 + 32
+		parts.append(pill(x, cy - 18, pw, 36, label))
+		x += pw + 12
 
 	# Rerank: 16 in, 5 out
-	ry = ys[4]
+	cy = mid(4, tagged=True)
 	for c in range(16):
-		x, y = 760 + (c % 4) * 30, ry - 46 + (c // 4) * 24
-		drawn.append(f'<rect x="{x}" y="{y}" width="24" height="16" rx="3" class="ink thin paper" />')
-	drawn.append(arrow(895, ry, 960, ry))
+		cx = 760 + (c % 8) * 17
+		parts.append(f'<rect x="{cx}" y="{cy - 14 + (c // 8) * 17}" width="12" height="12" rx="2" fill="#fff" stroke="{INK}" stroke-width="2" />')
+	parts.append(line(912, cy, 960, cy))
 	for c in range(5):
-		drawn.append(f'<rect x="{975}" y="{ry - 52 + c * 22}" width="34" height="16" rx="3" class="ink thin fill" />')
-	words.append(text(820, ry + 74, "16", cls="note"))
-	words.append(text(992, ry + 74, "5", cls="note"))
+		parts.append(f'<rect x="{976 + c * 17}" y="{cy - 6}" width="12" height="12" rx="2" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2" />')
+	parts.append(text(822, cy + 36, "16", cls="small"))
+	parts.append(text(1010, cy + 36, "5", cls="small"))
 
-	# Not enough context: loop back to search
-	dy5, dy3 = ys[5], ys[3]
-	drawn.append(
-		f'<path d="M{sp - 50},{dy5} C70,{dy5} 70,{dy3} {sp - 56},{dy3}" class="ink thin" marker-end="url(#head)" />'
+	# Not enough context: loop back to search, in the left gutter
+	y1, y2 = ys[5] + h / 2, ys[3] + h / 2
+	parts.append(
+		f'<path d="M{x0},{y1} H84 Q70,{y1} 70,{y1 - 14} V{y2 + 14} Q70,{y2} 84,{y2} H{x0 - 6}" fill="none" stroke="{INK}" stroke-width="3" stroke-linecap="round" marker-end="url(#head)" />'
 	)
-	words.append(f'<text x="58" y="{(dy5 + dy3) / 2}" text-anchor="middle" class="note" transform="rotate(-90 58 {(dy5 + dy3) / 2})">search again</text>')
+	ly = (y1 + y2) / 2
+	parts.append(text(46, ly, "search again", cls="small", extra=f' transform="rotate(-90 46 {ly})"'))
 
-	# Tools the model can call mid-reply
-	ty = ys[7]
-	drawn.append(arrow(690, ty, 752, ty, both=True))
-	drawn.append(f'<rect x="760" y="{ty - 62}" width="390" height="124" rx="20" fill="none" stroke="{INK}" stroke-width="3" stroke-dasharray="2 10" stroke-linecap="round" />')
-	for k, (name, label) in enumerate((("browser", "go to page"), ("magnifier", "search"), ("code", "GitHub"), ("calendar", "calendar"))):
-		x = 812 + k * 95
-		drawn.append(icon(name, x, ty - 12, 58))
-		words.append(text(x, ty + 44, label, cls="note"))
-	words[-4:] = [w.replace('class="note"', 'class="note" style="font-size:17px"') for w in words[-4:]]
+	# Prompt layout
+	cy = mid(6)
+	parts.append(f'<rect x="742" y="{cy - 20}" width="290" height="40" rx="8" fill="#fff" stroke="{INK}" stroke-width="2" />')
+	parts.append(text(887, cy + 6, "cached prefix", cls="small"))
+	parts.append(f'<rect x="1040" y="{cy - 20}" width="90" height="40" rx="8" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2" />')
+	parts.append(text(1085, cy + 6, "live", cls="small"))
 
-	body = f"""
-	<g filter="url(#sketch)">{''.join(drawn)}</g>
-	{''.join(words)}
-	"""
-	return page(1200, ys[-1] + 90, body)
+	# Tools
+	cy = ys[7] + 50
+	for k, (name, label) in enumerate((("browser", "navigate"), ("magnifier", "search"), ("code", "GitHub"), ("calendar", "calendar"))):
+		tx = 790 + k * 98
+		parts.append(icon(name, tx, cy, 44))
+		parts.append(text(tx, cy + 50, label, cls="small"))
+
+	# Sources under the reply
+	cy = mid(8)
+	parts.append(pill(760, cy - 18, 150, 36, "source link"))
+	parts.append(pill(922, cy - 18, 150, 36, "source link"))
+
+	return page(1200, ys[-1] + h + 40, "".join(parts))
 
 
 # ---------------------------------------------------------------- HyDE
 
 
 def hyde():
-	others = [(190, 170), (330, 140), (540, 120), (1010, 470), (760, 520), (430, 500), (1040, 150), (150, 330)]
-	cluster = [(850, 230), (915, 255), (870, 300), (950, 310), (820, 285)]
-	q, a, s = (250, 470), (690, 215), (575, 330)
+	others = [(80, 80), (200, 60), (330, 110), (460, 70), (90, 300), (240, 370), (500, 380), (150, 190)]
+	targets = [(395, 200), (450, 230), (430, 295), (370, 280)]
+	q, s = (210, 230), (410, 250)
+	panels = [(40, "Search with the question"), (620, "Search with question + HyDE draft")]
 	parts = []
-	for x, y in others:
-		parts.append(f'<rect x="{x - 22}" y="{y - 15}" width="44" height="30" rx="5" class="ink thin paper" stroke-opacity="0.3" />')
-	for x, y in cluster[:2]:
-		parts.append(f'<line x1="{s[0]}" y1="{s[1]}" x2="{x}" y2="{y}" class="ink thin dash" />')
-	parts.append(f'<line x1="{s[0]}" y1="{s[1]}" x2="{cluster[4][0]}" y2="{cluster[4][1]}" class="ink thin dash" />')
-	for x, y in cluster:
-		parts.append(f'<rect x="{x - 26}" y="{y - 18}" width="52" height="36" rx="5" class="ink thin fill" />')
-		parts.append(f'<line x1="{x - 14}" y1="{y - 4}" x2="{x + 14}" y2="{y - 4}" class="ink thin" />')
-		parts.append(f'<line x1="{x - 14}" y1="{y + 6}" x2="{x + 4}" y2="{y + 6}" class="ink thin" />')
-	parts.append(icon("ask", *q, 110))
-	parts.append(f'<g transform="translate({a[0] - 50},{a[1] - 45}) scale(1)"><path d="M10,10 h76 a10,10 0 0 1 10,10 v36 a10,10 0 0 1 -10,10 h-12 v14 l-16,-14 h-48 a10,10 0 0 1 -10,-10 v-36 a10,10 0 0 1 10,-10 z" class="ink paper" stroke-dasharray="9 8" /><line x1="22" y1="30" x2="74" y2="30" class="ink thin" /><line x1="22" y1="44" x2="56" y2="44" class="ink thin" /></g>')
-	parts.append(arrow(q[0] + 50, q[1] - 70, a[0] - 60, a[1] + 10, dashed=True, bend=-40))
-	parts.append(f'<line x1="{q[0] + 40}" y1="{q[1] - 30}" x2="{s[0] - 14}" y2="{s[1] + 8}" class="ink thin" stroke-opacity="0.35" />')
-	parts.append(f'<line x1="{a[0] - 30}" y1="{a[1] + 40}" x2="{s[0] + 10}" y2="{s[1] - 12}" class="ink thin" stroke-opacity="0.35" />')
-	parts.append(f'<circle cx="{s[0]}" cy="{s[1]}" r="14" fill="{MUD}" stroke="{INK}" stroke-width="3" />')
-	body = f"""
-	<rect x="30" y="30" width="1140" height="580" rx="24" fill="#fff" stroke="#e7e5e4" stroke-width="2" />
-	{text(60, 76, "embedding space, sketched in 2-D", cls="note", anchor="start")}
-	<g filter="url(#sketch)">{''.join(parts)}</g>
-	{text(q[0], q[1] + 90, "your question")}
-	{text(400, 268, "HyDE", cls="note")}
-	{text(a[0], a[1] - 62, "a made-up answer")}
-	{text(s[0] + 10, s[1] + 54, "search here", anchor="start")}
-	{text(885, 375, "pages that answer it", cls="note")}
-	"""
-	return page(1200, 640, body)
+	for i, (px, title) in enumerate(panels):
+		py = 110
+		parts.append(card(px, py, 540, 410))
+		parts.append(text(px + 270, 80, title))
+		for ox, oy in others:
+			parts.append(f'<rect x="{px + ox - 13}" y="{py + oy - 13}" width="26" height="26" rx="4" fill="#fff" stroke="{MUTED}" stroke-width="2" />')
+		for ox, oy in targets:
+			parts.append(f'<rect x="{px + ox - 13}" y="{py + oy - 13}" width="26" height="26" rx="4" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2" />')
+		point = q if i == 0 else s
+		parts.append(f'<circle cx="{px + point[0]}" cy="{py + point[1]}" r="110" fill="none" stroke="{INK}" stroke-width="2.5" stroke-dasharray="4 8" stroke-linecap="round" />')
+		if i == 1:
+			parts.append(f'<circle cx="{px + q[0]}" cy="{py + q[1]}" r="9" fill="#fff" stroke="{MUTED}" stroke-width="2.5" />')
+			parts.append(line(px + q[0] + 16, py + q[1] + 1, px + s[0] - 20, py + s[1] - 1))
+		parts.append(f'<circle cx="{px + point[0]}" cy="{py + point[1]}" r="10" fill="{MUD}" stroke="{INK}" stroke-width="2.5" />')
+
+	# Legend
+	lx, ly = 150, 572
+	legend = [
+		(f'<circle cx="{{x}}" cy="{ly - 7}" r="9" fill="{MUD}" stroke="{INK}" stroke-width="2.5" />', "search point"),
+		(f'<rect x="{{x0}}" y="{ly - 20}" width="26" height="26" rx="4" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2" />', "pages that answer it"),
+		(f'<rect x="{{x0}}" y="{ly - 20}" width="26" height="26" rx="4" fill="#fff" stroke="{MUTED}" stroke-width="2" />', "other pages"),
+		(f'<circle cx="{{x}}" cy="{ly - 7}" r="13" fill="none" stroke="{INK}" stroke-width="2.5" stroke-dasharray="3 5" />', "nearest results"),
+	]
+	x = lx
+	for mark, label in legend:
+		parts.append(mark.replace("{x}", str(x + 13)).replace("{x0}", str(x)))
+		parts.append(text(x + 38, ly, label, cls="note", anchor="start"))
+		x += 38 + len(label) * 10 + 44
+	return page(1200, 610, "".join(parts))
 
 
 # ---------------------------------------------------------------- rerank
@@ -392,33 +408,31 @@ def hyde():
 def rerank_figure():
 	before = "A B A C D A E B F G C H A I J K".split()
 	after = ["A", "C", "A", "B", "A"]
-	parts, words = [], []
+	parts = [
+		text(251, 90, "16 nearest chunks"),
+		text(600, 90, "Cross-encoder"),
+		text(875, 90, "Top 5"),
+	]
 	for i, letter in enumerate(before):
-		x, y = 70 + (i % 4) * 84, 170 + (i // 4) * 62
-		parts.append(f'<rect x="{x}" y="{y}" width="70" height="48" rx="6" class="ink thin paper" />')
-		words.append(f'<text x="{x + 35}" y="{y + 33}" text-anchor="middle" class="label" style="font-size:24px">{letter}</text>')
-	parts.append(arrow(420, 290, 470, 290))
-	parts.append(icon("funnel", 570, 290, 170))
-	parts.append(arrow(670, 290, 740, 290))
+		x, y = 90 + (i % 4) * 84, 140 + (i // 4) * 60
+		parts.append(f'<rect x="{x}" y="{y}" width="70" height="46" rx="6" fill="#fff" stroke="{INK}" stroke-width="2" />')
+		parts.append(text(x + 35, y + 31, letter, cls="label"))
+	parts.append(line(432, 253, 512, 253))
+	parts.append(icon("funnel", 600, 253, 140))
+	parts.append(line(690, 253, 790, 253))
 	for i, letter in enumerate(after):
-		y = 140 + i * 66
+		y = 118 + i * 56
 		dropped = i == 4
-		parts.append(f'<rect x="770" y="{y}" width="90" height="52" rx="6" class="ink thin {"paper" if dropped else "fill"}"{" stroke-opacity=\'0.35\'" if dropped else ""} />')
-		words.append(f'<text x="815" y="{y + 36}" text-anchor="middle" class="label" style="font-size:26px{";fill:#d6d3d1" if dropped else ""}">{letter}</text>')
+		stroke = MUTED if dropped else INK
+		dash = ' stroke-dasharray="5 5"' if dropped else ""
+		fill = "#fff" if dropped else MUD_LIGHT
+		parts.append(f'<rect x="820" y="{y}" width="110" height="46" rx="6" fill="{fill}" stroke="{stroke}" stroke-width="2"{dash} />')
+		parts.append(text(875, y + 31, letter, cls="label", extra=f' style="fill:{MUTED}"' if dropped else ""))
 		if dropped:
-			parts.append(f'<line x1="760" y1="{y + 4}" x2="870" y2="{y + 48}" class="ink" stroke="{MUD}" />')
-			parts.append(f'<line x1="760" y1="{y + 48}" x2="870" y2="{y + 4}" class="ink" stroke="{MUD}" />')
-			words.append(text(900, y + 22, "3rd chunk from page A,", cls="note", anchor="start"))
-			words.append(text(900, y + 50, "over the 2-per-page cap", cls="note", anchor="start"))
-	body = f"""
-	<g filter="url(#sketch)">{''.join(parts)}</g>
-	{''.join(words)}
-	{text(225, 130, "16 nearest chunks")}
-	{text(570, 130, "cross-encoder")}
-	{text(815, 108, "top 5")}
-	{text(570, 470, "letters = source page", cls="note")}
-	"""
-	return page(1200, 520, body)
+			parts.append(text(956, y + 18, "Third chunk from page A,", cls="small", anchor="start"))
+			parts.append(text(956, y + 40, "dropped: max 2 per page", cls="small", anchor="start"))
+	parts.append(text(251, 420, "Letters mark each chunk’s source page", cls="small"))
+	return page(1200, 460, "".join(parts))
 
 
 # ---------------------------------------------------------------- prompt caching
@@ -426,24 +440,50 @@ def rerank_figure():
 
 def prompt_cache():
 	rows = [(170, 190), (290, 270), (410, 140)]
-	parts, words = [], []
+	parts = [
+		f'<path d="M160,104 v-14 h690 v14" fill="none" stroke="{INK}" stroke-width="3" />',
+		f'<path d="M862,104 v-14 h270 v14" fill="none" stroke="{INK}" stroke-width="3" />',
+		text(505, 70, "Same for every visitor, so it’s cached"),
+		text(997, 70, "Changes every turn", cls="note"),
+	]
 	for i, (y, tail) in enumerate(rows):
-		parts.append(icon("person", 90, y, 70))
-		parts.append(f'<rect x="160" y="{y - 34}" width="690" height="68" rx="10" class="ink thin paper" />')
-		for k in range(6 if i else 0):
-			parts.append(f'<line x1="{190 + k * 110}" y1="{y - 8}" x2="{270 + k * 110}" y2="{y - 8}" class="ink thin" stroke-opacity="0.25" />')
-			parts.append(f'<line x1="{190 + k * 110}" y1="{y + 10}" x2="{245 + k * 110}" y2="{y + 10}" class="ink thin" stroke-opacity="0.25" />')
-		parts.append(f'<rect x="862" y="{y - 34}" width="{tail}" height="68" rx="10" class="ink thin fill" />')
-	parts.append(f'<path d="M160,100 v-14 h690 v14" class="ink thin" />')
-	parts.append(f'<path d="M862,100 v-14 h270 v14" class="ink thin" />')
-	body = f"""
-	<g filter="url(#sketch)">{''.join(parts)}</g>
-	{text(505, 70, "same for every visitor, so it’s cached")}
-	{text(997, 70, "changes every turn", cls="note")}
-	{text(505, 178, "voice · rules · tools · about Hunter", cls="note")}
-	{text(957, 178, "live details", cls="note")}
-	"""
-	return page(1200, 480, body)
+		parts.append(icon("person", 90, y, 64))
+		parts.append(f'<rect x="160" y="{y - 32}" width="690" height="64" rx="10" fill="#fff" stroke="{INK}" stroke-width="2.5" />')
+		parts.append(f'<rect x="862" y="{y - 32}" width="{tail}" height="64" rx="10" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2.5" />')
+		if i == 0:
+			parts.append(text(505, y + 7, "voice · rules · tools · about Hunter", cls="note"))
+			parts.append(text(862 + tail / 2, y + 7, "live details", cls="note"))
+		else:
+			for k in range(6):
+				parts.append(f'<line x1="{195 + k * 110}" y1="{y}" x2="{275 + k * 110}" y2="{y}" stroke="{LINE}" stroke-width="3" stroke-linecap="round" />')
+	return page(1200, 470, "".join(parts))
+
+
+# ---------------------------------------------------------------- tool calling
+
+
+def tool_loop():
+	ny = 220
+	parts = [
+		text(150, 110, "Model"),
+		icon("sparkle", 150, ny, 100),
+		line(212, ny, 292, ny),
+		text(440, 110, "Tool call"),
+		f'<rect x="300" y="{ny - 50}" width="280" height="100" rx="12" fill="#fff" stroke="{INK}" stroke-width="2.5" />',
+		text(320, ny - 8, "search_repo_code", cls="mono", anchor="start"),
+		text(320, ny + 22, '{ query: "rerank" }', cls="mono", anchor="start", extra=f' style="fill:{MUD}"'),
+		line(588, ny, 646, ny),
+		text(720, 110, "HuntBot runs it"),
+		avatar(720, ny, 60),
+		line(792, ny, 852, ny),
+		text(1000, 110, "Result"),
+		f'<rect x="860" y="{ny - 50}" width="280" height="100" rx="12" fill="{MUD_LIGHT}" stroke="{INK}" stroke-width="2.5" />',
+		text(880, ny - 8, "src/lib/server/", cls="mono", anchor="start"),
+		text(880, ny + 22, "rerank.ts", cls="mono", anchor="start"),
+		f'<path d="M1000,{ny + 58} V{ny + 96} Q1000,{ny + 110} 986,{ny + 110} H164 Q150,{ny + 110} 150,{ny + 96} V{ny + 62}" fill="none" stroke="{INK}" stroke-width="3" stroke-linecap="round" marker-end="url(#head)" />',
+		text(575, ny + 146, "The result goes back to the model, which can call another tool or write the reply", cls="note"),
+	]
+	return page(1200, 410, "".join(parts))
 
 
 # ---------------------------------------------------------------- timeline
@@ -451,7 +491,7 @@ def prompt_cache():
 
 def timeline():
 	months = [(y, m) for y in (2024, 2025, 2026) for m in range(1, 13)][:35]  # Jan 2024 to Nov 2026
-	x0, x1, base, top = 70, 1130, 470, 150
+	x0, x1, base, top = 70, 1130, 400, 110
 	step_w = (x1 - x0) / len(months)
 	scale = (base - top) / max(COMMITS.values())
 
@@ -459,47 +499,38 @@ def timeline():
 		y, m = map(int, key.split("-"))
 		return x0 + months.index((y, m)) * step_w + step_w / 2
 
-	bars = []
+	parts = []
 	for key, n in COMMITS.items():
 		h = max(5, n * scale)
 		x = mx(key) - 9
-		bars.append(
-			f'<path d="M{x},{base} v-{h - 6} a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v{h - 6} z" fill="{MUD}" />'
+		parts.append(f'<path d="M{x},{base} v-{h - 6} a6,6 0 0 1 6,-6 h6 a6,6 0 0 1 6,6 v{h - 6} z" fill="{MUD}" />')
+	peak = max(COMMITS, key=COMMITS.get)
+	parts.append(text(mx(peak), base - COMMITS[peak] * scale - 14, f"{COMMITS[peak]} commits", cls="small"))
+	parts.append(f'<line x1="{x0}" y1="{base}" x2="{x1}" y2="{base}" stroke="{INK}" stroke-width="3" />')
+
+	def era(start, end, label, muted=False):
+		a, b = mx(start) - step_w / 2 + 3, mx(end) + step_w / 2 - 3
+		color = MUTED if muted else INK
+		return (
+			f'<path d="M{a},{base + 18} v10 H{b} v-10" fill="none" stroke="{color}" stroke-width="2.5" />'
+			+ text((a + b) / 2, base + 62, label, cls="note" if muted else "label")
 		)
 
-	ticks = []
+	parts.append(era("2024-02", "2024-04", "Launch"))
+	parts.append(era("2024-05", "2025-10", "Quiet stretch", muted=True))
+	parts.append(era("2026-03", "2026-04", "Rebuild"))
+	parts.append(era("2026-08", "2026-10", "Tools + speed"))
+
 	for year in (2024, 2025, 2026):
 		x = mx(f"{year}-01") - step_w / 2
-		ticks.append(f'<line x1="{x}" y1="{base}" x2="{x}" y2="{base + 14}" class="ink thin" />')
-		ticks.append(text(x + 8, base + 50, str(year), cls="note", anchor="start"))
-
-	def callout(key, h_above, label, anchor="middle", dx=0):
-		x = mx(key)
-		bar_top = base - max(5, COMMITS[key] * scale)
-		y = bar_top - h_above
-		return (
-			f'<line x1="{x}" y1="{bar_top - 10}" x2="{x}" y2="{y + 10}" class="ink thin dash" />'
-			+ text(x + dx, y, label, anchor=anchor)
-		)
+		parts.append(f'<line x1="{x}" y1="{base}" x2="{x}" y2="{base - 10}" stroke="{INK}" stroke-width="3" />')
+		parts.append(text(x + 6, base + 112, str(year), cls="small", anchor="start"))
 
 	sleep_x = mx("2025-01")
-	body = f"""
-	{''.join(bars)}
-	<g filter="url(#sketch)">
-		<line x1="{x0}" y1="{base}" x2="{x1}" y2="{base}" class="ink" />
-		{''.join(ticks)}
-		{avatar(sleep_x, base - 70, 52)}
-		<text x="{sleep_x + 50}" y="{base - 130}" class="label" style="font-size:28px;fill:{MUTED}">z</text>
-		<text x="{sleep_x + 72}" y="{base - 160}" class="label" style="font-size:36px;fill:{MUTED}">z</text>
-		<text x="{sleep_x + 100}" y="{base - 196}" class="label" style="font-size:44px;fill:{MUTED}">z</text>
-	</g>
-	{callout("2024-03", 60, "Launch")}
-	{text(sleep_x, base - 150, "Quiet", cls="note")}
-	{callout("2026-03", 30, "The rebuild", anchor="end", dx=14)}
-	{callout("2026-08", 130, "New tools", anchor="end", dx=14)}
-	{callout("2026-10", 60, "Faster", anchor="start", dx=-14)}
-	"""
-	return page(1200, 560, body)
+	parts.append(avatar(sleep_x, base - 64, 46))
+	for dx, dy, size in ((54, -110, 24), (74, -138, 30), (98, -170, 38)):
+		parts.append(f'<text x="{sleep_x + dx}" y="{base + dy}" class="label" style="font-size:{size}px;fill:{MUTED}">z</text>')
+	return page(1200, 540, "".join(parts))
 
 
 for name, build in {
@@ -509,6 +540,7 @@ for name, build in {
 	"hyde": hyde,
 	"rerank": rerank_figure,
 	"prompt-cache": prompt_cache,
+	"tool-loop": tool_loop,
 	"timeline": timeline,
 }.items():
 	(HERE / f"{name}.html").write_text(build())
