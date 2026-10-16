@@ -31,9 +31,62 @@
 	let imessageExcludeContacts = '';
 	let imessageContactAliases = '';
 
-	// Chunk audit state
-	let auditStatus: 'idle' | 'running' | 'done' | 'error' = 'idle';
-	let auditMessage = '';
+	// Chunk audit state — the audit runs on the server; this page only starts it and shows the
+	// progress saved after each run.
+	type ChunkAuditStatus = {
+		state: 'running' | 'done' | 'error';
+		startedAt: string;
+		finishedAt: string | null;
+		audited: number;
+		lowValue: number;
+		sensitive: number;
+		refused: number;
+		error: string | null;
+	};
+	let auditStatus: ChunkAuditStatus | null = null;
+	let auditStale = false;
+	let auditStarting = false;
+	let auditPoll: ReturnType<typeof setTimeout> | undefined;
+
+	const AUDIT_POLL_MS = 5000;
+
+	const refreshAuditStatus = async () => {
+		clearTimeout(auditPoll);
+		try {
+			const res = await fetch('/api/admin/chunk-audit');
+			const data = await res.json();
+			auditStatus = data.status;
+			auditStale = data.stale;
+		} catch {
+			// keep the last known status
+		}
+		if (auditStatus?.state === 'running' && !auditStale) {
+			auditPoll = setTimeout(refreshAuditStatus, AUDIT_POLL_MS);
+		}
+	};
+
+	const triggerChunkAudit = async () => {
+		auditStarting = true;
+		try {
+			await fetch('/api/admin/chunk-audit', { method: 'POST' });
+		} finally {
+			auditStarting = false;
+		}
+		await refreshAuditStatus();
+	};
+
+	const formatAuditTime = (iso: string) =>
+		new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+	$: auditRunning = auditStatus?.state === 'running' && !auditStale;
+	$: auditCounts = auditStatus
+		? `${auditStatus.audited} chunks audited · ${auditStatus.lowValue} boilerplate · ${auditStatus.sensitive} sensitive${auditStatus.refused ? ` · ${auditStatus.refused} refused` : ''}`
+		: '';
+
+	onMount(() => {
+		refreshAuditStatus();
+		return () => clearTimeout(auditPoll);
+	});
 
 	onMount(async () => {
 		try {
@@ -221,34 +274,6 @@
 			imessageStatus = 'error';
 		} finally {
 			imessagePurging = false;
-		}
-	};
-
-	// Each call audits for up to ~45s and reports whether untagged chunks remain, so keep
-	// calling until it says there's nothing left.
-	const triggerChunkAudit = async () => {
-		auditStatus = 'running';
-		auditMessage = 'Auditing chunks...';
-		const totals = { audited: 0, lowValue: 0, sensitive: 0, refused: 0 };
-		try {
-			for (;;) {
-				const res = await fetch('/api/admin/chunk-audit', { method: 'POST' });
-				const data = await res.json();
-				if (!res.ok || !data.success) throw new Error(data.error ?? `HTTP ${res.status}`);
-				totals.audited += data.audited;
-				totals.lowValue += data.lowValue;
-				totals.sensitive += data.sensitive;
-				totals.refused += data.refused;
-				auditMessage = `${totals.audited} chunks audited · ${totals.lowValue} boilerplate · ${totals.sensitive} sensitive${totals.refused ? ` · ${totals.refused} refused` : ''}`;
-				if (!data.more) break;
-				// A full call that tagged nothing means the writes aren't sticking — don't loop forever.
-				if (data.audited === 0) throw new Error('no progress — check the server logs');
-			}
-			auditStatus = 'done';
-			if (totals.audited === 0) auditMessage = 'Every chunk is already audited';
-		} catch (err) {
-			auditStatus = 'error';
-			auditMessage = `Audit failed after ${totals.audited} chunks: ${err instanceof Error ? err.message : err}`;
 		}
 	};
 
@@ -507,24 +532,37 @@
 						Audit new chunks
 						<button
 							on:click={triggerChunkAudit}
-							disabled={auditStatus === 'running'}
+							disabled={auditRunning || auditStarting}
 							class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
 						>
-							{auditStatus === 'running' ? 'Auditing...' : 'Audit'}
+							{auditRunning || auditStarting ? 'Auditing...' : auditStale ? 'Resume' : 'Audit'}
 						</button>
 					</span>
 					<p class="text-xs text-stone-400 dark:text-stone-500">
 						Run after indexing. Tags chunks that haven't been audited yet so HuntBot skips
-						boilerplate and sensitive ones. Nothing is re-embedded or deleted.
+						boilerplate and sensitive ones. Nothing is re-embedded or deleted. It runs in the
+						background, so you can close this page and check back here later.
 					</p>
-					{#if auditStatus !== 'idle'}
-						<p
-							class="text-xs {auditStatus === 'error'
-								? 'text-red-500'
-								: 'text-stone-400 dark:text-stone-500'}"
-						>
-							{auditMessage}
+					{#if auditStatus}
+						<p class="flex items-center gap-2 text-xs text-stone-600 dark:text-stone-300">
+							<span
+								class="inline-block h-2 w-2 shrink-0 rounded-full {auditRunning
+									? 'animate-pulse bg-mud-600'
+									: auditStatus.state === 'done'
+										? 'bg-green-500'
+										: 'bg-red-500'}"
+							></span>
+							{#if auditRunning}
+								Running since {formatAuditTime(auditStatus.startedAt)}
+							{:else if auditStale}
+								Stopped partway (started {formatAuditTime(auditStatus.startedAt)}) — click Resume
+							{:else if auditStatus.state === 'done' && auditStatus.finishedAt}
+								Finished {formatAuditTime(auditStatus.finishedAt)}
+							{:else}
+								Failed: {auditStatus.error}
+							{/if}
 						</p>
+						<p class="text-xs text-stone-400 dark:text-stone-500">{auditCounts}</p>
 					{/if}
 				</div>
 			</div>

@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { CONFIG_POINT_ID } from '$lib/server/imessage-config';
-import { getQdrantClient } from '$lib/server/qdrant-search';
+import { getPointVectorForUpsert, getQdrantClient } from '$lib/server/qdrant-search';
 import { createOpenAI } from '@ai-sdk/openai';
 import {
 	experimental_decide,
@@ -11,8 +11,8 @@ import {
 /**
  * Quality + privacy tags on knowledge-base chunks, written in place as `metadata.audit` with
  * Qdrant set_payload — vectors are never touched, so nothing needs re-embedding. The "Audit"
- * button on /admin/embeddings (`POST /api/admin/chunk-audit`) tags whatever isn't tagged yet;
- * run it after indexing so new chunks get checked too.
+ * button on /admin/embeddings (`POST /api/admin/chunk-audit`) tags whatever isn't tagged yet,
+ * in the background; run it after indexing so new chunks get checked too.
  * Retrieval then skips chunks flagged `low_value` or `sensitive` (see `isExcludedByAudit`).
  * Bump CHUNK_AUDIT_VERSION after changing the rubric to re-audit everything.
  */
@@ -57,6 +57,42 @@ export function isExcludedByAudit(metadata: Record<string, unknown> | undefined)
 }
 
 type Chunk = { id: string | number; text: string; isSite: boolean };
+
+// Progress of the background audit, kept in Qdrant like the iMessage toggle so the admin page
+// can show it from any device and after the page that started it is closed.
+const STATUS_POINT_ID = 'a0000000-0000-0000-0000-000000000002';
+const VECTOR_DIMS = 512;
+
+export type ChunkAuditStatus = {
+	state: 'running' | 'done' | 'error';
+	startedAt: string;
+	/** Bumped after every ~45s run; a stale value while `running` means the chain stopped. */
+	updatedAt: string;
+	finishedAt: string | null;
+	audited: number;
+	lowValue: number;
+	sensitive: number;
+	refused: number;
+	error: string | null;
+};
+
+export async function getChunkAuditStatus(): Promise<ChunkAuditStatus | null> {
+	const [point] = await getQdrantClient().retrieve(env.QDRANT_COLLECTION!, {
+		ids: [STATUS_POINT_ID],
+		with_payload: true,
+		with_vector: false
+	});
+	return (point?.payload?.chunkAudit as ChunkAuditStatus | undefined) ?? null;
+}
+
+export async function saveChunkAuditStatus(status: ChunkAuditStatus): Promise<void> {
+	const client = getQdrantClient();
+	const collection = env.QDRANT_COLLECTION!;
+	const vector = await getPointVectorForUpsert(client, collection, new Array(VECTOR_DIMS).fill(0));
+	await client.upsert(collection, {
+		points: [{ id: STATUS_POINT_ID, vector, payload: { type: '_config', chunkAudit: status } }]
+	});
+}
 
 function judgedText(payload: Record<string, unknown>): string | null {
 	const meta = (payload.metadata ?? {}) as Record<string, unknown>;
@@ -169,7 +205,7 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 			limit: SCROLL_PAGE,
 			filter: {
 				must_not: [
-					{ has_id: [CONFIG_POINT_ID] },
+					{ has_id: [CONFIG_POINT_ID, STATUS_POINT_ID] },
 					{ key: 'metadata.audit.v', match: { value: CHUNK_AUDIT_VERSION } }
 				]
 			},
