@@ -21,6 +21,10 @@
 		ip: string | null;
 		lat: number | null;
 		lon: number | null;
+		arrivedVia: string | null;
+		org: string | null;
+		orgClass: string | null;
+		gpc: boolean;
 	}
 
 	interface UserMeta {
@@ -33,6 +37,10 @@
 		ip: string | null;
 		lat: number | null;
 		lon: number | null;
+		arrivedVia: string | null;
+		org: string | null;
+		orgClass: string | null;
+		gpc: boolean;
 	}
 
 	interface ConversationSummary {
@@ -570,7 +578,7 @@
 						{@const sessionEvents = eventsMap[convo.sessionId] ?? []}
 						<div class="border-t border-stone-200 px-4 pb-4 pt-3 dark:border-stone-700">
 							<!-- User meta block -->
-							{#if loc || convo.userMeta.timezone || convo.userMeta.ip}
+							{#if loc || convo.userMeta.timezone || convo.userMeta.ip || convo.userMeta.arrivedVia || convo.userMeta.org || convo.userMeta.gpc}
 								<div
 									class="mb-4 flex flex-col gap-1 rounded bg-stone-50 p-3 text-xs text-stone-400 dark:bg-stone-800/50 dark:text-stone-500"
 								>
@@ -588,6 +596,24 @@
 										<div class="flex gap-3">
 											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Timezone</span>
 											<span>{convo.userMeta.timezone}</span>
+										</div>
+									{/if}
+									{#if convo.userMeta.arrivedVia}
+										<div class="flex gap-3">
+											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Arrived</span>
+											<span>{convo.userMeta.arrivedVia}</span>
+										</div>
+									{/if}
+									{#if convo.userMeta.org}
+										<div class="flex gap-3">
+											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Network</span>
+											<span>{convo.userMeta.org}{convo.userMeta.orgClass ? ` (${convo.userMeta.orgClass})` : ''}</span>
+										</div>
+									{/if}
+									{#if convo.userMeta.gpc}
+										<div class="flex gap-3">
+											<span class="w-16 shrink-0 font-medium uppercase tracking-wider text-stone-500 dark:text-stone-400">Privacy</span>
+											<span>Global Privacy Control on</span>
 										</div>
 									{/if}
 									{#if convo.userMeta.lat && convo.userMeta.lon}

@@ -30,6 +30,10 @@ interface ConversationEvent {
 	ip: string | null;
 	lat: number | null;
 	lon: number | null;
+	arrivedVia: string | null;
+	org: string | null;
+	orgClass: string | null;
+	gpc: boolean;
 }
 
 interface UserMeta {
@@ -42,6 +46,10 @@ interface UserMeta {
 	ip: string | null;
 	lat: number | null;
 	lon: number | null;
+	arrivedVia: string | null;
+	org: string | null;
+	orgClass: string | null;
+	gpc: boolean;
 }
 
 interface ConversationSummary {
@@ -158,7 +166,11 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 				timezone: str(p.$geoip_time_zone),
 				ip: str(p.$ip),
 				lat: num(p.$geoip_latitude),
-				lon: num(p.$geoip_longitude)
+				lon: num(p.$geoip_longitude),
+				arrivedVia: str(p.visitor_arrived_via) ?? str(p.via) ?? str(p.landing_referrer),
+				org: str(p.visitor_org),
+				orgClass: str(p.visitor_org_class),
+				gpc: p.gpc === true
 			});
 			sessionMap.set(key, arr);
 		}
@@ -186,6 +198,8 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 				eventsMap[sessionId] = events;
 
 				const firstWithMeta = events.find((e) => e.city || e.timezone);
+				const firstArrival = events.find((e) => e.arrivedVia)?.arrivedVia ?? null;
+				const firstOrg = events.find((e) => e.org);
 				const userMeta: UserMeta = {
 					city: firstWithMeta?.city ?? null,
 					region: firstWithMeta?.region ?? null,
@@ -195,7 +209,11 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 					timezone: firstWithMeta?.timezone ?? null,
 					ip: firstWithMeta?.ip ?? null,
 					lat: firstWithMeta?.lat ?? null,
-					lon: firstWithMeta?.lon ?? null
+					lon: firstWithMeta?.lon ?? null,
+					arrivedVia: firstArrival,
+					org: firstOrg?.org ?? null,
+					orgClass: firstOrg?.orgClass ?? null,
+					gpc: events.some((e) => e.gpc)
 				};
 				const startedAt = events[0].timestamp;
 				const lastActiveAt = events[events.length - 1].timestamp;
