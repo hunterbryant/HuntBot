@@ -1,63 +1,25 @@
 <script lang="ts">
-	import { botEngaged, minimized, SESSION_ID } from './MessageStore.svelte';
 	import caretdown from '$lib/assets/caret-down.svg';
-	import { chatOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { captureEvent } from '$lib/analytics';
-	import { page } from '$app/stores';
+	import { closeChat } from './MessageStore.svelte';
 
 	export let greeting: string;
-
-	function handleGreet() {
-		captureEvent('chat_opened', SESSION_ID, {
-			session_id: SESSION_ID,
-			current_page: $page.url.pathname
-		});
-		botEngaged.set(true);
-		minimized.set(false);
-		chatOpen.set(true);
-	}
 </script>
 
+<!-- Header of the open chat. The closed chat is just the input bar (TextInput). -->
 <div
 	class="flex w-[calc(full-4rem)] shrink-0 basis-12 flex-row flex-nowrap items-center gap-1 rounded p-1 text-stone-600 dark:text-stone-400"
 >
-	{#if $minimized}
-		<!-- The whole greeting is a tap target that opens the chat, same as "Ask HuntBot". Kept out
-		of the tab order since that button already covers keyboard users. -->
-		<button
-			type="button"
-			tabindex="-1"
-			on:click={handleGreet}
-			class="flex min-w-0 grow flex-row flex-nowrap items-center gap-1 text-left text-stone-600 transition hover:text-stone-800 dark:text-stone-400 dark:hover:text-stone-200"
-		>
-			<Huntbotlogo mode="sketchy" />
-			<p class="grow">{greeting}</p>
-		</button>
-	{:else}
-		<Huntbotlogo mode="sketchy" />
-		<p class="grow text-stone-600 dark:text-stone-400">{greeting}</p>
-	{/if}
+	<Huntbotlogo mode="sketchy" />
+	<p class="grow text-stone-600 dark:text-stone-400">{greeting}</p>
 
-	{#if $minimized}
-		<button
-			on:click={handleGreet}
-			class="h-12 rounded bg-mud-600 px-3 pt-0.5 text-stone-50 transition hover:bg-mud-700 active:bg-mud-600 dark:bg-mud-500 dark:text-stone-950 dark:hover:bg-mud-600 dark:active:bg-mud-500"
-		>
-			Ask HuntBot
-		</button>
-	{:else}
-		<button
-			on:click={() => {
-				minimized.set(true);
-				chatOpen.set(false);
-			}}
-			class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-stone-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-stone-800"
-		>
-			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none" />
-		</button>
-		<hr
-			class="absolute inset-x-2 top-14 border-stone-200 peer-focus:hidden dark:border-stone-700"
-		/>
-	{/if}
+	<button
+		type="button"
+		aria-label="Minimize chat"
+		on:click={closeChat}
+		class="peer h-12 basis-12 rounded bg-white transition hover:bg-stone-100 active:bg-stone-200 active:shadow-none dark:bg-black dark:hover:bg-stone-900 dark:active:bg-stone-800"
+	>
+		<img src={caretdown} alt="" class="m-auto flex-none" />
+	</button>
+	<hr class="absolute inset-x-2 top-14 border-stone-200 peer-focus:hidden dark:border-stone-700" />
 </div>

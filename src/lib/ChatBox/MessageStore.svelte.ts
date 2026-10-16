@@ -4,7 +4,8 @@ import { getVisitorContext } from '$lib/visitorContext';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
-import { toStore, writable } from 'svelte/store';
+import { get, toStore, writable } from 'svelte/store';
+import { chatOpen } from '$lib/nav/navstore';
 
 // Re-export UIMessage as Message for backward compat with consuming code
 export type { UIMessage as Message };
@@ -42,13 +43,32 @@ function getOrCreateSessionId(): string {
 export const SESSION_ID = getOrCreateSessionId();
 export const SESSION_RETURNING = sessionWasReturning;
 
-export const suggestions = writable<string[]>([]);
-export const scrollSuggestions = writable<string[]>([]);
-export const hoverSuggestions = writable<string[]>([]);
-export const loadingContextSuggestions = writable(false);
+/**
+ * Where a set of chips came from, sent with `suggestions_shown` / `suggestion_clicked`:
+ * starter (a page, before any conversation), page (a page, mid-conversation), scroll (the section
+ * being read), hover (the passage under the cursor), post_message (follow-ups to the last reply).
+ */
+export type SuggestionType = 'starter' | 'page' | 'scroll' | 'hover' | 'post_message';
+export type SuggestionSet = { items: string[]; type: SuggestionType | null };
 
-// Shared debounce + abort for hover/scroll context fetches so back-to-back
-// triggers coalesce into a single request rather than racing each other.
+const NO_SUGGESTIONS: SuggestionSet = { items: [], type: null };
+
+// One row of chips. Whichever set arrived last wins: a reply's follow-ups replace what the visitor
+// was reading about, and reading something new after a reply replaces the follow-ups. (Separate
+// stores with a fixed priority used to hide section and hover chips for the rest of a conversation.)
+export const suggestions = writable<SuggestionSet>(NO_SUGGESTIONS);
+
+export function clearSuggestions() {
+	suggestions.set(NO_SUGGESTIONS);
+}
+
+/** On navigation, chips about the previous page go; follow-ups to the last reply stay. */
+export function clearPageSuggestions() {
+	suggestions.update((s) => (s.type === 'post_message' ? s : NO_SUGGESTIONS));
+}
+
+// Shared debounce + abort for page/section/hover fetches so back-to-back triggers coalesce into a
+// single request rather than racing each other.
 let contextDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let contextFetchController: AbortController | null = null;
 
@@ -65,7 +85,22 @@ export function cancelContextFetches() {
 	if (contextFetchController) contextFetchController.abort();
 	contextDebounceTimer = null;
 	contextFetchController = null;
-	loadingContextSuggestions.set(false);
+}
+
+async function requestSuggestions(
+	body: Record<string, unknown>,
+	signal?: AbortSignal
+): Promise<string[]> {
+	const response = await fetch('/api/chat/suggestions', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		// The visitor's arrival and reading path help pick which angle to lead with
+		body: JSON.stringify({ ...body, visitor: getVisitorContext() }),
+		signal
+	});
+	if (!response.ok) return [];
+	const data = await response.json();
+	return Array.isArray(data.suggestions) ? data.suggestions : [];
 }
 
 export async function triggerProactiveOpener(
@@ -96,104 +131,69 @@ export async function triggerProactiveOpener(
 	}
 }
 
-export function fetchScrollSuggestions(
+export type ContextTrigger =
+	| { kind: 'page' }
+	| { kind: 'scroll'; scrollDepth: number; sectionHeading: string | null }
+	| { kind: 'hover'; hoveredContent: string };
+
+/**
+ * Chips about what the visitor is looking at: the page itself (fetched on every navigation, so
+ * starters are ready before the chat is opened), the section they've stopped on, or the passage
+ * they're hovering. The conversation so far goes along, so mid-chat chips don't repeat it.
+ */
+export function fetchContextSuggestions(
+	trigger: ContextTrigger,
 	currentPage: string,
-	scrollDepth: number,
-	sectionHeading: string | null
+	messages: UIMessage[]
 ): void {
-	const isContextual = sectionHeading !== null;
+	const hasConversation = messages.some((m) => m.role === 'user');
+	const type: SuggestionType =
+		trigger.kind === 'page' ? (hasConversation ? 'page' : 'starter') : trigger.kind;
+	const { kind, ...context } = trigger;
+	void kind;
 
 	scheduleContextFetch(async (signal) => {
-		if (isContextual) loadingContextSuggestions.set(true);
 		try {
-			const response = await fetch('/api/chat/suggestions', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ messages: [], currentPage, scrollDepth, sectionHeading }),
+			const items = await requestSuggestions(
+				{ messages: hasConversation ? messages : [], currentPage, ...context },
 				signal
-			});
-			if (response.ok) {
-				const data = await response.json();
-				const suggs: string[] = data.suggestions ?? [];
-				scrollSuggestions.set(suggs);
-				if (suggs.length > 0) {
-					captureEvent('suggestions_shown', SESSION_ID, {
-						suggestion_type: 'scroll',
-						suggestions: suggs,
-						current_page: currentPage,
-						session_id: SESSION_ID
-					});
-				}
-			}
-		} catch (e) {
-			if ((e as Error).name !== 'AbortError') {
-				// Silently fail — scroll suggestions are best-effort; keep last good set
-			}
-		} finally {
-			if (isContextual) loadingContextSuggestions.set(false);
+			);
+			// A failed or empty fetch keeps whatever is showing rather than blanking the row
+			if (items.length > 0) suggestions.set({ items, type });
+		} catch {
+			// Best-effort (and aborted when a newer trigger replaces this one)
 		}
 	});
 }
 
-export function fetchHoverSuggestions(currentPage: string, hoveredContent: string): void {
-	scheduleContextFetch(async (signal) => {
-		loadingContextSuggestions.set(true);
-		try {
-			const response = await fetch('/api/chat/suggestions', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ messages: [], currentPage, hoveredContent }),
-				signal
-			});
-			if (response.ok) {
-				const data = await response.json();
-				const suggs: string[] = data.suggestions ?? [];
-				hoverSuggestions.set(suggs);
-				if (suggs.length > 0) {
-					captureEvent('suggestions_shown', SESSION_ID, {
-						suggestion_type: 'hover',
-						suggestions: suggs,
-						current_page: currentPage,
-						session_id: SESSION_ID
-					});
-				}
-			}
-		} catch (e) {
-			if ((e as Error).name !== 'AbortError') {
-				// Silently fail — hover suggestions are best-effort
-			}
-		} finally {
-			loadingContextSuggestions.set(false);
-		}
-	});
-}
-
+/** Follow-up chips after a reply. Replaces any page/section/hover chips in flight. */
 export async function fetchSuggestions(messages: UIMessage[], currentPage: string): Promise<void> {
 	cancelContextFetches();
-	scrollSuggestions.set([]);
-	hoverSuggestions.set([]);
 	try {
-		const response = await fetch('/api/chat/suggestions', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ messages, currentPage })
-		});
-		if (response.ok) {
-			const data = await response.json();
-			const suggs: string[] = data.suggestions ?? [];
-			suggestions.set(suggs);
-			if (suggs.length > 0) {
-				captureEvent('suggestions_shown', SESSION_ID, {
-					suggestion_type: messages.some((m) => m.role === 'user') ? 'post_message' : 'starter',
-					suggestions: suggs,
-					current_page: currentPage,
-					session_id: SESSION_ID
-				});
-			}
-		}
+		const items = await requestSuggestions({ messages, currentPage });
+		suggestions.set({ items, type: 'post_message' });
 	} catch {
-		suggestions.set([]);
+		clearSuggestions();
 	}
+}
+
+/** Opens the chat panel. Logs `chat_opened` only when it was actually closed. */
+export function openChat(source: 'bar' | 'chip' | 'typed' | 'hero') {
+	if (get(minimized)) {
+		captureEvent('chat_opened', SESSION_ID, {
+			session_id: SESSION_ID,
+			source,
+			current_page: typeof window !== 'undefined' ? window.location.pathname : null
+		});
+	}
+	botEngaged.set(true);
+	minimized.set(false);
+	chatOpen.set(true);
+}
+
+export function closeChat() {
+	minimized.set(true);
+	chatOpen.set(false);
 }
 
 const greetingResponse: string =
@@ -280,9 +280,7 @@ export function resetChat(trigger: 'command' | 'tool') {
 	if (!chatInstance) return;
 	void chatInstance.stop();
 	cancelContextFetches();
-	suggestions.set([]);
-	scrollSuggestions.set([]);
-	hoverSuggestions.set([]);
+	clearSuggestions();
 	clearSavedChat();
 	restoredMessageIds.clear();
 	chatInstance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
@@ -291,6 +289,11 @@ export function resetChat(trigger: 'command' | 'tool') {
 
 export const botEngaged = writable(false);
 export const minimized = writable(true);
+
+/** User turns the visitor didn't type (the "Not helpful" retry request). */
+export function isHiddenMessage(message: UIMessage): boolean {
+	return (message.metadata as { hidden?: unknown } | undefined)?.hidden === true;
+}
 
 // Helper to extract text from a UIMessage's parts
 export function getMessageText(message: UIMessage): string {
@@ -451,11 +454,17 @@ export const chat = () => {
 		}
 	}
 
+	/** Asks the model for another go without putting words in the visitor's mouth: the request is
+	 *  in the history the model sees, but the chat doesn't render it (see isHiddenMessage). */
+	function sendHidden(text: string) {
+		void instance.sendMessage({ text, metadata: { hidden: true } });
+	}
+
 	function setMessages(msgs: UIMessage[]) {
 		instance.messages = msgs;
 	}
 
-	return { messages, isLoading, handleSubmit, input, append, setMessages };
+	return { messages, isLoading, handleSubmit, input, append, sendHidden, setMessages };
 };
 
 /** True for UI tool parts in AI SDK v6 (`tool-*`, `dynamic-tool`) and legacy `tool-invocation`. */

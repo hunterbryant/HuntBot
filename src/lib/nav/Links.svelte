@@ -1,4 +1,16 @@
 <script lang="ts">
+	import { captureEvent } from '$lib/analytics';
+	import { SESSION_ID } from '$lib/ChatBox/MessageStore.svelte';
+	import { page } from '$app/stores';
+
+	function trackContact(channel: 'email' | 'linkedin') {
+		captureEvent('contact_clicked', SESSION_ID, {
+			session_id: SESSION_ID,
+			current_page: $page.url.pathname,
+			channel,
+			source: 'nav'
+		});
+	}
 </script>
 
 <nav
@@ -13,7 +25,10 @@
 <nav
 	class="pointer-events-auto flex flex-col gap-0 bg-stone-100 text-xs font-medium uppercase tracking-wider text-stone-900 *:h-11 *:items-center *:px-0 *:transition-all hover:*:rounded hover:*:bg-stone-200 hover:*:px-2 sm:-mb-4 sm:-ml-4 sm:-mr-4 sm:pl-4 sm:pr-4 dark:bg-stone-900 dark:text-stone-100 dark:hover:*:bg-stone-800"
 >
-	<a class="inline-flex justify-between" href="https://www.linkedin.com/in/hunterbryant1/"
+	<a
+		class="inline-flex justify-between"
+		href="https://www.linkedin.com/in/hunterbryant1/"
+		on:click={() => trackContact('linkedin')}
 		>Linkedin
 		<p>↗</p></a
 	>
@@ -24,7 +39,8 @@
 	<a
 		class="inline-flex justify-between"
 		href="mailto:hunter.bryant2016@gmail.com?subject=Hi%2C%20Hunter!&body=I%20wanted%20to%20reach%20out%20regarding..."
-		>hunter.bryant2016@gmail.com
+		on:click={() => trackContact('email')}
+		>Email Hunter
 		<p>↗</p></a
 	>
 </nav>

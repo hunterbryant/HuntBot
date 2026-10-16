@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { slide } from 'svelte/transition';
+	import { prefersReducedMotion } from '$lib/utilities/motion';
 
 	// Reflects the server's actual pipeline stage (see data-status parts in MessageStore).
 	// Falls back to a neutral placeholder for the brief window before the first status arrives.
@@ -16,6 +17,10 @@
 		let current = '';
 
 		function revealChars(t: string) {
+			if (prefersReducedMotion()) {
+				node.textContent = t;
+				return;
+			}
 			node.textContent = '';
 			const wrapper = document.createElement('span');
 			wrapper.style.cssText = 'display:inline-flex;white-space:nowrap';
@@ -84,7 +89,8 @@
 >
 	<Huntbotlogo mode="thinking" />
 
-	<p class="mr-6 mt-3.5 grow whitespace-pre-line" aria-label="HuntBot is thinking">
+	<p class="mr-6 mt-3.5 grow whitespace-pre-line" role="status">
+		<span class="sr-only">HuntBot is working on a reply.</span>
 		<span class="shimmer" use:typeReveal={displayText}></span>
 	</p>
 </div>
@@ -97,6 +103,14 @@
 		-webkit-mask-size: 300% 100%;
 		mask-size: 300% 100%;
 		animation: shimmer-sweep 2s ease-in-out infinite;
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.shimmer {
+			animation: none;
+			-webkit-mask-image: none;
+			mask-image: none;
+		}
 	}
 
 	:global(.dark) .shimmer {

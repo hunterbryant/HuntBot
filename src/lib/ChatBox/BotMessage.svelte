@@ -5,6 +5,7 @@
 	import { captureEvent } from '$lib/analytics';
 	import { SESSION_ID, minimized } from './MessageStore.svelte';
 	import { chatOpen, mobile } from '$lib/nav/navstore';
+	import { prefersReducedMotion } from '$lib/utilities/motion';
 
 	export let value: string;
 	export let isLast: boolean = false;
@@ -64,12 +65,20 @@
 			appendTimers.length = 0;
 		}
 
-		if (!animate) {
+		// Under reduced motion the text is just set, as it streams, with no per-character reveal
+		const still = !animate || prefersReducedMotion();
+
+		if (still) {
 			current = text;
 			node.textContent = text;
 		}
 
 		function render(newText: string) {
+			if (still) {
+				current = newText;
+				node.textContent = newText;
+				return;
+			}
 			const prevLen = current.length;
 			current = newText;
 
@@ -161,7 +170,7 @@
 			}, lastDelay + 200);
 		}
 
-		if (animate) render(text);
+		if (!still) render(text);
 
 		return {
 			update(newText: string) {
@@ -246,11 +255,13 @@
 				</p>
 			{/if}
 			{#if isLast && !retried}
+				<!-- Shown on hover with a mouse; always visible on touch screens, which have no hover -->
 				<button
+					type="button"
 					on:click={handleRetry}
 					title="This wasn't helpful"
 					transition:fade={{ duration: 150 }}
-					class="mt-1 flex items-center gap-1 text-xs text-stone-400 opacity-0 transition-opacity group-hover:opacity-100 hover:text-stone-600 dark:text-stone-600 dark:hover:text-stone-400"
+					class="mt-1 flex items-center gap-1 text-xs text-stone-400 opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 hover:text-stone-600 [@media(hover:none)]:opacity-100 dark:text-stone-600 dark:hover:text-stone-400"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -262,6 +273,7 @@
 						stroke-width="2"
 						stroke-linecap="round"
 						stroke-linejoin="round"
+						aria-hidden="true"
 					>
 						<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z" />
 						<path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17" />

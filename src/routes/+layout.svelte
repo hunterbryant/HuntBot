@@ -11,8 +11,8 @@
 	import { navEngaged, delayedNavEngaged, mobile, chatOpen, keyboardOpen } from '$lib/nav/navstore';
 	import {
 		botEngaged,
-		chat,
 		minimized,
+		openChat,
 		SESSION_ID,
 		SESSION_RETURNING
 	} from '$lib/ChatBox/MessageStore.svelte';
@@ -30,7 +30,7 @@
 
 	export let data;
 
-	let greeting = 'Any questions?';
+	let greeting = "Hi, I'm HuntBot";
 	let hitButton = false;
 	let menuActive = false;
 	let mobileBreakpoint = false;
@@ -52,9 +52,8 @@
 		const scrollDistance = mobileBreakpoint ? window.innerHeight / 2 : window.innerHeight / 2 - 64;
 		if (!$botEngaged) {
 			hitButton = true;
-			greeting = "Hi, I'm HuntBot";
 		} else {
-			minimized.set(false);
+			openChat('hero');
 		}
 		window.scrollTo({
 			top: scrollDistance,
@@ -66,11 +65,7 @@
 	const animationFinished = () => {
 		if (!$botEngaged && hitButton) {
 			setTimeout(() => {
-				// Insert blank value for loading state
-
-				botEngaged.set(true);
-				minimized.set(false);
-				chatOpen.set(true);
+				openChat('hero');
 			}, 100);
 		}
 		if ($chatOpen) {

@@ -4,28 +4,26 @@
 	import BotMessage from './BotMessage.svelte';
 	import GreetingMessage from './GreetingMessage.svelte';
 	import ChatSuggestions from './ChatSuggestions.svelte';
-	import { onMount, onDestroy } from 'svelte';
-	import { derived } from 'svelte/store';
+	import { onDestroy } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { slide, fade } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import arrowdown from '$lib/assets/arrow-down.svg';
-	import { navEngaged, chatOpen, mobile } from '$lib/nav/navstore';
+	import { navEngaged } from '$lib/nav/navstore';
 	import { page } from '$app/stores';
 	import ActionMessage from './ActionMessage.svelte';
 	import {
 		chat,
-		botEngaged,
 		minimized,
 		suggestions,
-		scrollSuggestions,
-		hoverSuggestions,
-		loadingContextSuggestions,
+		clearSuggestions,
+		clearPageSuggestions,
 		cancelContextFetches,
 		fetchSuggestions,
-		fetchScrollSuggestions,
-		fetchHoverSuggestions,
+		fetchContextSuggestions,
 		triggerProactiveOpener,
+		openChat,
+		isHiddenMessage,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
@@ -38,7 +36,7 @@
 	import { captureEvent } from '$lib/analytics';
 	import LoadingStream from './LoadingStream.svelte';
 
-	const { messages, isLoading, handleSubmit, input, append } = chat();
+	const { messages, isLoading, handleSubmit, input, append, sendHidden } = chat();
 
 	// Restored replies were already read, so they skip the reveal animation
 	const animatedMessageIds = new Set<string>(restoredMessageIds);
@@ -83,96 +81,56 @@
 		}, 400);
 	});
 
-	// Scroll down when new suggestion chips appear so they don't push content out of view
-	$: if (!$minimized && ($suggestions.length > 0 || $hoverSuggestions.length > 0)) {
+	// --- Suggestion chips ---
+	// One row above the input, in the open chat only (closed, it's just the input). The newest set
+	// wins (see `suggestions` in MessageStore); sets fetched while closed are ready when it opens.
+	$: visibleChips =
+		!$minimized && !$isLoading && $input.trim() === '' ? $suggestions.items : [];
+
+	// Scroll down when new chips appear so they don't push content out of view
+	$: if (visibleChips.length > 0) {
 		setTimeout(() => scrollToBottom(), 200);
 	}
 
-	// Gate: hold back all pre-conversation suggestions until the greeting has been read
-	let readyForSuggestions = false;
-	let greetingReadTimer: ReturnType<typeof setTimeout> | null = null;
-
+	// Impressions count chips that were on screen, not sets that were fetched: fetched sets used to
+	// be logged even when they were never displayed.
+	let lastShownKey = '';
 	$: {
-		const greetingLoaded =
-			$botEngaged &&
-			!$minimized &&
-			$messages.some((m) => m.role === 'assistant' && getMessageText(m).trim().length > 1);
-		const hasUser = $messages.some((m) => m.role === 'user');
-
-		if (hasUser) {
-			readyForSuggestions = true;
-		} else if (greetingLoaded && !readyForSuggestions) {
-			if (!greetingReadTimer) {
-				greetingReadTimer = setTimeout(() => {
-					readyForSuggestions = true;
-					fetchSuggestions($messages, $page.url.pathname);
-				}, 3000);
-			}
-		} else if (!greetingLoaded) {
-			if (greetingReadTimer) {
-				clearTimeout(greetingReadTimer);
-				greetingReadTimer = null;
-			}
-			readyForSuggestions = false;
+		const key = visibleChips.join('|');
+		if (key && key !== lastShownKey) {
+			lastShownKey = key;
+			captureEvent('suggestions_shown', SESSION_ID, {
+				suggestion_type: $suggestions.type,
+				suggestions: visibleChips,
+				current_page: $page.url.pathname,
+				session_id: SESSION_ID
+			});
 		}
 	}
-
-	// Active suggestions to display, tagged with where they came from so clicks can be
-	// attributed (suggestions_shown already carries the same suggestion_type).
-	// Pre-conversation: hover > scroll > default.
-	// Once a conversation is underway, post-response suggestions ($sugg) take
-	// priority so they aren't displaced by stale hover/scroll context fetches.
-	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll';
-	type ActiveSuggestions = { items: string[]; type: SuggestionType | null };
-	const activeSuggestions = derived(
-		[messages, hoverSuggestions, scrollSuggestions, suggestions],
-		([$msgs, $hover, $scroll, $sugg]): ActiveSuggestions => {
-			const hasUser = $msgs.some((m) => m.role === 'user');
-			if (!readyForSuggestions && !hasUser) return { items: [], type: null };
-			if (hasUser) {
-				if ($sugg.length > 0) return { items: $sugg, type: 'post_message' };
-				if ($hover.length > 0) return { items: $hover, type: 'hover' };
-				return { items: [], type: null };
-			}
-			if ($hover.length > 0) return { items: $hover, type: 'hover' };
-			if ($scroll.length > 0) return { items: $scroll, type: 'scroll' };
-			return { items: $sugg, type: 'starter' };
-		}
-	);
 
 	$: if (!$navEngaged) {
 		minimized.set(true);
 	}
 
-	// Track loading transitions to fetch suggestions after each bot response,
-	// but only once a real conversation is underway (user has sent at least one message)
+	// "Not helpful" belongs under an answer, not under the greeting or a proactive opener
+	$: hasAsked = $messages.some((m) => m.role === 'user');
+
+	// After each reply: fetch follow-up chips (once a real conversation is underway), and hand the
+	// finished reply to screen readers in one piece. The streamed text itself arrives a few
+	// characters at a time, which a live region would read out as fragments.
+	let announcement = '';
 	let prevLoading = false;
 	$: {
 		if (prevLoading && !$isLoading) {
-			const hasUserMessages = $messages.some((m) => m.role === 'user');
-			if (hasUserMessages) {
+			const lastReply = [...$messages]
+				.reverse()
+				.find((m) => m.role === 'assistant' && getMessageText(m).trim());
+			announcement = lastReply ? getMessageText(lastReply) : '';
+			if ($messages.some((m) => m.role === 'user')) {
 				setTimeout(() => fetchSuggestions($messages, $page.url.pathname), 2000);
 			}
 		}
 		prevLoading = $isLoading ?? false;
-	}
-
-	// Chips normally arrive after a streamed reply; a restored conversation has none yet, so
-	// fetch them the first time the visitor opens it.
-	let restoredChipsFetched = false;
-	$: if (
-		!restoredChipsFetched &&
-		restoredMessageIds.size > 0 &&
-		!$minimized &&
-		$messages.some((m) => m.role === 'user')
-	) {
-		restoredChipsFetched = true;
-		fetchSuggestions($messages, $page.url.pathname);
-	}
-
-	// Clear suggestions when user starts typing
-	$: if ($input && $input.trim() !== '') {
-		suggestions.set([]);
 	}
 
 	// Proactive page-aware opener: fire when user navigates to a project/case study
@@ -200,27 +158,39 @@
 		}
 	}
 
-	// --- Scroll-aware suggestions via IntersectionObserver + scroll-depth fallback ---
+	// --- Section-aware chips via IntersectionObserver + scroll-depth fallback ---
 	// Primary: observes h1–h4 headings and first heading within Prismic slice containers.
 	// Fallback: on heading-sparse pages (e.g. one big TextBlock), fires at scroll-depth
-	// milestones (25%, 50%, 75%) so long-form content still gets fresh suggestions.
-	// Both share the same fetch budget (max 2 per page, 3s dwell before firing). It used to be 5,
-	// which mostly churned the minimized placeholder: 556 scroll chip sets were shown over six
-	// months against a handful of clicks.
+	// milestones (25%, 50%, 75%) so long-form content still gets fresh chips.
+	// Both share one budget per page (3s dwell before firing). The page-level chips fetched on
+	// arrival don't count against it.
 
 	const DWELL_MS = 3000;
-	const MAX_FETCHES = 2;
+	const MAX_SECTION_FETCHES = 2;
 	const MIN_OBSERVABLE = 3;
 	const DEPTH_MILESTONES = [25, 50, 75];
 
-	let dwellTimer: ReturnType<typeof setTimeout> | null = null;
+	// One timer per heading: with a single shared timer, any heading scrolling out of view
+	// cancelled the one the visitor was actually reading.
+	const dwellTimers = new Map<Element, ReturnType<typeof setTimeout>>();
 	let sectionObserver: IntersectionObserver | null = null;
 	let fetchedHeadings = new Set<string>();
-	let fetchCount = 0;
+	let sectionFetches = 0;
 
 	let scrollFallbackTimer: ReturnType<typeof setTimeout> | null = null;
 	let scrollFallbackHandler: (() => void) | null = null;
 	let milestonesFired = new Set<number>();
+
+	// Headings on screen at arrival are already covered by the page's own chips (and replacing
+	// those a few seconds after landing just churned the row), so observing starts once the
+	// visitor has scrolled a real distance.
+	const ARM_SCROLL_PX = 200;
+	let armHandler: (() => void) | null = null;
+
+	function disarmHeadingObserver() {
+		if (armHandler) window.removeEventListener('scroll', armHandler);
+		armHandler = null;
+	}
 
 	function getScrollDepth(): number {
 		const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
@@ -228,9 +198,9 @@
 		return docHeight > 0 ? Math.round((window.scrollY / docHeight) * 100) : 0;
 	}
 
-	function canFetchScroll(): boolean {
-		if (fetchCount >= MAX_FETCHES) return false;
-		return true;
+	function clearDwellTimers() {
+		dwellTimers.forEach((t) => clearTimeout(t));
+		dwellTimers.clear();
 	}
 
 	function getObservableElements(): Element[] {
@@ -261,10 +231,15 @@
 			scrollFallbackTimer = setTimeout(() => {
 				const depth = getScrollDepth();
 				for (const milestone of DEPTH_MILESTONES) {
-					if (depth >= milestone && !milestonesFired.has(milestone) && canFetchScroll()) {
+					if (depth >= milestone && !milestonesFired.has(milestone)) {
+						if (sectionFetches >= MAX_SECTION_FETCHES) return;
 						milestonesFired.add(milestone);
-						fetchCount++;
-						fetchScrollSuggestions(pathname, depth, null);
+						sectionFetches++;
+						fetchContextSuggestions(
+							{ kind: 'scroll', scrollDepth: depth, sectionHeading: null },
+							pathname,
+							$messages
+						);
 						break;
 					}
 				}
@@ -291,29 +266,46 @@
 					if (!heading) continue;
 
 					if (entry.isIntersecting && !fetchedHeadings.has(heading)) {
-						if (dwellTimer) clearTimeout(dwellTimer);
-						dwellTimer = setTimeout(() => {
-							if (!canFetchScroll()) return;
-							fetchedHeadings.add(heading);
-							fetchCount++;
-							fetchScrollSuggestions(pathname, getScrollDepth(), heading);
-						}, DWELL_MS);
-					} else if (!entry.isIntersecting && dwellTimer) {
-						clearTimeout(dwellTimer);
-						dwellTimer = null;
+						if (dwellTimers.has(entry.target)) continue;
+						dwellTimers.set(
+							entry.target,
+							setTimeout(() => {
+								dwellTimers.delete(entry.target);
+								if (sectionFetches >= MAX_SECTION_FETCHES || fetchedHeadings.has(heading)) return;
+								fetchedHeadings.add(heading);
+								sectionFetches++;
+								// Other headings in view would fire right after and replace these chips
+								clearDwellTimers();
+								fetchContextSuggestions(
+									{ kind: 'scroll', scrollDepth: getScrollDepth(), sectionHeading: heading },
+									pathname,
+									$messages
+								);
+							}, DWELL_MS)
+						);
+					} else if (!entry.isIntersecting) {
+						const timer = dwellTimers.get(entry.target);
+						if (timer) clearTimeout(timer);
+						dwellTimers.delete(entry.target);
 					}
 				}
 			},
 			{ threshold: 0.5 }
 		);
 
-		observables.forEach((el) => sectionObserver!.observe(el));
+		disarmHeadingObserver();
+		armHandler = () => {
+			if (window.scrollY < ARM_SCROLL_PX) return;
+			disarmHeadingObserver();
+			observables.forEach((el) => sectionObserver?.observe(el));
+		};
+		window.addEventListener('scroll', armHandler, { passive: true });
 	}
 
 	function resetScrollState() {
 		if (sectionObserver) sectionObserver.disconnect();
-		if (dwellTimer) clearTimeout(dwellTimer);
-		dwellTimer = null;
+		disarmHeadingObserver();
+		clearDwellTimers();
 		if (scrollFallbackTimer) clearTimeout(scrollFallbackTimer);
 		scrollFallbackTimer = null;
 		if (scrollFallbackHandler) {
@@ -322,22 +314,19 @@
 		}
 		fetchedHeadings.clear();
 		milestonesFired.clear();
-		fetchCount = 0;
-		scrollSuggestions.set([]);
+		sectionFetches = 0;
 		teardownHoverObserver();
 	}
 
-	// --- Hover-aware suggestions (desktop only) ---
-	// When the visitor dwells on a content block for 2s, fetch suggestions
-	// specific to that passage. Clears after 15s of no hover activity.
+	// --- Hover-aware chips (mouse and trackpad only) ---
+	// When the visitor dwells on a content block for 2s, fetch chips specific to that passage.
+	// They stay until something newer replaces them (they used to vanish after 15s).
 
 	const HOVER_DWELL_MS = 2000;
-	const HOVER_DECAY_MS = 15000;
 	const HOVER_COOLDOWN_MS = 3000;
 	const MAX_HOVER_FETCHES = 3;
 
 	let hoverDwellTimer: ReturnType<typeof setTimeout> | null = null;
-	let hoverDecayTimer: ReturnType<typeof setTimeout> | null = null;
 	let hoverFetchCount = 0;
 	let lastHoverFetchTime = 0;
 	let hoveredFingerprints = new Set<string>();
@@ -412,7 +401,9 @@
 	function setupHoverObserver(pathname: string) {
 		teardownHoverObserver();
 
-		if ($mobile) return;
+		// Checked directly rather than via the `mobile` store, which may not be set yet on first load
+		if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+		const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 		const targets = document.querySelectorAll(
 			'[data-slice-type] p, [data-slice-type] blockquote, [data-slice-type] figcaption'
@@ -420,10 +411,6 @@
 
 		targets.forEach((el) => {
 			const onEnter = () => {
-				if (hoverDecayTimer) {
-					clearTimeout(hoverDecayTimer);
-					hoverDecayTimer = null;
-				}
 				if (hoverDwellTimer) clearTimeout(hoverDwellTimer);
 
 				hoverDwellTimer = setTimeout(() => {
@@ -435,8 +422,9 @@
 					hoveredFingerprints.add(fp);
 					hoverFetchCount++;
 					lastHoverFetchTime = Date.now();
-					flashContextOverlay(el);
-					fetchHoverSuggestions(pathname, context);
+					// The shimmer says "chips about this are coming", so only when the row is on screen
+					if (!reduceMotion && !$minimized) flashContextOverlay(el);
+					fetchContextSuggestions({ kind: 'hover', hoveredContent: context }, pathname, $messages);
 				}, HOVER_DWELL_MS);
 			};
 
@@ -445,10 +433,6 @@
 					clearTimeout(hoverDwellTimer);
 					hoverDwellTimer = null;
 				}
-				if (hoverDecayTimer) clearTimeout(hoverDecayTimer);
-				hoverDecayTimer = setTimeout(() => {
-					hoverSuggestions.set([]);
-				}, HOVER_DECAY_MS);
 			};
 
 			el.addEventListener('mouseenter', onEnter);
@@ -465,47 +449,37 @@
 		hoverCleanups = [];
 		if (hoverDwellTimer) clearTimeout(hoverDwellTimer);
 		hoverDwellTimer = null;
-		if (hoverDecayTimer) clearTimeout(hoverDecayTimer);
-		hoverDecayTimer = null;
 		hoverFetchCount = 0;
 		hoveredFingerprints.clear();
-		hoverSuggestions.set([]);
 	}
-
-	onMount(() => {
-		if (canFetchScroll()) {
-			fetchCount++;
-			fetchScrollSuggestions($page.url.pathname, getScrollDepth(), null);
-		}
-		setupHeadingObserver($page.url.pathname);
-		setupHoverObserver($page.url.pathname);
-	});
 
 	onDestroy(() => {
 		resetScrollState();
 	});
 
+	// Runs when the chat mounts and on every navigation. Chips for the new page are fetched right
+	// away, so they're ready when the chat is opened (there's no waiting on a greeting timer).
 	afterNavigate(({ to }) => {
 		const path = to?.url.pathname ?? $page.url.pathname;
 		resetScrollState();
+		clearPageSuggestions();
+		fetchContextSuggestions({ kind: 'page' }, path, $messages);
 		setTimeout(() => {
 			setupHeadingObserver(path);
 			setupHoverObserver(path);
 		}, 300);
 	});
 
-	async function selectSuggestion(suggestion: string, suggestionType: string | null) {
+	async function selectSuggestion(suggestion: string) {
 		cancelContextFetches();
 		captureEvent('suggestion_clicked', SESSION_ID, {
 			suggestion_text: suggestion,
-			suggestion_type: suggestionType,
+			suggestion_type: $suggestions.type,
 			current_page: $page.url.pathname,
 			session_id: SESSION_ID
 		});
-		suggestions.set([]);
-		scrollSuggestions.set([]);
-		hoverSuggestions.set([]);
-		minimized.set(false);
+		clearSuggestions();
+		openChat('chip');
 		// Server derives currentPage from the Referer header automatically
 		await append({ role: 'user', content: suggestion });
 	}
@@ -515,35 +489,25 @@
 		const lastBot = [...$messages]
 			.reverse()
 			.find((m) => m.role === 'assistant' && getMessageText(m).trim());
-		const lastUser = [...$messages].reverse().find((m) => m.role === 'user');
+		const lastUser = [...$messages]
+			.reverse()
+			.find((m) => m.role === 'user' && !isHiddenMessage(m));
 		captureEvent('not_helpful', SESSION_ID, {
 			session_id: SESSION_ID,
 			current_page: $page.url.pathname,
 			user_message: lastUser ? getMessageText(lastUser) : null,
 			bot_response: lastBot ? getMessageText(lastBot) : null
 		});
-		append({
-			role: 'user',
-			content: "That response wasn't quite right — can you give a more specific or direct answer?"
-		});
-	}
-
-	// When context is being fetched and the chat hasn't opened yet, transition to the
-	// minimized placeholder state so the user sees context is being generated.
-	$: if ($loadingContextSuggestions && !$botEngaged) {
-		botEngaged.set(true);
+		sendHidden("That response wasn't quite right — can you give a more specific or direct answer?");
 	}
 </script>
 
 <div
 	class="flex-col-rev z-50 mb-0 flex max-h-[calc(100dvh-4.5rem)] w-full flex-col flex-nowrap overflow-hidden rounded-t-lg border-t border-stone-200 bg-white sm:left-auto sm:mb-4 sm:max-h-[calc(100dvh-2rem)] sm:rounded-lg sm:border dark:border-stone-800 dark:bg-black"
 >
-	<!-- This initial "message" acts as the header and original kickoff button -->
-	{#if !$botEngaged || !$minimized}
-		<GreetingMessage bind:greeting />
-	{/if}
-
 	{#if !$minimized}
+		<GreetingMessage {greeting} />
+
 		<!-- This is the scrollable zone -->
 		<div
 			class="relative overflow-scroll"
@@ -564,17 +528,19 @@
 					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white dark:to-black"
 				>
 					<button
+						type="button"
+						aria-label="Scroll to the latest message"
 						on:click={() => {
 							scrollToBottom();
 						}}
-						class="dark:hover:ng-stone-700 absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border border-stone-300 bg-stone-200 transition hover:bg-stone-300 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700"
+						class="absolute bottom-2 left-1/2 mx-auto block h-8 w-8 -translate-x-1/2 rounded border border-stone-300 bg-stone-200 transition hover:bg-stone-300 dark:border-stone-700 dark:bg-stone-800 dark:hover:bg-stone-700"
 					>
-						<img src={arrowdown} alt="Down arrow icon" class="m-auto flex-none dark:invert" />
+						<img src={arrowdown} alt="" class="m-auto flex-none dark:invert" />
 					</button>
 				</div>
 			{/if}
 			<!-- Render the chat messages -->
-			<div class="first:pt-4 {$activeSuggestions.items.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
+			<div class="first:pt-4 {visibleChips.length > 0 ? '' : 'last:pb-6'}">
 				{#each $messages as message, i}
 					<div
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
@@ -585,20 +551,22 @@
 							}, 400);
 						}}
 					>
-					{#if message.role === 'user'}
-						<UserMessage value={getMessageText(message)} />
-					{:else if message.role === 'assistant' && getMessageText(message).trim()}
-						<BotMessage
-							value={getMessageText(message)}
-							isLast={i === $messages.length - 1 && !$isLoading}
-							onRetry={retryLastResponse}
-							animate={shouldAnimate(message.id)}
-							sources={getMessageSources(message)}
-							related={getMessageRelated(message)}
-						/>
-					{:else if (message.role as string) === 'data'}
-						<ActionMessage value={message as unknown as FunctionMessage} />
-					{/if}
+						{#if message.role === 'user'}
+							{#if !isHiddenMessage(message)}
+								<UserMessage value={getMessageText(message)} />
+							{/if}
+						{:else if message.role === 'assistant' && getMessageText(message).trim()}
+							<BotMessage
+								value={getMessageText(message)}
+								isLast={hasAsked && i === $messages.length - 1 && !$isLoading}
+								onRetry={retryLastResponse}
+								animate={shouldAnimate(message.id)}
+								sources={getMessageSources(message)}
+								related={getMessageRelated(message)}
+							/>
+						{:else if (message.role as string) === 'data'}
+							<ActionMessage value={message as unknown as FunctionMessage} />
+						{/if}
 					</div>
 				{/each}
 				{#if $isLoading && !streamingAssistantHasText($messages)}
@@ -618,15 +586,12 @@
 			</div>
 		</div>
 	{/if}
-	{#if $botEngaged && !$minimized && !$isLoading && $input.trim() === ''}
-		<div out:slide|global={{ duration: 200, easing: cubicOut }}>
-			<ChatSuggestions
-				suggestions={$activeSuggestions.items}
-				onSelect={(s) => selectSuggestion(s, $activeSuggestions.type)}
-			/>
+	{#if visibleChips.length > 0}
+		<div transition:slide|global={{ duration: 200, easing: cubicOut }}>
+			<ChatSuggestions suggestions={visibleChips} onSelect={selectSuggestion} />
 		</div>
 	{/if}
-	{#if $botEngaged}
-		<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} onPlaceholderSelect={(s) => selectSuggestion(s, 'placeholder')} />
-	{/if}
+	<TextInput {isLoading} {handleSubmit} {input} currentPage={$page.url.pathname} />
+
+	<p class="sr-only" aria-live="polite">{announcement}</p>
 </div>

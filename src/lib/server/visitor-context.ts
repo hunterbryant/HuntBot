@@ -190,6 +190,43 @@ export function formatVisitorContextForPrompt(ctx: VisitorContext): string {
 }
 
 /**
+ * Hints for writing suggestion chips. Chips are text the visitor sees, so this carries only what
+ * helps pick an angle (how they arrived, what they've read, phone vs desktop) and never the
+ * network owner, location or language: a chip must not reveal what the site inferred about them.
+ */
+export function formatVisitorContextForChips(ctx: VisitorContext): string {
+	const lines: string[] = [];
+
+	if (ctx.arrivedVia.startsWith('campaign:'))
+		lines.push(
+			`Arrived via a link Hunter shared, tagged "${ctx.arrivedVia.slice('campaign:'.length)}": probably evaluating him for a role or project, so lead with his work and how he works`
+		);
+	else if (ctx.arrivedVia === 'linkedin')
+		lines.push('Arrived from LinkedIn: probably evaluating him professionally, so lead with his work and how he works');
+	else if (ctx.arrivedVia === 'search')
+		lines.push('Arrived from a search engine: likely after something specific on this page, so stay close to it');
+	else if (ctx.arrivedVia.startsWith('referral:')) {
+		const domain = ctx.arrivedVia.slice('referral:'.length);
+		lines.push(
+			/(^|\.)(github\.com|dev\.to|vercel\.com)$/.test(domain)
+				? 'Arrived from a developer site: one chip may be about how HuntBot or this site is built'
+				: `Arrived from another site (${domain})`
+		);
+	}
+
+	if (ctx.pagesSeen.length)
+		lines.push(
+			`Already read this visit: ${ctx.pagesSeen.map((p) => `${p.title} (${p.kind}, ${dwell(p.seconds)})`).join(', ')}. Build on what they spent time on; don't ask about pages they only glanced at`
+		);
+	if (ctx.returning) lines.push('Returning visitor: favour depth over introductions');
+	if (ctx.device === 'mobile') lines.push('On a phone: keep each chip under 7 words');
+
+	return lines.length
+		? `\n\nVISITOR HINTS (use only to choose which angles to lead with; never mention or allude to how they arrived, what they read, or their device):\n${lines.map((l) => `- ${l}`).join('\n')}`
+		: '';
+}
+
+/**
  * True when the reply names the visitor's network owner without the visitor having typed it
  * themselves. The prompt forbids that; this makes it measurable if it ever happens.
  */

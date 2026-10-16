@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { fly, fade } from 'svelte/transition';
+	import { prefersReducedMotion } from '$lib/utilities/motion';
 
 	export let suggestions: string[] = [];
 	export let onSelect: (suggestion: string) => void;
+
+	const reduceMotion = prefersReducedMotion();
 
 	function typeReveal(node: HTMLElement, text: string) {
 		let timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -10,6 +13,10 @@
 		const FADE_OUT_MS = 120;
 
 		function revealChars(t: string) {
+			if (prefersReducedMotion()) {
+				node.textContent = t;
+				return;
+			}
 			node.textContent = '';
 
 			const chars = t.split('');
@@ -77,7 +84,7 @@
 		{#each suggestions as suggestion, i (i + '|' + suggestion)}
 			<button
 				type="button"
-				in:fly={{ y: 8, duration: 200, delay: i * 120 }}
+				in:fly={{ y: 8, duration: reduceMotion ? 0 : 200, delay: reduceMotion ? 0 : i * 120 }}
 				out:fade|global={{ duration: 100 }}
 				on:click={() => onSelect(suggestion)}
 				aria-label={suggestion}

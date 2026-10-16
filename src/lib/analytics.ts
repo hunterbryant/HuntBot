@@ -1,6 +1,25 @@
 import { env } from '$env/dynamic/public';
 import { getVisitorContext, hasGpc } from '$lib/visitorContext';
 
+const ADMIN_KEY = 'huntbot_admin_browser';
+
+/** Called from the admin pages, so this browser's own testing can be filtered out of analytics. */
+export function markAdminBrowser() {
+	try {
+		localStorage.setItem(ADMIN_KEY, '1');
+	} catch {
+		// Storage blocked: events from this browser just won't carry the flag
+	}
+}
+
+function isAdminBrowser(): boolean {
+	try {
+		return localStorage.getItem(ADMIN_KEY) === '1';
+	} catch {
+		return false;
+	}
+}
+
 export function captureEvent(
 	event: string,
 	distinctId: string,
@@ -24,7 +43,10 @@ export function captureEvent(
 					// $referrer above is overwritten by in-site navigation; these keep the arrival source
 					landing_referrer: visitor.landingReferrer,
 					via: visitor.via,
-					utm_source: visitor.utmSource
+					utm_source: visitor.utmSource,
+					// Server events get is_admin from the auth cookie; client events from a flag the
+					// admin pages leave in this browser (the login cookie expires after an hour)
+					...(isAdminBrowser() ? { is_admin: true } : {})
 				}
 			: {};
 	fetch('https://us.i.posthog.com/capture/', {

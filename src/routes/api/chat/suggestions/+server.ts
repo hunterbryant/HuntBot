@@ -1,7 +1,16 @@
 import { env } from '$env/dynamic/private';
 import { logRag } from '$lib/server/rag-debug';
-import { formatNavPagesForPrompt, getSiteNavCatalog } from '$lib/server/site-nav-routes';
+import {
+	formatNavPagesForPrompt,
+	getSiteNavCatalog,
+	type NavPage
+} from '$lib/server/site-nav-routes';
 import { dropAlreadyAnswered } from '$lib/server/suggestion-check';
+import {
+	buildVisitorContext,
+	formatVisitorContextForChips,
+	visitorContextEnabled
+} from '$lib/server/visitor-context';
 import { bestMatchScores, getSitePageText, MIN_VECTOR_SCORE } from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -64,35 +73,51 @@ ${formattedList}`;
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { messages, currentPage, scrollDepth, sectionHeading, hoveredContent } =
-			await request.json();
+		const body = await request.json();
+		const { currentPage, scrollDepth, sectionHeading, hoveredContent, visitor } = body;
+		const messages: Array<{ role?: string }> = Array.isArray(body.messages) ? body.messages : [];
 
 		const path = typeof currentPage === 'string' && currentPage.startsWith('/') ? currentPage : '/';
 
 		let navAppendix = '';
+		let pages: NavPage[] = [];
 		try {
-			const { pages } = await getSiteNavCatalog();
+			pages = (await getSiteNavCatalog()).pages;
 			navAppendix = navToolAppendix(path, formatNavPagesForPrompt(pages, path));
 		} catch {
 			navAppendix = '';
 		}
 
-		const hasUserMessages = messages.some((m: { role: string }) => m.role === 'user');
+		const hasUserMessages = messages.some((m) => m.role === 'user');
+
+		// Arrival and reading path, reduced to hints that pick an angle (no network lookup here)
+		const visitorHints =
+			visitorContextEnabled() && visitor && typeof visitor === 'object'
+				? formatVisitorContextForChips(
+						buildVisitorContext({ request, payload: visitor, pages, currentPage: path, org: null })
+					)
+				: '';
 
 		// Cached per warm instance (30 min), shared with chat retrieval.
 		const pageText = (await getSitePageText(path).catch(() => null))?.slice(0, PAGE_TEXT_MAX);
 		const pageTextBlock = pageText ? `\n\nPAGE TEXT (what the visitor can see):\n${pageText}` : '';
 
-		const scrollContext = !hasUserMessages
-			? [
-					typeof scrollDepth === 'number' ? `Scroll depth: ${scrollDepth}% through the page.` : '',
-					sectionHeading ? `Visible section: "${sectionHeading}"` : '',
-					typeof scrollDepth === 'number' && scrollDepth > 60
-						? "The visitor has scrolled deeply — they're engaged."
-						: ''
-				]
-					.filter(Boolean)
-					.join(' ')
+		const scrollContext = [
+			typeof scrollDepth === 'number' ? `Scroll depth: ${scrollDepth}% through the page.` : '',
+			typeof sectionHeading === 'string' && sectionHeading
+				? `Visible section: "${sectionHeading.slice(0, 200)}"`
+				: '',
+			typeof scrollDepth === 'number' && scrollDepth > 60
+				? "The visitor has scrolled deeply — they're engaged."
+				: ''
+		]
+			.filter(Boolean)
+			.join(' ');
+		// Section chips mid-conversation are about what's being read, not follow-ups to the chat,
+		// but they still mustn't repeat it.
+		const isReading = scrollContext !== '';
+		const noRepeatRule = hasUserMessages
+			? '\n- The visitor is also chatting with HuntBot (transcript below). Never repeat a question they already asked or one the conversation already answers.'
 			: '';
 
 		let systemPrompt: string;
@@ -105,7 +130,7 @@ export const POST: RequestHandler = async ({ request }) => {
 Current page: ${path}
 
 Generate ${CANDIDATE_COUNT} short suggestions (each under 10 words). Usually they are questions someone reading this passage would ask — specific to the content, not generic. Match the subject matter: travel → the trip; design → the work.
-${CHIP_RULES}${navAppendix}${pageTextBlock}
+${CHIP_RULES}${noRepeatRule}${navAppendix}${pageTextBlock}
 
 Put the suggestions in the questions list.
 
@@ -114,7 +139,7 @@ Example: ${
 					? '["What was the weather like up there?", "How long did that descent take?", "Take me to the full case study"]'
 					: '["What was the weather like up there?", "How long did that descent take?", "Who else joined that trip?"]'
 			}`;
-		} else if (hasUserMessages) {
+		} else if (hasUserMessages && !isReading) {
 			systemPrompt = `Generate ${CANDIDATE_COUNT} short follow-up suggestions (each under 10 words) for a visitor chatting with HuntBot on Hunter Bryant's portfolio site.
 
 Current page: ${path}
@@ -137,7 +162,11 @@ Example: ${
 					: '["How did they handle map clustering?", "What constraint drove that layout?", "How did riders react to it?"]'
 			}`;
 		} else {
-			systemPrompt = `Generate ${CANDIDATE_COUNT} short starter suggestions (each under 10 words) for a new visitor on Hunter Bryant's portfolio site.
+			systemPrompt = `Generate ${CANDIDATE_COUNT} short ${
+				hasUserMessages
+					? "suggestions (each under 10 words) about the part of Hunter Bryant's portfolio site the visitor is reading now"
+					: "starter suggestions (each under 10 words) for a new visitor on Hunter Bryant's portfolio site"
+			}.
 
 Current page: ${path}${scrollContext ? '\n' + scrollContext : ''}
 
@@ -146,11 +175,11 @@ Hunter is a product designer, but his site also includes personal writing, trave
 Rules:
 - Tailor to the current page and visible section context — if it's a travel blog, ask about the trip, not "the design process"
 - Make them feel like genuine curiosity, not marketing prompts
-${CHIP_RULES}${
+${CHIP_RULES}${noRepeatRule}${
 				navAppendix
 					? '\n- On home, about, or listing pages, include **exactly one** navigation-style suggestion when a natural fit exists. On a specific case study or project page, use **at most one** navigation chip and only when it points to a *different* listed page.'
 					: ''
-			}${navAppendix}${pageTextBlock}
+			}${navAppendix}${pageTextBlock}${visitorHints}
 
 Put the suggestions in the questions list.
 

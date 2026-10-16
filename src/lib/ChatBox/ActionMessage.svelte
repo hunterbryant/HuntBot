@@ -15,7 +15,8 @@
 		captureEvent('contact_clicked', SESSION_ID, {
 			session_id: SESSION_ID,
 			current_page: $page.url.pathname,
-			channel
+			channel,
+			source: 'chat'
 		});
 	}
 </script>
