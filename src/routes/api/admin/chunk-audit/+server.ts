@@ -42,18 +42,49 @@ function isStale(status: ChunkAuditStatus): boolean {
 	return Date.now() - new Date(status.updatedAt).getTime() > STALE_AFTER_MS;
 }
 
+/**
+ * Why Vercel or the app refused a follow-up call, from the headers Vercel adds to edge refusals
+ * (`x-vercel-error`, `x-vercel-mitigated`) plus the start of the body, so a refusal says what
+ * blocked it instead of only a status code.
+ */
+async function describeRefusal(res: Response): Promise<string> {
+	const details = ['x-vercel-error', 'x-vercel-mitigated', 'server']
+		.map((name) => [name, res.headers.get(name)] as const)
+		.filter(([, value]) => value)
+		.map(([name, value]) => `${name}: ${value}`);
+	const body = (await res.text().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 120);
+	if (body) details.push(`body: ${body}`);
+	return details.join(', ');
+}
+
 /** Start the next run as its own function invocation, so each one gets a fresh time limit. */
 async function startNextRun(origin: string): Promise<void> {
 	if (!env.CRON_SECRET) {
 		throw new Error('CRON_SECRET is not set, so the audit cannot continue on its own');
 	}
-	const headers: Record<string, string> = { authorization: `Bearer ${env.CRON_SECRET}` };
-	// Lets the self-call through Vercel Deployment Protection on preview deployments.
-	if (env.VERCEL_AUTOMATION_BYPASS_SECRET) {
-		headers['x-vercel-protection-bypass'] = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+	const url = `${origin}/api/admin/chunk-audit`;
+	const auth = { authorization: `Bearer ${env.CRON_SECRET}` };
+
+	// Production domains aren't behind Deployment Protection, and a run on production was refused
+	// with a 403 while the bypass header was attached, so the header is only added on a retry,
+	// for protected (preview) URLs that refuse the plain call.
+	let res = await fetch(url, { method: 'POST', headers: auth });
+	const bypass = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+	if ((res.status === 401 || res.status === 403) && bypass) {
+		await res.body?.cancel();
+		res = await fetch(url, {
+			method: 'POST',
+			headers: { ...auth, 'x-vercel-protection-bypass': bypass }
+		});
 	}
-	const res = await fetch(`${origin}/api/admin/chunk-audit`, { method: 'POST', headers });
-	if (!res.ok) throw new Error(`Next run did not start (HTTP ${res.status})`);
+	if (!res.ok) {
+		const detail = await describeRefusal(res);
+		console.error(
+			'[HuntBot chunk audit] next run refused',
+			JSON.stringify({ status: res.status, detail })
+		);
+		throw new Error(`Next run did not start (HTTP ${res.status}${detail ? `; ${detail}` : ''})`);
+	}
 }
 
 function jobProperties(status: ChunkAuditStatus): Record<string, unknown> {
