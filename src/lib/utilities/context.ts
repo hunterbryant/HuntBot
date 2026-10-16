@@ -1,15 +1,15 @@
-import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import type { Document } from '@langchain/core/documents';
-import { compile } from 'html-to-text';
-import { getImessageEnabled } from '$lib/server/imessage-config';
-import { logRag, shouldLogRag } from '$lib/server/rag-debug';
-import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import { rewriteRetrievalQuery } from '$lib/rewrite';
-import { rerankChunks } from '$lib/server/rerank';
+import { getImessageEnabled } from '$lib/server/imessage-config';
+import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import type { QueryLane } from '$lib/server/query-lane';
+import { logRag, shouldLogRag } from '$lib/server/rag-debug';
+import { rerankChunks, type RerankResult, type SufficiencyInput } from '$lib/server/rerank';
 import { noopTimer, type StageTimer } from '$lib/server/timing';
+import type { Document } from '@langchain/core/documents';
+import { OpenAIEmbeddings } from '@langchain/openai';
+import { compile } from 'html-to-text';
+import { createHash } from 'node:crypto';
 
 /** Reports a human-readable label for the pipeline stage currently running. */
 export type StatusReporter = (label: string) => void;
@@ -79,7 +79,7 @@ export function getSitePageText(path: string): Promise<string | null> {
 // CONTEXT briefly so repeats skip rewrite/HyDE, search and rerank entirely.
 const CONTEXT_CACHE_TTL_MS = 10 * 60_000;
 const CONTEXT_CACHE_MAX = 100;
-const contextCache = new Map<string, { context: string; expires: number }>();
+const contextCache = new Map<string, { context: RetrievedContext; expires: number }>();
 
 function contextCacheKey(message: string, currentPage: string, lane: QueryLane): string {
 	return `${lane}|${currentPage}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
@@ -212,13 +212,14 @@ function diversifyBySource(docs: Document[], maxPerSource: number = 2): Document
 async function maybeRerank(
 	query: string,
 	docs: Document[],
-	topK: number
-): Promise<Document[]> {
+	topK: number,
+	sufficiency?: SufficiencyInput
+): Promise<RerankResult> {
 	const shouldRerank = env.RERANK_ENABLED !== '0';
 	if (shouldRerank) {
-		return rerankChunks(query, docs, topK);
+		return rerankChunks(query, docs, topK, sufficiency);
 	}
-	return docs.slice(0, topK);
+	return { docs: docs.slice(0, topK), answersQuestion: null };
 }
 
 export type GetContextOptions = {
@@ -229,13 +230,23 @@ export type GetContextOptions = {
 	timer?: StageTimer;
 };
 
+export type RetrievedContext = {
+	/** CONTEXT block for the system prompt (empty when nothing matched). */
+	text: string;
+	/**
+	 * Probability, judged by the Decisions reranker, that the retrieved candidates answer the
+	 * visitor's message. Null when nothing judged it (quick lane, Cohere, too few candidates).
+	 */
+	answersQuestion: number | null;
+};
+
 export const getContext = async (
 	message: string,
 	conversationHistory: string[] = [],
 	currentPage: string = '/',
 	onStatus: StatusReporter = noopStatus,
 	{ lane = 'standard', messageEmbedding = null, timer = noopTimer }: GetContextOptions = {}
-): Promise<string> => {
+): Promise<RetrievedContext> => {
 	const isFirstTurn = conversationHistory.length === 0;
 	const cacheKey = isFirstTurn ? contextCacheKey(message, currentPage, lane) : null;
 	if (cacheKey) {
@@ -334,9 +345,16 @@ export const getContext = async (
 	if (!quick && env.RERANK_ENABLED !== '0' && sorted.length > RERANK_TOP_K) {
 		onStatus('Choosing the most relevant results…');
 	}
-	const reranked = quick
-		? sorted.slice(0, RERANK_TOP_K)
-		: await timer.time('rerank', () => maybeRerank(retrievalQuery, sorted, RERANK_TOP_K));
+	// The rerank query may carry a HyDE answer, so the sufficiency check gets the visitor's
+	// own words (plus earlier turns, for follow-ups) to judge against.
+	const { docs: reranked, answersQuestion } = quick
+		? { docs: sorted.slice(0, RERANK_TOP_K), answersQuestion: null }
+		: await timer.time('rerank', () =>
+				maybeRerank(retrievalQuery, sorted, RERANK_TOP_K, {
+					message,
+					earlierMessages: conversationHistory
+				})
+			);
 	const docs = diversifyBySource(reranked);
 
 	const MAX_IMESSAGE_CHUNKS_PER_CHAT = 2;
@@ -442,6 +460,7 @@ export const getContext = async (
 		console.log(contextText.length > 0 ? contextText : '(empty — no sections matched filters)');
 	}
 
+	const result: RetrievedContext = { text: contextText, answersQuestion };
 	if (cacheKey && contextText) {
 		if (contextCache.size >= CONTEXT_CACHE_MAX) {
 			// Map preserves insertion order — drop the oldest entry.
@@ -449,11 +468,11 @@ export const getContext = async (
 			if (oldest !== undefined) contextCache.delete(oldest);
 		}
 		contextCache.set(cacheKey, {
-			context: contextText,
+			context: result,
 			expires: Date.now() + CONTEXT_CACHE_TTL_MS
 		});
 	}
-	return contextText;
+	return result;
 };
 
 export async function searchKnowledgeBase(
@@ -481,7 +500,7 @@ export async function searchKnowledgeBase(
 	const docs = deduped.map((s) => s.doc);
 
 	// Rerank and diversify
-	const reranked = await maybeRerank(query, docs, RERANK_TOP_K);
+	const { docs: reranked } = await maybeRerank(query, docs, RERANK_TOP_K);
 	const ranked = diversifyBySource(reranked);
 
 	if (ranked.length === 0) {

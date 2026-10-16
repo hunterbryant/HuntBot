@@ -19,9 +19,30 @@ const RELEVANCE_LEVELS = [
 	'Directly answers the question'
 ];
 
-const DECISION_PREVIEW_CHARS = 300;
+// Excerpts go into the decision state once and every question refers to them by id. Long
+// enough for the sufficiency question below to judge whether a chunk actually answers.
+const DECISION_PREVIEW_CHARS = 500;
+// Earlier visitor messages shown to the sufficiency question, so follow-ups ("what about
+// the second one?") can be judged against what they refer to.
+const SUFFICIENCY_HISTORY_TURNS = 3;
 
 type Ranked = { index: number; score: number };
+
+/** What the visitor actually asked, for judging whether the candidates answer it. */
+export type SufficiencyInput = {
+	message: string;
+	earlierMessages: string[];
+};
+
+export type RerankResult = {
+	docs: Document[];
+	/**
+	 * Decisions engine only: probability that the candidate excerpts, taken together, answer
+	 * the visitor's message. Null when nothing judged it (Cohere, no rerank call, or failure),
+	 * in which case callers fall back to their own heuristics.
+	 */
+	answersQuestion: number | null;
+};
 
 /** Cohere Rerank via the AI SDK `rerank()` helper. Sees each chunk in full (they're ~1000 chars). */
 async function rankWithCohere(
@@ -46,67 +67,111 @@ async function rankWithCohere(
 
 /**
  * OpenAI Decisions API (AI SDK 7 `experimental_decide`): one Score question per chunk, all
- * answered in a single call. Used when no Cohere key is configured.
+ * answered in a single call. Used when no Cohere key is configured. When `sufficiency` is
+ * given, the same call also answers whether the candidates cover the visitor's message, which
+ * the chat endpoint uses instead of its chunk-count heuristic to decide on the router.
  */
-async function rankWithDecisions(query: string, docs: Document[], topK: number): Promise<Ranked[]> {
+async function rankWithDecisions(
+	query: string,
+	docs: Document[],
+	topK: number,
+	sufficiency?: SufficiencyInput
+): Promise<{ ranked: Ranked[]; answersQuestion: number | null }> {
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 
+	const excerpts = docs.map((doc, i) => ({
+		id: `chunk_${i}`,
+		source: String(doc.metadata?.source ?? 'unknown'),
+		text: doc.pageContent.slice(0, DECISION_PREVIEW_CHARS)
+	}));
+
 	const questions: Record<string, Experimental_DecisionQuestion> = {};
-	docs.forEach((doc, i) => {
-		const source = doc.metadata?.source ?? 'unknown';
-		questions[`chunk_${i}`] = {
+	for (const excerpt of excerpts) {
+		questions[excerpt.id] = {
 			type: 'score',
-			instructions: `How relevant is this excerpt (source: ${source}) to the question?\n\n${doc.pageContent.slice(0, DECISION_PREVIEW_CHARS)}`,
+			instructions: `How relevant is excerpt ${excerpt.id} to the question?`,
 			criteria: RELEVANCE_LEVELS
 		};
-	});
+	}
+	if (sufficiency) {
+		questions.answers_question = {
+			type: 'boolean',
+			instructions:
+				"Taken together, do the excerpts contain what's needed to answer visitor_message (read in light of earlier_visitor_messages)? Judge only what the excerpts actually say.",
+			criteria: {
+				true: 'The excerpts directly state the facts the visitor asked about.',
+				false:
+					'The excerpts are off-topic or only tangential, or they miss the specific person, project, date or detail the visitor asked about.'
+			}
+		};
+	}
 
 	const { answers } = await experimental_decide({
 		model: openai.decisionModel('gpt-6-luna'),
-		state: { question: query },
+		state: {
+			question: query,
+			...(sufficiency && {
+				visitor_message: sufficiency.message,
+				earlier_visitor_messages: sufficiency.earlierMessages.slice(-SUFFICIENCY_HISTORY_TURNS)
+			}),
+			excerpts
+		},
 		questions
 	});
 
 	// Stable sort: ties keep their incoming (vector-score) order.
-	return docs
+	const ranked = docs
 		.map((_, index) => {
 			const answer = answers[`chunk_${index}`];
 			return { index, score: answer?.type === 'score' ? answer.score : 0 };
 		})
 		.sort((a, b) => b.score - a.score)
 		.slice(0, topK);
+
+	const sufficient = answers.answers_question;
+	return {
+		ranked,
+		answersQuestion: sufficient?.type === 'boolean' ? sufficient.probability : null
+	};
 }
 
 /**
  * Rerank over-retrieved chunks down to `topK`. Uses Cohere Rerank when `COHERE_API_KEY` is
  * set, otherwise OpenAI Decisions. Any failure falls back to the incoming vector-score order
- * so retrieval never breaks because a reranker is down.
+ * so retrieval never breaks because a reranker is down. Pass `sufficiency` to also get the
+ * Decisions engine's judgment of whether the candidates answer the visitor's message.
  */
 export async function rerankChunks(
 	query: string,
 	docs: Document[],
-	topK: number = 5
-): Promise<Document[]> {
-	if (docs.length <= topK) return docs;
+	topK: number = 5,
+	sufficiency?: SufficiencyInput
+): Promise<RerankResult> {
+	// Few enough candidates that there's nothing to rerank — and no call to piggyback on.
+	if (docs.length <= topK) return { docs, answersQuestion: null };
 
 	const cohereKey = env.COHERE_API_KEY;
 	const engine = cohereKey ? 'cohere' : 'decisions';
 
 	try {
-		const ranked = cohereKey
-			? await rankWithCohere(query, docs, topK, cohereKey)
-			: await rankWithDecisions(query, docs, topK);
+		const { ranked, answersQuestion } = cohereKey
+			? { ranked: await rankWithCohere(query, docs, topK, cohereKey), answersQuestion: null }
+			: await rankWithDecisions(query, docs, topK, sufficiency);
 
 		logRag('rerank results', {
 			engine,
 			inputCount: docs.length,
 			outputCount: ranked.length,
-			scores: ranked.map((r) => ({ idx: r.index, score: Number(r.score.toFixed(3)) }))
+			scores: ranked.map((r) => ({ idx: r.index, score: Number(r.score.toFixed(3)) })),
+			answersQuestion
 		});
 
-		return ranked.filter((r) => r.index >= 0 && r.index < docs.length).map((r) => docs[r.index]);
+		return {
+			docs: ranked.filter((r) => r.index >= 0 && r.index < docs.length).map((r) => docs[r.index]),
+			answersQuestion
+		};
 	} catch (err) {
 		console.warn(`Reranking (${engine}) failed, returning original order:`, err);
-		return docs.slice(0, topK);
+		return { docs: docs.slice(0, topK), answersQuestion: null };
 	}
 }

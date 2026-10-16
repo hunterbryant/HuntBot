@@ -8,6 +8,7 @@ import {
 	readRepoFile,
 	searchRepoCode
 } from '$lib/server/github-repo';
+import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
@@ -21,6 +22,7 @@ import {
 	getContext,
 	getSitePageText,
 	searchKnowledgeBase,
+	type RetrievedContext,
 	type StatusReporter
 } from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -82,6 +84,11 @@ type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
 const MISS_PATTERN =
 	/\bI (?:don['’]t|do not) (?:have|see)\b|\bnot sure from\b|\bnothing (?:here )?(?:on|about)\b/i;
 const RELATED_PAGE_LIMIT = 2;
+
+// The Decisions reranker's probability that retrieved candidates answer the message. Below this,
+// initial CONTEXT counts as a gap and the router plans supplemental searches. Boolean answers
+// aren't guaranteed to be calibrated — tune from `context_answers_question` in PostHog.
+const CONTEXT_ANSWERS_THRESHOLD = 0.5;
 
 /** What a client-side tool shows as the reply when the model wrote no text of its own. */
 function clientToolReplyText(tool: { name: string; input: unknown } | null): string | null {
@@ -200,6 +207,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				relatedPages: [] as string[],
 				serverTools: [] as { name: string; input: unknown }[],
 				contextConfidence: null as ContextConfidence | null,
+				contextAnswersQuestion: null as number | null,
 				contextChunks: 0,
 				contextSources: { site: 0, notes: 0, imessage: 0 },
 				routerRan: false,
@@ -208,7 +216,9 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				emptyReplyFallback: false,
 				modelError: null as string | null,
 				pipelineError: false,
-				contextForReflection: ''
+				contextForReflection: '',
+				aboutText: null as string | null,
+				serverToolOutputs: [] as { name: string; output: string }[]
 			};
 
 			function sendTurnAnalytics() {
@@ -240,6 +250,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 								? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
 								: null,
 							context_confidence: turn.contextConfidence,
+							context_answers_question: turn.contextAnswersQuestion,
 							context_chunks: turn.contextChunks,
 							context_site_chunks: turn.contextSources.site,
 							context_notes_chunks: turn.contextSources.notes,
@@ -277,6 +288,30 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						/* swallow — reflection is optional */
 					});
 				}
+
+				// Fallback lines and trivial turns have nothing to ground, so they'd only skew the score.
+				if (
+					turn.visibleText.trim() &&
+					!turn.pipelineError &&
+					!turn.emptyReplyFallback &&
+					!fastPath
+				) {
+					void sendGroundingScoreToPosthog({
+						posthogKey,
+						userMessage: lastMessageText,
+						assistantText: turn.visibleText,
+						contextText: turn.contextForReflection,
+						aboutText: turn.aboutText,
+						toolOutputs: turn.serverToolOutputs,
+						sessionId: sessionId ?? null,
+						runID,
+						currentPage,
+						lane: turn.lane,
+						isAdmin
+					}).catch((err) => {
+						console.warn('Grounding score failed:', err);
+					});
+				}
 			}
 
 			let laneDecision: LaneDecision = {
@@ -308,9 +343,10 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				turn.lane = lane;
 
 				// Degrade gracefully if retrieval fails.
-				const [context, availableRoutes, aboutPageText] = await Promise.all([
+				const noContext: RetrievedContext = { text: '', answersQuestion: null };
+				const [retrieved, availableRoutes, aboutPageText] = await Promise.all([
 					fastPath
-						? Promise.resolve('')
+						? Promise.resolve(noContext)
 						: timer
 								.time('retrieval', () =>
 									getContext(lastMessageText, priorUserMessages, currentPage, reportStatus, {
@@ -324,23 +360,32 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 										'Context retrieval failed, continuing without context:',
 										err?.data ?? err?.message ?? err
 									);
-									return '';
+									return noContext;
 								}),
 					routesPromise,
 					aboutPromise
 				]);
+				const context = retrieved.text;
+				turn.contextAnswersQuestion = retrieved.answersQuestion;
+				turn.aboutText = aboutPageText;
 
 				// RAG router: only worth a full LLM round trip when initial retrieval came back
 				// empty or thin. The quick lane never pays for it; the deep lane always does, since
 				// open-ended questions usually benefit from extra targeted searches. (It used to run
 				// on "moderate" context too, adding 1.3–4.7s to most standard turns; the model can
 				// still call search_knowledge_base itself when it needs more.)
+				// When the Decisions reranker judged whether the candidates answer the message, that
+				// replaces the chunk-count guess: plenty of chunks can still miss the specific thing
+				// asked about, and a single chunk can answer it outright.
 				const initialConfidence = fastPath ? 'empty' : assessConfidence(context);
+				const { answersQuestion } = retrieved;
+				const contextGap =
+					initialConfidence === 'empty' ||
+					(answersQuestion === null
+						? initialConfidence === 'thin'
+						: answersQuestion < CONTEXT_ANSWERS_THRESHOLD);
 				let routerPlan: RagRouterPlan = { supplemental_searches: [], assistant_hint: null };
-				const runRouter =
-					!fastPath &&
-					lane !== 'quick' &&
-					(lane === 'deep' || initialConfidence === 'empty' || initialConfidence === 'thin');
+				const runRouter = !fastPath && lane !== 'quick' && (lane === 'deep' || contextGap);
 				turn.routerRan = runRouter;
 				if (runRouter) {
 					reportStatus('Checking if I need more info…');
@@ -889,6 +934,7 @@ ${contextForModel}`;
 				// reasoning used up the whole output budget — send a fallback line before `finish`.
 				const reader = toUIMessageStream({ stream: result.stream, sendFinish: false }).getReader();
 				let producedReply = false;
+				const serverToolNames = new Map<string, string>();
 				for (;;) {
 					const { done, value } = await reader.read();
 					if (done) break;
@@ -901,6 +947,15 @@ ${contextForModel}`;
 							turn.clientTool ??= { name: value.toolName, input: value.input };
 						} else {
 							turn.serverTools.push({ name: value.toolName, input: value.input });
+							serverToolNames.set(value.toolCallId, value.toolName);
+						}
+					} else if (value.type === 'tool-output-available') {
+						// Kept so the grounding score can see what tools told the model.
+						const name = serverToolNames.get(value.toolCallId);
+						if (name) {
+							const output =
+								typeof value.output === 'string' ? value.output : JSON.stringify(value.output);
+							turn.serverToolOutputs.push({ name, output: output ?? '' });
 						}
 					} else if (value.type === 'error') {
 						turn.modelError ??= value.errorText;
