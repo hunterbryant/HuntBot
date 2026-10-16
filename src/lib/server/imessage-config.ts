@@ -1,8 +1,6 @@
-import { env } from '$env/dynamic/private';
-import { getPointVectorForUpsert, getQdrantClient } from '$lib/server/qdrant-search';
+import { readConfigPoint, writeConfigPoint } from '$lib/server/qdrant-search';
 
-const CONFIG_POINT_ID = 'a0000000-0000-0000-0000-000000000001';
-const VECTOR_DIMS = 512;
+export const CONFIG_POINT_ID = 'a0000000-0000-0000-0000-000000000001';
 const CACHE_TTL_MS = 60_000;
 
 let cached: boolean | null = null;
@@ -14,14 +12,8 @@ export async function getImessageEnabled(): Promise<boolean> {
 	}
 
 	try {
-		const client = getQdrantClient();
-		const result = await client.retrieve(env.QDRANT_COLLECTION!, {
-			ids: [CONFIG_POINT_ID],
-			with_payload: true,
-			with_vector: false
-		});
-
-		const value = result?.[0]?.payload?.imessageEnabled === true;
+		const payload = await readConfigPoint(CONFIG_POINT_ID);
+		const value = payload?.imessageEnabled === true;
 		cached = value;
 		cacheTime = Date.now();
 		return value;
@@ -31,19 +23,7 @@ export async function getImessageEnabled(): Promise<boolean> {
 }
 
 export async function setImessageEnabled(value: boolean): Promise<void> {
-	const client = getQdrantClient();
-	const collection = env.QDRANT_COLLECTION!;
-	const zeroVec = new Array(VECTOR_DIMS).fill(0);
-	const vector = await getPointVectorForUpsert(client, collection, zeroVec);
-	await client.upsert(collection, {
-		points: [
-			{
-				id: CONFIG_POINT_ID,
-				vector,
-				payload: { type: '_config', imessageEnabled: value }
-			}
-		]
-	});
+	await writeConfigPoint(CONFIG_POINT_ID, { imessageEnabled: value });
 	cached = value;
 	cacheTime = Date.now();
 }

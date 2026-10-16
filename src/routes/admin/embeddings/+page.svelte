@@ -31,6 +31,83 @@
 	let imessageExcludeContacts = '';
 	let imessageContactAliases = '';
 
+	// Chunk audit state — the audit runs on the server; this page only starts it and shows the
+	// progress saved after each run.
+	type ChunkAuditStatus = {
+		state: 'running' | 'done' | 'error';
+		startedAt: string;
+		finishedAt: string | null;
+		audited: number;
+		lowValue: number;
+		sensitive: number;
+		refused: number;
+		error: string | null;
+	};
+	let auditStatus: ChunkAuditStatus | null = null;
+	let auditStale = false;
+	let auditStarting = false;
+	// Why the last start or status check failed (expired login, server error); shown in red.
+	let auditError = '';
+	let auditPoll: ReturnType<typeof setTimeout> | undefined;
+
+	const AUDIT_POLL_MS = 5000;
+
+	const refreshAuditStatus = async () => {
+		clearTimeout(auditPoll);
+		try {
+			const res = await fetch('/api/admin/chunk-audit');
+			if (res.status === 401) {
+				auditError = 'Your admin login has expired. Log in again to check or start the audit.';
+				return;
+			}
+			const data = await res.json();
+			auditStatus = data.status;
+			auditStale = data.stale;
+		} catch {
+			// keep the last known status
+		}
+		if (auditStatus?.state === 'running' && !auditStale) {
+			auditPoll = setTimeout(refreshAuditStatus, AUDIT_POLL_MS);
+		}
+	};
+
+	const triggerChunkAudit = async () => {
+		auditStarting = true;
+		auditError = '';
+		try {
+			const res = await fetch('/api/admin/chunk-audit', { method: 'POST' });
+			// 409 means a run is already going, which the status line below shows.
+			if (res.status === 401) {
+				auditError = 'Your admin login has expired. Log in again, then click Audit.';
+				return;
+			}
+			if (!res.ok && res.status !== 409) {
+				const data = await res.json().catch(() => ({}));
+				auditError = `The audit didn't start: ${data.error ?? `HTTP ${res.status}`}`;
+				return;
+			}
+		} catch (err) {
+			auditError = `The audit didn't start: ${err instanceof Error ? err.message : err}`;
+			return;
+		} finally {
+			auditStarting = false;
+		}
+		await refreshAuditStatus();
+	};
+
+	const formatAuditTime = (iso: string) =>
+		new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+	$: auditRunning = auditStatus?.state === 'running' && !auditStale;
+	$: auditCounts = auditStatus
+		? `${auditStatus.audited} chunks audited · ${auditStatus.lowValue} boilerplate · ${auditStatus.sensitive} sensitive${auditStatus.refused ? ` · ${auditStatus.refused} refused` : ''}`
+		: '';
+
+	onMount(() => {
+		refreshAuditStatus();
+		return () => clearTimeout(auditPoll);
+	});
+
 	onMount(async () => {
 		try {
 			const res = await fetch('/api/admin/imessage-toggle');
@@ -460,6 +537,55 @@
 								{/if}
 							</p>
 						</div>
+					{/if}
+				</div>
+			</div>
+
+			<!-- Chunk audit -->
+			<div class="mt-4 border-t border-stone-200 pt-6 dark:border-stone-700">
+				<p class="mb-4 text-xs font-medium uppercase tracking-wider text-stone-400 dark:text-stone-400">
+					Quality
+				</p>
+
+				<div class="flex flex-col gap-2">
+					<span class="flex h-12 items-center justify-between gap-4 align-middle">
+						Audit new chunks
+						<button
+							on:click={triggerChunkAudit}
+							disabled={auditRunning || auditStarting}
+							class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
+						>
+							{auditRunning || auditStarting ? 'Auditing...' : auditStale ? 'Resume' : 'Audit'}
+						</button>
+					</span>
+					<p class="text-xs text-stone-400 dark:text-stone-500">
+						Run after indexing. Tags chunks that haven't been audited yet so HuntBot skips
+						boilerplate and sensitive ones. Nothing is re-embedded or deleted. It runs in the
+						background, so you can close this page and check back here later.
+					</p>
+					{#if auditStatus}
+						<p class="flex items-center gap-2 text-xs text-stone-600 dark:text-stone-300">
+							<span
+								class="inline-block h-2 w-2 shrink-0 rounded-full {auditRunning
+									? 'animate-pulse bg-mud-600'
+									: auditStatus.state === 'done'
+										? 'bg-green-500'
+										: 'bg-red-500'}"
+							></span>
+							{#if auditRunning}
+								Running since {formatAuditTime(auditStatus.startedAt)}
+							{:else if auditStale}
+								Stopped partway (started {formatAuditTime(auditStatus.startedAt)}) — click Resume
+							{:else if auditStatus.state === 'done' && auditStatus.finishedAt}
+								Finished {formatAuditTime(auditStatus.finishedAt)}
+							{:else}
+								Failed: {auditStatus.error}
+							{/if}
+						</p>
+						<p class="text-xs text-stone-400 dark:text-stone-500">{auditCounts}</p>
+					{/if}
+					{#if auditError}
+						<p class="text-xs text-red-500">{auditError}</p>
 					{/if}
 				</div>
 			</div>

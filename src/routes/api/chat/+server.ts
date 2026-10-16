@@ -1,5 +1,4 @@
 import { env } from '$env/dynamic/private';
-import { env as publicEnv } from '$env/dynamic/public';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
 import { CALENDAR_TIMEZONE, formatEventTime, getCalendarEvents } from '$lib/server/calendar';
 import {
@@ -8,6 +7,9 @@ import {
 	readRepoFile,
 	searchRepoCode
 } from '$lib/server/github-repo';
+import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
+import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
+import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
@@ -21,6 +23,7 @@ import {
 	getContext,
 	getSitePageText,
 	searchKnowledgeBase,
+	type RetrievedContext,
 	type StatusReporter
 } from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -63,8 +66,8 @@ const LANE_MODEL_CONFIG: Record<
 	{ model: string; reasoningEffort: 'low' | 'medium'; maxOutputTokens: number }
 > = {
 	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 600 },
-	standard: { model: 'gpt-6-astra', reasoningEffort: 'low', maxOutputTokens: 600 },
-	deep: { model: 'gpt-6-astra', reasoningEffort: 'medium', maxOutputTokens: 1500 }
+	standard: { model: 'gpt-6.1-sol', reasoningEffort: 'low', maxOutputTokens: 600 },
+	deep: { model: 'gpt-6.1-sol', reasoningEffort: 'medium', maxOutputTokens: 1500 }
 };
 
 // Tools with no server `execute` — the client renders their input as the reply/action.
@@ -82,6 +85,17 @@ type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
 const MISS_PATTERN =
 	/\bI (?:don['’]t|do not) (?:have|see)\b|\bnot sure from\b|\bnothing (?:here )?(?:on|about)\b/i;
 const RELATED_PAGE_LIMIT = 2;
+
+// Shown when the model can't be reached for a reason that won't fix itself (out of credits, bad
+// key, no access). "Try again" would fail the same way, so this points at Hunter directly; the
+// contact card the hiring answers use is attached under it.
+const MODEL_UNAVAILABLE_TEXT =
+	"I can't answer questions right now, something's off on my end. If you'd like to reach Hunter in the meantime, his email and LinkedIn are right below.";
+
+// The Decisions reranker's probability that retrieved candidates answer the message. Below this,
+// initial CONTEXT counts as a gap and the router plans supplemental searches. Boolean answers
+// aren't guaranteed to be calibrated — tune from `context_answers_question` in PostHog.
+const CONTEXT_ANSWERS_THRESHOLD = 0.5;
 
 /** What a client-side tool shows as the reply when the model wrote no text of its own. */
 function clientToolReplyText(tool: { name: string; input: unknown } | null): string | null {
@@ -176,13 +190,27 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 
 			// Graceful degradation: if anything in the pipeline throws, still send the
 			// visitor a real reply instead of leaving the loading indicator stuck.
-			function writeFallbackReply(text: string) {
+			function writeFallbackParts(text: string, contactCard: boolean) {
 				const id = crypto.randomUUID();
-				writer.write({ type: 'start' });
-				writer.write({ type: 'start-step' });
 				writer.write({ type: 'text-start', id });
 				writer.write({ type: 'text-delta', id, delta: text });
 				writer.write({ type: 'text-end', id });
+				if (contactCard) {
+					// The same client tool the model calls on hiring questions: the client turns it into
+					// this text plus the Email / LinkedIn buttons (see handleToolCall in MessageStore).
+					writer.write({
+						type: 'tool-input-available',
+						toolCallId: crypto.randomUUID(),
+						toolName: 'capture_lead_intent',
+						input: { intent_type: 'general', message: text }
+					});
+				}
+			}
+
+			function writeFallbackReply(text: string, contactCard = false) {
+				writer.write({ type: 'start' });
+				writer.write({ type: 'start-step' });
+				writeFallbackParts(text, contactCard);
 				writer.write({ type: 'finish-step' });
 				writer.write({ type: 'finish' });
 			}
@@ -200,6 +228,16 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				relatedPages: [] as string[],
 				serverTools: [] as { name: string; input: unknown }[],
 				contextConfidence: null as ContextConfidence | null,
+				contextAnswersQuestion: null as number | null,
+				rerankEngine: null as RetrievedContext['rerankEngine'] | null,
+				rerankFailed: false,
+				rerankInputTokens: null as number | null,
+				excludedByAudit: 0,
+				retrievalError: null as string | null,
+				contextCacheHit: false,
+				// What decided whether the router ran: the deep lane always runs it, otherwise the
+				// Decisions sufficiency check when available, else the chunk-count heuristic.
+				routerGate: null as 'deep_lane' | 'decisions' | 'heuristic' | null,
 				contextChunks: 0,
 				contextSources: { site: 0, notes: 0, imessage: 0 },
 				routerRan: false,
@@ -207,75 +245,104 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				fallbackSearchRan: false,
 				emptyReplyFallback: false,
 				modelError: null as string | null,
+				modelFailure: null as ModelFailure | null,
 				pipelineError: false,
-				contextForReflection: ''
+				contextForReflection: '',
+				aboutText: null as string | null,
+				serverToolOutputs: [] as { name: string; output: string }[]
 			};
 
 			function sendTurnAnalytics() {
-				const posthogKey = publicEnv.PUBLIC_POSTHOG_API_KEY;
-				if (!posthogKey) return;
-				void fetch('https://us.i.posthog.com/capture/', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						api_key: posthogKey,
-						event: 'chat_message',
-						distinct_id: sessionId ?? runID,
-						timestamp: new Date().toISOString(),
-						properties: {
-							$ip: clientIp ?? undefined,
-							$raw_user_agent: userAgent ?? undefined,
-							$current_url: `${SITE_ORIGIN_PREFIX}${currentPage}`,
-							$pathname: currentPage,
-							is_admin: isAdmin,
-							user_message: lastMessageText,
-							// What the visitor actually saw, including any fallback line, or the
-							// message a client-side tool (route, lead capture) showed in its place.
-							bot_response: turn.visibleText.trim() || clientToolReplyText(turn.clientTool),
-							related_pages: turn.relatedPages,
-							function_call_name: turn.clientTool?.name ?? null,
-							function_call_args: turn.clientTool ? JSON.stringify(turn.clientTool.input) : null,
-							server_tools: turn.serverTools.map((t) => t.name),
-							server_tool_args: turn.serverTools.length
-								? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
-								: null,
-							context_confidence: turn.contextConfidence,
-							context_chunks: turn.contextChunks,
-							context_site_chunks: turn.contextSources.site,
-							context_notes_chunks: turn.contextSources.notes,
-							context_imessage_chunks: turn.contextSources.imessage,
-							router_ran: turn.routerRan,
-							router_searches: turn.routerSearches,
-							fallback_search_ran: turn.fallbackSearchRan,
-							empty_reply_fallback: turn.emptyReplyFallback,
-							model_error: turn.modelError,
-							pipeline_error: turn.pipelineError,
-							current_page: currentPage,
-							run_id: runID,
-							session_id: sessionId ?? null,
-							lane: turn.lane,
-							model: turn.model,
-							lane_quick_score: laneDecision.quickScore,
-							lane_deep_score: laneDecision.deepScore,
-							timings_ms: timer.timings
-						}
-					})
-				}).catch(() => {
-					/* swallow */
+				void captureServerEvent('chat_message', sessionId ?? runID, {
+					$ip: clientIp ?? undefined,
+					$raw_user_agent: userAgent ?? undefined,
+					$current_url: `${SITE_ORIGIN_PREFIX}${currentPage}`,
+					$pathname: currentPage,
+					is_admin: isAdmin,
+					user_message: lastMessageText,
+					// What the visitor actually saw, including any fallback line, or the
+					// message a client-side tool (route, lead capture) showed in its place.
+					bot_response: turn.visibleText.trim() || clientToolReplyText(turn.clientTool),
+					related_pages: turn.relatedPages,
+					function_call_name: turn.clientTool?.name ?? null,
+					function_call_args: turn.clientTool ? JSON.stringify(turn.clientTool.input) : null,
+					server_tools: turn.serverTools.map((t) => t.name),
+					server_tool_args: turn.serverTools.length
+						? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
+						: null,
+					context_confidence: turn.contextConfidence,
+					context_answers_question: turn.contextAnswersQuestion,
+					context_excluded_by_audit: turn.excludedByAudit,
+					retrieval_error: turn.retrievalError,
+					context_cache_hit: turn.contextCacheHit,
+					rerank_engine: turn.rerankEngine,
+					rerank_failed: turn.rerankFailed,
+					rerank_input_tokens: turn.rerankInputTokens,
+					router_gate: turn.routerGate,
+					context_chunks: turn.contextChunks,
+					context_site_chunks: turn.contextSources.site,
+					context_notes_chunks: turn.contextSources.notes,
+					context_imessage_chunks: turn.contextSources.imessage,
+					router_ran: turn.routerRan,
+					router_searches: turn.routerSearches,
+					fallback_search_ran: turn.fallbackSearchRan,
+					empty_reply_fallback: turn.emptyReplyFallback,
+					model_error: turn.modelError,
+					model_failure: turn.modelFailure,
+					pipeline_error: turn.pipelineError,
+					current_page: currentPage,
+					run_id: runID,
+					session_id: sessionId ?? null,
+					lane: turn.lane,
+					model: turn.model,
+					lane_quick_score: laneDecision.quickScore,
+					lane_deep_score: laneDecision.deepScore,
+					timings_ms: timer.timings
 				});
 
+				// Both post-reply audits only produce PostHog events, so without a key they'd be paid
+				// calls whose results go nowhere.
+				if (!isAnalyticsEnabled()) return;
+
+				// Both run after the response has finished, so they're kept alive with waitUntil;
+				// otherwise the function can be frozen before they're sent.
 				if (turn.visibleText.trim() && !turn.pipelineError) {
-					void sendRagReflectionToPosthog({
-						posthogKey,
-						userMessage: lastMessageText,
-						assistantText: turn.visibleText,
-						contextExcerpt: turn.contextForReflection,
-						sessionId: sessionId ?? null,
-						runID,
-						currentPage
-					}).catch(() => {
-						/* swallow — reflection is optional */
-					});
+					runInBackground(
+						sendRagReflectionToPosthog({
+							userMessage: lastMessageText,
+							assistantText: turn.visibleText,
+							contextExcerpt: turn.contextForReflection,
+							sessionId: sessionId ?? null,
+							runID,
+							currentPage
+						}).catch((err) => {
+							console.warn('RAG reflection failed:', err);
+						})
+					);
+				}
+
+				// Fallback lines and trivial turns have nothing to ground, so they'd only skew the score.
+				if (
+					turn.visibleText.trim() &&
+					!turn.pipelineError &&
+					!turn.emptyReplyFallback &&
+					!fastPath
+				) {
+					runInBackground(
+						sendGroundingScoreToPosthog({
+							userMessage: lastMessageText,
+							priorUserMessages,
+							assistantText: turn.visibleText,
+							contextText: turn.contextForReflection,
+							aboutText: turn.aboutText,
+							toolOutputs: turn.serverToolOutputs,
+							sessionId: sessionId ?? null,
+							runID,
+							currentPage,
+							lane: turn.lane,
+							isAdmin
+						})
+					);
 				}
 			}
 
@@ -308,9 +375,18 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				turn.lane = lane;
 
 				// Degrade gracefully if retrieval fails.
-				const [context, availableRoutes, aboutPageText] = await Promise.all([
+				const noContext: RetrievedContext = {
+					text: '',
+					answersQuestion: null,
+					rerankEngine: 'none',
+					rerankFailed: false,
+					rerankInputTokens: null,
+					excludedByAudit: 0,
+					fromCache: false
+				};
+				const [retrieved, availableRoutes, aboutPageText] = await Promise.all([
 					fastPath
-						? Promise.resolve('')
+						? Promise.resolve(noContext)
 						: timer
 								.time('retrieval', () =>
 									getContext(lastMessageText, priorUserMessages, currentPage, reportStatus, {
@@ -324,23 +400,42 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 										'Context retrieval failed, continuing without context:',
 										err?.data ?? err?.message ?? err
 									);
-									return '';
+									turn.retrievalError = String(err?.message ?? err?.data ?? err);
+									return noContext;
 								}),
 					routesPromise,
 					aboutPromise
 				]);
+				const context = retrieved.text;
+				turn.contextAnswersQuestion = retrieved.answersQuestion;
+				turn.rerankEngine = fastPath ? null : retrieved.rerankEngine;
+				turn.rerankFailed = retrieved.rerankFailed;
+				turn.rerankInputTokens = retrieved.rerankInputTokens;
+				turn.excludedByAudit = retrieved.excludedByAudit;
+				turn.contextCacheHit = retrieved.fromCache;
+				turn.aboutText = aboutPageText;
 
 				// RAG router: only worth a full LLM round trip when initial retrieval came back
 				// empty or thin. The quick lane never pays for it; the deep lane always does, since
 				// open-ended questions usually benefit from extra targeted searches. (It used to run
 				// on "moderate" context too, adding 1.3–4.7s to most standard turns; the model can
 				// still call search_knowledge_base itself when it needs more.)
+				// When the Decisions reranker judged whether the candidates answer the message, that
+				// replaces the chunk-count guess: plenty of chunks can still miss the specific thing
+				// asked about, and a single chunk can answer it outright.
 				const initialConfidence = fastPath ? 'empty' : assessConfidence(context);
+				const { answersQuestion } = retrieved;
+				const contextGap =
+					initialConfidence === 'empty' ||
+					(answersQuestion === null
+						? initialConfidence === 'thin'
+						: answersQuestion < CONTEXT_ANSWERS_THRESHOLD);
 				let routerPlan: RagRouterPlan = { supplemental_searches: [], assistant_hint: null };
-				const runRouter =
-					!fastPath &&
-					lane !== 'quick' &&
-					(lane === 'deep' || initialConfidence === 'empty' || initialConfidence === 'thin');
+				const runRouter = !fastPath && lane !== 'quick' && (lane === 'deep' || contextGap);
+				if (!fastPath && lane !== 'quick') {
+					turn.routerGate =
+						lane === 'deep' ? 'deep_lane' : answersQuestion === null ? 'heuristic' : 'decisions';
+				}
 				turn.routerRan = runRouter;
 				if (runRouter) {
 					reportStatus('Checking if I need more info…');
@@ -850,6 +945,7 @@ ${contextForModel}`;
 					onError: ({ error }) => {
 						console.error('streamText error:', error);
 						turn.modelError = error instanceof Error ? error.message : String(error);
+						turn.modelFailure = classifyModelFailure(error);
 					},
 					onChunk: ({ chunk }) => {
 						if (!sawFirstToken && chunk.type === 'text-delta') {
@@ -889,6 +985,7 @@ ${contextForModel}`;
 				// reasoning used up the whole output budget — send a fallback line before `finish`.
 				const reader = toUIMessageStream({ stream: result.stream, sendFinish: false }).getReader();
 				let producedReply = false;
+				const serverToolNames = new Map<string, string>();
 				for (;;) {
 					const { done, value } = await reader.read();
 					if (done) break;
@@ -901,9 +998,22 @@ ${contextForModel}`;
 							turn.clientTool ??= { name: value.toolName, input: value.input };
 						} else {
 							turn.serverTools.push({ name: value.toolName, input: value.input });
+							serverToolNames.set(value.toolCallId, value.toolName);
+						}
+					} else if (value.type === 'tool-output-available') {
+						// Kept so the grounding score can see what tools told the model.
+						const name = serverToolNames.get(value.toolCallId);
+						if (name) {
+							const output =
+								typeof value.output === 'string' ? value.output : JSON.stringify(value.output);
+							turn.serverToolOutputs.push({ name, output: output ?? '' });
 						}
 					} else if (value.type === 'error') {
 						turn.modelError ??= value.errorText;
+						// Not forwarded: the client treats an error chunk as fatal, stops reading, and
+						// never sees the fallback reply written below. The failure is still logged and
+						// sent to PostHog via turn.modelError / turn.modelFailure.
+						continue;
 					}
 					writer.write(value);
 				}
@@ -947,27 +1057,30 @@ ${contextForModel}`;
 						modelError: turn.modelError,
 						runID
 					});
-					const fallbackText = 'Sorry, I blanked on that one — mind asking again?';
+					const unavailable = turn.modelFailure === 'unavailable';
+					const fallbackText = unavailable
+						? MODEL_UNAVAILABLE_TEXT
+						: 'Sorry, I blanked on that one — mind asking again?';
 					turn.emptyReplyFallback = true;
 					turn.visibleText = fallbackText;
-					const id = crypto.randomUUID();
 					writer.write({ type: 'start-step' });
-					writer.write({ type: 'text-start', id });
-					writer.write({ type: 'text-delta', id, delta: fallbackText });
-					writer.write({ type: 'text-end', id });
+					writeFallbackParts(fallbackText, unavailable);
 					writer.write({ type: 'finish-step' });
 				}
 				writer.write({ type: 'finish' });
 			} catch (error) {
 				console.error('Chat API error:', error);
-				const fallbackText =
-					error instanceof OpenAI.APIError
+				const unavailable = classifyModelFailure(error) === 'unavailable';
+				const fallbackText = unavailable
+					? MODEL_UNAVAILABLE_TEXT
+					: error instanceof OpenAI.APIError
 						? 'Something glitched talking to the model — mind trying that again?'
 						: 'Something went wrong on my end — mind trying that again?';
 				turn.pipelineError = true;
 				turn.modelError = error instanceof Error ? error.message : String(error);
+				turn.modelFailure = unavailable ? 'unavailable' : 'transient';
 				turn.visibleText = fallbackText;
-				writeFallbackReply(fallbackText);
+				writeFallbackReply(fallbackText, unavailable);
 			}
 
 			timer.mark('total');
@@ -980,6 +1093,17 @@ ${contextForModel}`;
 					model: turn.model,
 					quick_score: Number(laneDecision.quickScore.toFixed(3)),
 					deep_score: Number(laneDecision.deepScore.toFixed(3)),
+					rerank_engine: turn.rerankEngine,
+					rerank_failed: turn.rerankFailed || undefined,
+					answers_question:
+						turn.contextAnswersQuestion === null
+							? undefined
+							: Number(turn.contextAnswersQuestion.toFixed(2)),
+					router_gate: turn.routerGate,
+					router_ran: turn.routerRan,
+					retrieval_failed: turn.retrievalError ? true : undefined,
+					model_failure: turn.modelFailure ?? undefined,
+					excluded_by_audit: turn.excludedByAudit || undefined,
 					...timer.timings
 				})
 			);

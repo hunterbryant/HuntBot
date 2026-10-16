@@ -1,15 +1,16 @@
-import { createHash } from 'node:crypto';
 import { env } from '$env/dynamic/private';
-import { OpenAIEmbeddings } from '@langchain/openai';
-import type { Document } from '@langchain/core/documents';
-import { compile } from 'html-to-text';
-import { getImessageEnabled } from '$lib/server/imessage-config';
-import { logRag, shouldLogRag } from '$lib/server/rag-debug';
-import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import { rewriteRetrievalQuery } from '$lib/rewrite';
-import { rerankChunks } from '$lib/server/rerank';
+import { isExcludedByAudit } from '$lib/server/chunk-audit';
+import { getImessageEnabled } from '$lib/server/imessage-config';
+import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import type { QueryLane } from '$lib/server/query-lane';
+import { logRag, shouldLogRag } from '$lib/server/rag-debug';
+import { rerankChunks, type RerankResult, type SufficiencyInput } from '$lib/server/rerank';
 import { noopTimer, type StageTimer } from '$lib/server/timing';
+import type { Document } from '@langchain/core/documents';
+import { OpenAIEmbeddings } from '@langchain/openai';
+import { compile } from 'html-to-text';
+import { createHash } from 'node:crypto';
 
 /** Reports a human-readable label for the pipeline stage currently running. */
 export type StatusReporter = (label: string) => void;
@@ -31,6 +32,8 @@ const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']
 const QDRANT_TOP_K = 16;
 const MIN_VECTOR_SCORE = 0.3;
 const RERANK_TOP_K = 5;
+// Extra results per search to make up for chunks the chunk audit excludes.
+const AUDIT_HEADROOM = 8;
 
 type ScoredDoc = { doc: Document; vectorScore: number };
 
@@ -79,7 +82,7 @@ export function getSitePageText(path: string): Promise<string | null> {
 // CONTEXT briefly so repeats skip rewrite/HyDE, search and rerank entirely.
 const CONTEXT_CACHE_TTL_MS = 10 * 60_000;
 const CONTEXT_CACHE_MAX = 100;
-const contextCache = new Map<string, { context: string; expires: number }>();
+const contextCache = new Map<string, { context: RetrievedContext; expires: number }>();
 
 function contextCacheKey(message: string, currentPage: string, lane: QueryLane): string {
 	return `${lane}|${currentPage}|${message.trim().toLowerCase().replace(/\s+/g, ' ')}`;
@@ -115,11 +118,21 @@ function chunkIdForImessage(chatId: string, seq: number): string {
 	return `CHUNK-imsg-${chatId}-${seq}`;
 }
 
+// Every chat turn embeds 2–4 times (lane, search, fallback), each on the visitor's critical path.
+// LangChain's default is 6 retries with exponential backoff (~80s per call), and it doesn't treat
+// OpenAI's "no credits remaining" 429 as final, so an out-of-credit account left the chat stuck
+// for ~5 minutes per turn. One quick retry covers a transient blip; anything worse fails fast and
+// the pipeline's own fallbacks take over.
+const EMBEDDING_MAX_RETRIES = 1;
+const EMBEDDING_TIMEOUT_MS = 10_000;
+
 export function getEmbeddings(): OpenAIEmbeddings {
 	return new OpenAIEmbeddings({
 		modelName: 'text-embedding-3-small',
 		openAIApiKey: env.OPENAI_API_KEY,
-		dimensions: 512
+		dimensions: 512,
+		maxRetries: EMBEDDING_MAX_RETRIES,
+		timeout: EMBEDDING_TIMEOUT_MS
 	});
 }
 
@@ -135,17 +148,41 @@ async function similaritySearchWithScore(
 	return searchByEmbedding(await embedQueryText(query), k, filter);
 }
 
+/** Per-turn counters filled in by searches, reported on the chat_message event. */
+type SearchStats = { excludedByAudit: number };
+
 async function searchByEmbedding(
 	embedding: number[],
 	k: number,
-	filter?: Record<string, unknown>
+	filter?: Record<string, unknown>,
+	stats?: SearchStats
 ): Promise<[Document, number][]> {
 	const client = getQdrantClient();
 	const collection = env.QDRANT_COLLECTION;
 	if (!collection) {
 		throw new Error('QDRANT_COLLECTION is not set');
 	}
-	return qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
+	// Chunks the chunk audit flagged as boilerplate or sensitive (see $lib/server/chunk-audit) are
+	// dropped here rather than with a Qdrant filter, so retrieval never depends on an audit index
+	// existing. A few extra results are fetched so dropping them doesn't shrink the top-k.
+	const results = await qdrantSimilaritySearchWithScore(
+		client,
+		collection,
+		embedding,
+		k + AUDIT_HEADROOM,
+		filter
+	);
+	const kept: [Document, number][] = [];
+	for (const result of results) {
+		if (kept.length >= k) break;
+		if (isExcludedByAudit(result[0].metadata)) {
+			// Counted only when it would have made the cut, so the stat means "pushed out".
+			if (stats) stats.excludedByAudit++;
+		} else {
+			kept.push(result);
+		}
+	}
+	return kept;
 }
 
 const NOT_A_NAME = new Set([
@@ -212,13 +249,20 @@ function diversifyBySource(docs: Document[], maxPerSource: number = 2): Document
 async function maybeRerank(
 	query: string,
 	docs: Document[],
-	topK: number
-): Promise<Document[]> {
+	topK: number,
+	sufficiency?: SufficiencyInput
+): Promise<RerankResult> {
 	const shouldRerank = env.RERANK_ENABLED !== '0';
 	if (shouldRerank) {
-		return rerankChunks(query, docs, topK);
+		return rerankChunks(query, docs, topK, sufficiency);
 	}
-	return docs.slice(0, topK);
+	return {
+		docs: docs.slice(0, topK),
+		engine: 'none',
+		failed: false,
+		inputTokens: null,
+		answersQuestion: null
+	};
 }
 
 export type GetContextOptions = {
@@ -229,13 +273,31 @@ export type GetContextOptions = {
 	timer?: StageTimer;
 };
 
+export type RetrievedContext = {
+	/** CONTEXT block for the system prompt (empty when nothing matched). */
+	text: string;
+	/**
+	 * Probability, judged by the Decisions reranker, that the retrieved candidates answer the
+	 * visitor's message. Null when nothing judged it (quick lane, Cohere, too few candidates).
+	 */
+	answersQuestion: number | null;
+	/** Which reranker ran ('none' in the quick lane, with reranking off, or too few candidates). */
+	rerankEngine: RerankResult['engine'];
+	rerankFailed: boolean;
+	rerankInputTokens: number | null;
+	/** Candidates dropped because the chunk audit flagged them low-value or sensitive. */
+	excludedByAudit: number;
+	/** Served from the first-turn context cache: no rewrite, search or rerank ran this turn. */
+	fromCache: boolean;
+};
+
 export const getContext = async (
 	message: string,
 	conversationHistory: string[] = [],
 	currentPage: string = '/',
 	onStatus: StatusReporter = noopStatus,
 	{ lane = 'standard', messageEmbedding = null, timer = noopTimer }: GetContextOptions = {}
-): Promise<string> => {
+): Promise<RetrievedContext> => {
 	const isFirstTurn = conversationHistory.length === 0;
 	const cacheKey = isFirstTurn ? contextCacheKey(message, currentPage, lane) : null;
 	if (cacheKey) {
@@ -243,7 +305,9 @@ export const getContext = async (
 		if (cached && cached.expires > Date.now()) {
 			logRag('getContext cache hit', { lane, currentPage });
 			timer.mark('context_cache_hit');
-			return cached.context;
+			// The cached sufficiency judgment still holds for the same question, but this turn ran
+			// no rerank or search, so it reports none of their cost.
+			return { ...cached.context, rerankInputTokens: null, excludedByAudit: 0, fromCache: true };
 		}
 	}
 
@@ -292,19 +356,20 @@ export const getContext = async (
 	onStatus('Searching Hunter’s site and notes…');
 	// Embed once and fan the same vector out to every branch (previously each branch
 	// re-embedded the identical query).
+	const searchStats: SearchStats = { excludedByAudit: 0 };
 	const [mainResults, imessageResults, personResults] = await timer.time(
 		'vector_search',
 		async () => {
 			const embedding = queryEmbedding ?? (await embedQueryText(retrievalQuery));
 			return Promise.all([
-				searchByEmbedding(embedding, QDRANT_TOP_K, mainFilter),
+				searchByEmbedding(embedding, QDRANT_TOP_K, mainFilter, searchStats),
 				imessageEnabled
-					? searchByEmbedding(embedding, QDRANT_TOP_K, imessageFilter)
+					? searchByEmbedding(embedding, QDRANT_TOP_K, imessageFilter, searchStats)
 					: Promise.resolve([] as [Document, number][]),
 				// Best-effort: this filter needs a Qdrant text index on metadata.contact /
 				// metadata.participants, and a failure here must not take down the main search.
 				personFilter
-					? searchByEmbedding(embedding, 8, personFilter).catch((err) => {
+					? searchByEmbedding(embedding, 8, personFilter, searchStats).catch((err) => {
 							console.warn('Person-filtered search failed, skipping:', err?.data ?? err);
 							return [] as [Document, number][];
 						})
@@ -334,10 +399,23 @@ export const getContext = async (
 	if (!quick && env.RERANK_ENABLED !== '0' && sorted.length > RERANK_TOP_K) {
 		onStatus('Choosing the most relevant results…');
 	}
-	const reranked = quick
-		? sorted.slice(0, RERANK_TOP_K)
-		: await timer.time('rerank', () => maybeRerank(retrievalQuery, sorted, RERANK_TOP_K));
-	const docs = diversifyBySource(reranked);
+	// The rerank query may carry a HyDE answer, so the sufficiency check gets the visitor's
+	// own words (plus earlier turns, for follow-ups) to judge against.
+	const rerank: RerankResult = quick
+		? {
+				docs: sorted.slice(0, RERANK_TOP_K),
+				engine: 'none',
+				failed: false,
+				inputTokens: null,
+				answersQuestion: null
+			}
+		: await timer.time('rerank', () =>
+				maybeRerank(retrievalQuery, sorted, RERANK_TOP_K, {
+					message,
+					earlierMessages: conversationHistory
+				})
+			);
+	const docs = diversifyBySource(rerank.docs);
 
 	const MAX_IMESSAGE_CHUNKS_PER_CHAT = 2;
 	const siteUrls = new Map<string, string>();
@@ -442,6 +520,15 @@ export const getContext = async (
 		console.log(contextText.length > 0 ? contextText : '(empty — no sections matched filters)');
 	}
 
+	const result: RetrievedContext = {
+		text: contextText,
+		answersQuestion: rerank.answersQuestion,
+		rerankEngine: rerank.engine,
+		rerankFailed: rerank.failed,
+		rerankInputTokens: rerank.inputTokens,
+		excludedByAudit: searchStats.excludedByAudit,
+		fromCache: false
+	};
 	if (cacheKey && contextText) {
 		if (contextCache.size >= CONTEXT_CACHE_MAX) {
 			// Map preserves insertion order — drop the oldest entry.
@@ -449,11 +536,11 @@ export const getContext = async (
 			if (oldest !== undefined) contextCache.delete(oldest);
 		}
 		contextCache.set(cacheKey, {
-			context: contextText,
+			context: result,
 			expires: Date.now() + CONTEXT_CACHE_TTL_MS
 		});
 	}
-	return contextText;
+	return result;
 };
 
 export async function searchKnowledgeBase(
@@ -481,7 +568,7 @@ export async function searchKnowledgeBase(
 	const docs = deduped.map((s) => s.doc);
 
 	// Rerank and diversify
-	const reranked = await maybeRerank(query, docs, RERANK_TOP_K);
+	const { docs: reranked } = await maybeRerank(query, docs, RERANK_TOP_K);
 	const ranked = diversifyBySource(reranked);
 
 	if (ranked.length === 0) {

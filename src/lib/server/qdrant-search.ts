@@ -121,3 +121,31 @@ export async function getPointVectorForUpsert(
 	}
 	return { [named]: embedding };
 }
+
+// Config points (iMessage toggle, chunk audit status) carry a payload and no real content. They
+// get an all-zero vector of the collection's embedding size.
+const CONFIG_VECTOR_DIMS = 512;
+
+/** Payload of a config point stored in the collection under a fixed id, or null. */
+export async function readConfigPoint(id: string): Promise<Record<string, unknown> | null> {
+	const [point] = await getQdrantClient().retrieve(env.QDRANT_COLLECTION!, {
+		ids: [id],
+		with_payload: true,
+		with_vector: false
+	});
+	return (point?.payload as Record<string, unknown> | undefined) ?? null;
+}
+
+/** Create or replace a config point. Its payload is tagged `type: '_config'`. */
+export async function writeConfigPoint(id: string, payload: Record<string, unknown>): Promise<void> {
+	const client = getQdrantClient();
+	const collection = env.QDRANT_COLLECTION!;
+	const vector = await getPointVectorForUpsert(
+		client,
+		collection,
+		new Array(CONFIG_VECTOR_DIMS).fill(0)
+	);
+	await client.upsert(collection, {
+		points: [{ id, vector, payload: { type: '_config', ...payload } }]
+	});
+}
