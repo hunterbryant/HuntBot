@@ -57,17 +57,27 @@ async function describeRefusal(res: Response): Promise<string> {
 	return details.join(', ');
 }
 
+// hunterbryant.io is proxied through Cloudflare, whose bot challenge answers this server-to-server
+// call with a 403 "Just a moment…" page. The project's vercel.app production alias serves the
+// same deployment without Cloudflare and isn't behind Deployment Protection.
+const PRODUCTION_DIRECT_ORIGIN = 'https://huntbot.vercel.app';
+
+/** Where to send the follow-up call: never through the Cloudflare-fronted public domain. */
+function followUpOrigin(requestOrigin: string): string {
+	if (env.CHUNK_AUDIT_ORIGIN) return env.CHUNK_AUDIT_ORIGIN.replace(/\/$/, '');
+	return env.VERCEL_ENV === 'production' ? PRODUCTION_DIRECT_ORIGIN : requestOrigin;
+}
+
 /** Start the next run as its own function invocation, so each one gets a fresh time limit. */
-async function startNextRun(origin: string): Promise<void> {
+async function startNextRun(requestOrigin: string): Promise<void> {
 	if (!env.CRON_SECRET) {
 		throw new Error('CRON_SECRET is not set, so the audit cannot continue on its own');
 	}
-	const url = `${origin}/api/admin/chunk-audit`;
+	const url = `${followUpOrigin(requestOrigin)}/api/admin/chunk-audit`;
 	const auth = { authorization: `Bearer ${env.CRON_SECRET}` };
 
-	// Production domains aren't behind Deployment Protection, and a run on production was refused
-	// with a 403 while the bypass header was attached, so the header is only added on a retry,
-	// for protected (preview) URLs that refuse the plain call.
+	// The bypass header is only needed for protected (preview) URLs, so it's added on a retry when
+	// the plain call is refused.
 	let res = await fetch(url, { method: 'POST', headers: auth });
 	const bypass = env.VERCEL_AUTOMATION_BYPASS_SECRET;
 	if ((res.status === 401 || res.status === 403) && bypass) {
