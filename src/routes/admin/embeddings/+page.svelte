@@ -34,7 +34,7 @@
 	// Chunk audit state — the audit runs on the server; this page only starts it and shows the
 	// progress saved after each run.
 	type ChunkAuditStatus = {
-		state: 'running' | 'done' | 'error';
+		state: 'running' | 'paused' | 'done' | 'error';
 		startedAt: string;
 		finishedAt: string | null;
 		audited: number;
@@ -49,6 +49,10 @@
 	// Why the last start or status check failed (expired login, server error); shown in red.
 	let auditError = '';
 	let auditPoll: ReturnType<typeof setTimeout> | undefined;
+	// Vercel stops the server's chain of runs after a few hops and the job pauses; a request from
+	// this page starts a fresh chain, so it resumes on its own while the page is open. Only after
+	// progress, so a job that keeps pausing without tagging anything doesn't loop.
+	let autoResumedAt = -1;
 
 	const AUDIT_POLL_MS = 5000;
 
@@ -65,6 +69,11 @@
 			auditStale = data.stale;
 		} catch {
 			// keep the last known status
+		}
+		if (auditStatus?.state === 'paused' && auditStatus.audited > autoResumedAt) {
+			autoResumedAt = auditStatus.audited;
+			await triggerChunkAudit();
+			return;
 		}
 		if (auditStatus?.state === 'running' && !auditStale) {
 			auditPoll = setTimeout(refreshAuditStatus, AUDIT_POLL_MS);
@@ -555,7 +564,11 @@
 							disabled={auditRunning || auditStarting}
 							class="h-full rounded border border-stone-300 px-4 text-xs font-medium uppercase tracking-wider transition-colors hover:bg-stone-300 disabled:cursor-not-allowed disabled:text-stone-300 disabled:hover:bg-transparent dark:border-stone-700 dark:hover:bg-stone-700 dark:disabled:text-stone-700 dark:disabled:hover:bg-transparent"
 						>
-							{auditRunning || auditStarting ? 'Auditing...' : auditStale ? 'Resume' : 'Audit'}
+							{auditRunning || auditStarting
+								? 'Auditing...'
+								: auditStale || auditStatus?.state === 'paused'
+									? 'Resume'
+									: 'Audit'}
 						</button>
 					</span>
 					<p class="text-xs text-stone-400 dark:text-stone-500">
@@ -570,10 +583,16 @@
 									? 'animate-pulse bg-mud-600'
 									: auditStatus.state === 'done'
 										? 'bg-green-500'
-										: 'bg-red-500'}"
+										: auditStatus.state === 'paused'
+											? 'bg-mud-600'
+											: 'bg-red-500'}"
 							></span>
 							{#if auditRunning}
 								Running since {formatAuditTime(auditStatus.startedAt)}
+							{:else if auditStatus.state === 'paused'}
+								Paused partway (started {formatAuditTime(auditStatus.startedAt)}). Vercel limits how
+								many runs can start each other, so it picks up again while this page is open, or click
+								Resume
 							{:else if auditStale}
 								Stopped partway (started {formatAuditTime(auditStatus.startedAt)}) — click Resume
 							{:else if auditStatus.state === 'done' && auditStatus.finishedAt}

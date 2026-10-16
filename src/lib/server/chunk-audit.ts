@@ -69,7 +69,8 @@ function sourceKind(source: unknown): SourceKind {
 const STATUS_POINT_ID = 'a0000000-0000-0000-0000-000000000002';
 
 export type ChunkAuditStatus = {
-	state: 'running' | 'done' | 'error';
+	/** `paused`: Vercel's loop limit stopped the chain; Resume (or the open admin page) continues it. */
+	state: 'running' | 'paused' | 'done' | 'error';
 	startedAt: string;
 	/** Bumped after every ~45s run; a stale value while `running` means the chain stopped. */
 	updatedAt: string;
