@@ -8,6 +8,7 @@ import {
 	searchRepoCode
 } from '$lib/server/github-repo';
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
+import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
@@ -84,6 +85,12 @@ type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
 const MISS_PATTERN =
 	/\bI (?:don['’]t|do not) (?:have|see)\b|\bnot sure from\b|\bnothing (?:here )?(?:on|about)\b/i;
 const RELATED_PAGE_LIMIT = 2;
+
+// Shown when the model can't be reached for a reason that won't fix itself (out of credits, bad
+// key, no access). "Try again" would fail the same way, so this points at Hunter directly; the
+// contact card the hiring answers use is attached under it.
+const MODEL_UNAVAILABLE_TEXT =
+	"I can't answer questions right now, something's off on my end. If you'd like to reach Hunter in the meantime, his email and LinkedIn are right below.";
 
 // The Decisions reranker's probability that retrieved candidates answer the message. Below this,
 // initial CONTEXT counts as a gap and the router plans supplemental searches. Boolean answers
@@ -183,13 +190,27 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 
 			// Graceful degradation: if anything in the pipeline throws, still send the
 			// visitor a real reply instead of leaving the loading indicator stuck.
-			function writeFallbackReply(text: string) {
+			function writeFallbackParts(text: string, contactCard: boolean) {
 				const id = crypto.randomUUID();
-				writer.write({ type: 'start' });
-				writer.write({ type: 'start-step' });
 				writer.write({ type: 'text-start', id });
 				writer.write({ type: 'text-delta', id, delta: text });
 				writer.write({ type: 'text-end', id });
+				if (contactCard) {
+					// The same client tool the model calls on hiring questions: the client turns it into
+					// this text plus the Email / LinkedIn buttons (see handleToolCall in MessageStore).
+					writer.write({
+						type: 'tool-input-available',
+						toolCallId: crypto.randomUUID(),
+						toolName: 'capture_lead_intent',
+						input: { intent_type: 'general', message: text }
+					});
+				}
+			}
+
+			function writeFallbackReply(text: string, contactCard = false) {
+				writer.write({ type: 'start' });
+				writer.write({ type: 'start-step' });
+				writeFallbackParts(text, contactCard);
 				writer.write({ type: 'finish-step' });
 				writer.write({ type: 'finish' });
 			}
@@ -224,6 +245,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				fallbackSearchRan: false,
 				emptyReplyFallback: false,
 				modelError: null as string | null,
+				modelFailure: null as ModelFailure | null,
 				pipelineError: false,
 				contextForReflection: '',
 				aboutText: null as string | null,
@@ -266,6 +288,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					fallback_search_ran: turn.fallbackSearchRan,
 					empty_reply_fallback: turn.emptyReplyFallback,
 					model_error: turn.modelError,
+					model_failure: turn.modelFailure,
 					pipeline_error: turn.pipelineError,
 					current_page: currentPage,
 					run_id: runID,
@@ -922,6 +945,7 @@ ${contextForModel}`;
 					onError: ({ error }) => {
 						console.error('streamText error:', error);
 						turn.modelError = error instanceof Error ? error.message : String(error);
+						turn.modelFailure = classifyModelFailure(error);
 					},
 					onChunk: ({ chunk }) => {
 						if (!sawFirstToken && chunk.type === 'text-delta') {
@@ -986,6 +1010,10 @@ ${contextForModel}`;
 						}
 					} else if (value.type === 'error') {
 						turn.modelError ??= value.errorText;
+						// Not forwarded: the client treats an error chunk as fatal, stops reading, and
+						// never sees the fallback reply written below. The failure is still logged and
+						// sent to PostHog via turn.modelError / turn.modelFailure.
+						continue;
 					}
 					writer.write(value);
 				}
@@ -1029,27 +1057,30 @@ ${contextForModel}`;
 						modelError: turn.modelError,
 						runID
 					});
-					const fallbackText = 'Sorry, I blanked on that one — mind asking again?';
+					const unavailable = turn.modelFailure === 'unavailable';
+					const fallbackText = unavailable
+						? MODEL_UNAVAILABLE_TEXT
+						: 'Sorry, I blanked on that one — mind asking again?';
 					turn.emptyReplyFallback = true;
 					turn.visibleText = fallbackText;
-					const id = crypto.randomUUID();
 					writer.write({ type: 'start-step' });
-					writer.write({ type: 'text-start', id });
-					writer.write({ type: 'text-delta', id, delta: fallbackText });
-					writer.write({ type: 'text-end', id });
+					writeFallbackParts(fallbackText, unavailable);
 					writer.write({ type: 'finish-step' });
 				}
 				writer.write({ type: 'finish' });
 			} catch (error) {
 				console.error('Chat API error:', error);
-				const fallbackText =
-					error instanceof OpenAI.APIError
+				const unavailable = classifyModelFailure(error) === 'unavailable';
+				const fallbackText = unavailable
+					? MODEL_UNAVAILABLE_TEXT
+					: error instanceof OpenAI.APIError
 						? 'Something glitched talking to the model — mind trying that again?'
 						: 'Something went wrong on my end — mind trying that again?';
 				turn.pipelineError = true;
 				turn.modelError = error instanceof Error ? error.message : String(error);
+				turn.modelFailure = unavailable ? 'unavailable' : 'transient';
 				turn.visibleText = fallbackText;
-				writeFallbackReply(fallbackText);
+				writeFallbackReply(fallbackText, unavailable);
 			}
 
 			timer.mark('total');
@@ -1071,6 +1102,7 @@ ${contextForModel}`;
 					router_gate: turn.routerGate,
 					router_ran: turn.routerRan,
 					retrieval_failed: turn.retrievalError ? true : undefined,
+					model_failure: turn.modelFailure ?? undefined,
 					excluded_by_audit: turn.excludedByAudit || undefined,
 					...timer.timings
 				})
