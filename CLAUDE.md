@@ -98,8 +98,7 @@ HuntBot/
 │       ├── api/
 │       │   ├── chat/+server.ts       # POST — main chat endpoint (RAG + streaming)
 │       │   ├── cron/
-│       │   │   ├── qdrant-keepalive/ # Daily Vercel Cron ping to keep the free Qdrant cluster active
-│       │   │   └── chunk-audit/      # Daily Vercel Cron tagging untagged chunks (see chunk-audit.ts)
+│       │   │   └── qdrant-keepalive/ # Daily Vercel Cron ping to keep the free Qdrant cluster active
 │       │   └── embed/                # GET endpoints to trigger Qdrant embedding jobs
 │       │       ├── urls/             # Recursively crawls hunterbryant.io
 │       │       ├── notion-url/       # Embeds content from Notion via API
@@ -264,7 +263,7 @@ All embedders use:
 
 ### Chunk audit (quality + privacy tags, no re-embedding)
 
-`src/lib/server/chunk-audit.ts` tags every chunk with `metadata.audit` using OpenAI Decisions (8 chunks per call): a `substance` score (0–3, boilerplate → rich), and for notes/iMessage chunks a `sensitive` probability (contact details, financial/medical/legal details, credentials, private details about other people). The tags are written in place with Qdrant `set_payload`, so vectors are never touched and nothing needs re-embedding. A daily Vercel Cron (`GET /api/cron/chunk-audit`, `CRON_SECRET`-protected like the keepalive) tags whatever isn't tagged at the current `CHUNK_AUDIT_VERSION`, within a 45s budget per run, so the existing index gets cleaned gradually and new embeds are picked up the day after they're written. Bump `CHUNK_AUDIT_VERSION` after changing the rubric to re-audit everything.
+`src/lib/server/chunk-audit.ts` tags every chunk with `metadata.audit` using OpenAI Decisions (8 chunks per call): a `substance` score (0–3, boilerplate → rich), and for notes/iMessage chunks a `sensitive` probability (contact details, financial/medical/legal details, credentials, private details about other people). The tags are written in place with Qdrant `set_payload`, so vectors are never touched and nothing needs re-embedding. It's run by hand: the **Audit** button under Quality on `/admin/embeddings` calls `POST /api/admin/chunk-audit` (admin cookie required), which tags whatever isn't tagged at the current `CHUNK_AUDIT_VERSION` for up to 45s per call, and the page keeps calling until nothing is left. Run it after indexing so new chunks get checked too; until then they're simply kept. Bump `CHUNK_AUDIT_VERSION` after changing the rubric to re-audit everything.
 
 Retrieval (`searchByEmbedding` in `context.ts`) drops chunks flagged `low_value` (substance < 0.75) or `sensitive` (probability ≥ 0.8) right after each Qdrant search. That's done in code rather than as a Qdrant filter, so retrieval never depends on an audit index existing, and untagged chunks are always kept. Refused chunks are tagged `refused: true` and kept. A run logs one `[HuntBot chunk audit]` line with counts.
 

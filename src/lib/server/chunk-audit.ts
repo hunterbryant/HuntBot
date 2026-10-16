@@ -10,9 +10,9 @@ import {
 
 /**
  * Quality + privacy tags on knowledge-base chunks, written in place as `metadata.audit` with
- * Qdrant set_payload — vectors are never touched, so nothing needs re-embedding. A daily cron
- * (`/api/cron/chunk-audit`) tags whatever isn't tagged yet, a batch at a time, so the existing
- * index gets cleaned gradually and anything embedded later is picked up on the next run.
+ * Qdrant set_payload — vectors are never touched, so nothing needs re-embedding. The "Audit"
+ * button on /admin/embeddings (`POST /api/admin/chunk-audit`) tags whatever isn't tagged yet;
+ * run it after indexing so new chunks get checked too.
  * Retrieval then skips chunks flagged `low_value` or `sensitive` (see `isExcludedByAudit`).
  * Bump CHUNK_AUDIT_VERSION after changing the rubric to re-audit everything.
  */

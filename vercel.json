@@ -4,10 +4,6 @@
 		{
 			"path": "/api/cron/qdrant-keepalive",
 			"schedule": "0 12 * * *"
-		},
-		{
-			"path": "/api/cron/chunk-audit",
-			"schedule": "30 12 * * *"
 		}
 	]
 }
