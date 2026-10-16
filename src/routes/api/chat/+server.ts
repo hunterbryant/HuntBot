@@ -15,6 +15,15 @@ import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
 import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
+import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
+import {
+	buildVisitorContext,
+	formatVisitorContextForPrompt,
+	replyMentionsOrg,
+	visitorAnalyticsProps,
+	visitorContextEnabled,
+	type VisitorContext
+} from '$lib/server/visitor-context';
 import { createStageTimer } from '$lib/server/timing';
 import { UserRole } from '$lib/types';
 import {
@@ -22,6 +31,7 @@ import {
 	findRelatedSitePaths,
 	getContext,
 	getSitePageText,
+	RELATED_MIN_SCORE,
 	searchKnowledgeBase,
 	type RetrievedContext,
 	type StatusReporter
@@ -123,7 +133,7 @@ function assessConfidence(contextText: string): ContextConfidence {
 }
 
 export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
-	let body: { messages: UIMessage[]; sessionId?: string; currentPage?: string };
+	let body: { messages: UIMessage[]; sessionId?: string; currentPage?: string; visitor?: unknown };
 	try {
 		body = await request.json();
 	} catch {
@@ -183,6 +193,14 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 	}
 	const userAgent = request.headers.get('user-agent');
 	const isAdmin = locals.user?.role === UserRole.ADMIN;
+	// Global Privacy Control, from the header or the browser flag the client sends along. Known
+	// before the pipeline runs, so even a turn that throws early honors it.
+	const gpcRequested =
+		request.headers.get('sec-gpc') === '1' ||
+		(typeof body.visitor === 'object' &&
+			body.visitor !== null &&
+			(body.visitor as { gpc?: unknown }).gpc === true);
+	const visitorEnabled = visitorContextEnabled();
 
 	const stream = createUIMessageStream<UIMessage>({
 		execute: async ({ writer }) => {
@@ -250,13 +268,32 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				pipelineError: false,
 				contextForReflection: '',
 				aboutText: null as string | null,
-				serverToolOutputs: [] as { name: string; output: string }[]
+				serverToolOutputs: [] as { name: string; output: string }[],
+				visitor: null as VisitorContext | null,
+				orgMentioned: false,
+				// Best vector score of the visitor's message against public content, set only on misses
+				relatedTopScore: null as number | null
 			};
 
 			function sendTurnAnalytics() {
+				// Under GPC: no IP, no user agent, and PostHog is told not to geolocate
+				const gpc = turn.visitor?.gpc ?? gpcRequested;
+				if (turn.visitor?.org && turn.visitor.org.orgClass === 'org') {
+					turn.orgMentioned = replyMentionsOrg(
+						turn.visibleText,
+						[...priorUserMessages, lastMessageText].join(' '),
+						turn.visitor.org
+					);
+					if (turn.orgMentioned) {
+						// Counts only: the prompt says never to name the visitor's network
+						console.warn('[HuntBot visitor]', JSON.stringify({ run_id: runID, org_mentioned: true }));
+					}
+				}
 				void captureServerEvent('chat_message', sessionId ?? runID, {
-					$ip: clientIp ?? undefined,
-					$raw_user_agent: userAgent ?? undefined,
+					...(gpc
+						? { $geoip_disable: true }
+						: { $ip: clientIp ?? undefined, $raw_user_agent: userAgent ?? undefined }),
+					...(gpc ? { gpc: true } : visitorAnalyticsProps(turn.visitor, turn.orgMentioned)),
 					$current_url: `${SITE_ORIGIN_PREFIX}${currentPage}`,
 					$pathname: currentPage,
 					is_admin: isAdmin,
@@ -265,6 +302,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					// message a client-side tool (route, lead capture) showed in its place.
 					bot_response: turn.visibleText.trim() || clientToolReplyText(turn.clientTool),
 					related_pages: turn.relatedPages,
+					related_top_score:
+						turn.relatedTopScore === null ? null : Number(turn.relatedTopScore.toFixed(3)),
 					function_call_name: turn.clientTool?.name ?? null,
 					function_call_args: turn.clientTool ? JSON.stringify(turn.clientTool.input) : null,
 					server_tools: turn.serverTools.map((t) => t.name),
@@ -362,6 +401,12 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				// warning while we're awaiting other work — the await below still throws.
 				const routesPromise = getAvailableRoutes();
 				routesPromise.catch(() => {});
+				// Reverse-IP network lookup (IPinfo Lite) also overlaps classification + retrieval; it
+				// has an 800ms cap, never throws, and is skipped under GPC or without a token.
+				const orgPromise: Promise<IpOrg | null> =
+					visitorEnabled && !gpcRequested
+						? timer.time('ip_org', () => lookupIpOrg(clientIp))
+						: Promise.resolve(null);
 				// The Information page (role, work history, links) goes into every prompt so basic
 				// "who is he / where has he worked / how do I reach him" questions never depend on
 				// retrieval — the quick lane in particular kept missing them. Cached for 30 min.
@@ -385,7 +430,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					excludedByAudit: 0,
 					fromCache: false
 				};
-				const [retrieved, availableRoutes, aboutPageText] = await Promise.all([
+				const [retrieved, availableRoutes, aboutPageText, visitorOrg] = await Promise.all([
 					fastPath
 						? Promise.resolve(noContext)
 						: timer
@@ -405,8 +450,21 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 									return noContext;
 								}),
 					routesPromise,
-					aboutPromise
+					aboutPromise,
+					orgPromise
 				]);
+				// Cached catalog (5 min), already warm from routesPromise, so this is instant
+				if (visitorEnabled) {
+					const { pages: navPages } = await getSiteNavCatalog();
+					turn.visitor = buildVisitorContext({
+						request,
+						payload: body.visitor,
+						pages: navPages,
+						currentPage,
+						org: visitorOrg
+					});
+					logRag('visitor context', { ...turn.visitor, org: turn.visitor.org?.orgClass ?? null });
+				}
 				const context = retrieved.text;
 				turn.contextAnswersQuestion = retrieved.answersQuestion;
 				turn.rerankEngine = fastPath ? null : retrieved.rerankEngine;
@@ -771,6 +829,9 @@ You are HuntBot on Hunter Bryant's portfolio. Hunter is a product designer; the 
 You are HuntBot, not Hunter. Talk about him in the third person ("Hunter", "he"), in his conversational style. Use "I" only for yourself as the bot ("I don't have that", "I run on a RAG pipeline").
 Visitors often talk to you as if you were Hunter ("how do you work?", "are you open to freelance?"). Answer about him in the third person ("He starts with..."). Never claim his work or experiences as your own: "He processed the point cloud in CloudCompare", never "I processed the point cloud".
 
+## Visitor hints
+The Live details section can include "Visitor hints (internal)": rough signals like how they arrived, their device, their local time, pages they've already read, and sometimes the network they're on. Use them only to choose emphasis, length and date math: skip what they've already read, lean toward work that fits how they arrived, keep it short on a phone. Never say where the visitor came from, their company or network, location, device, language or reading history unless they bring it up first, and never greet or address them by company name. If they ask what you know about them, answer honestly and generally ("rough hints like your device, time zone and how you got here, to tailor answers") without listing specifics unless they ask for them.
+
 ## How Hunter talks
 
 Hunter thinks out loud. He leads with the point, then layers context and examples after. He mirrors what people say before adding his own angle. He's direct but not blunt — casual but not sloppy.
@@ -902,7 +963,7 @@ ${aboutPageText?.trim() || '(Unavailable this turn — fall back to CONTEXT.)'}
 Today is ${today} (${todayISO}). Use CONTEXT dates when present; prefer specific months/years over vague "recently". When calling get_calendar_events with a relative date ("yesterday", "next Tuesday"), compute it from ${todayISO}.
 
 The visitor is on: ${pageContext}. On a specific case study/project page, engage with that content. On listing pages, treat them as browsing.
-
+${turn.visitor ? formatVisitorContextForPrompt(turn.visitor) : ''}
 APPROVED ROUTES (copy exactly, no modifications):
 ${routableRoutes.join('\n')}
 ${routerPlan.assistant_hint?.trim() ? `\n## Router note (internal)\n${routerPlan.assistant_hint.trim()}\n` : ''}
@@ -1043,17 +1104,23 @@ ${contextForModel}`;
 							const titleOf = new Map(pages.map((p) => [p.path, p.displayTitle]));
 							const paths = pagesNamedIn(turn.visibleText, pages).map((p) => p.path);
 							if (isMiss) {
-								// Pages retrieval already ranked for this question come next; a site-only
-								// search fills in when CONTEXT held no site pages (notes or texts only).
-								paths.push(
-									...[...seenSourceUrls]
-										.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
-										.filter((path) => path !== currentPage)
-								);
-								if (paths.length < RELATED_PAGE_LIMIT) {
-									const embedding =
-										laneDecision.embedding ?? (await embedQueryText(lastMessageText));
-									paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
+								// Chips under a miss only make sense when the message itself is near some site
+								// content. Meta questions ("what do you know about me?") and topicless
+								// follow-ups ("show me those details") aren't, and used to get an unrelated
+								// page. The same gate covers the pages CONTEXT happened to hold.
+								const embedding =
+									laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+								const found = await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2);
+								turn.relatedTopScore = found.topScore;
+								if (found.topScore >= RELATED_MIN_SCORE) {
+									// Pages retrieval already ranked for this question come first, then the
+									// closest site pages by the message embedding.
+									paths.push(
+										...[...seenSourceUrls]
+											.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
+											.filter((path) => path !== currentPage),
+										...found.paths
+									);
 								}
 							}
 							return [...new Set(paths)]
@@ -1125,6 +1192,7 @@ ${contextForModel}`;
 					retrieval_failed: turn.retrievalError ? true : undefined,
 					model_failure: turn.modelFailure ?? undefined,
 					excluded_by_audit: turn.excludedByAudit || undefined,
+					ip_org_class: turn.visitor?.org?.orgClass,
 					...timer.timings
 				})
 			);

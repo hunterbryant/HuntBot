@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
+import { getVisitorContext } from '$lib/visitorContext';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
@@ -13,6 +14,9 @@ const SESSION_KEY = 'huntbot_session_id';
 const CHAT_KEY = 'huntbot_chat_v1';
 const MAX_SAVED_MESSAGES = 50;
 
+// True when a still-valid session id already existed before this page load (a returning visitor).
+let sessionWasReturning = false;
+
 // Lives in localStorage so a conversation resumed after closing the browser keeps one session id
 // (PostHog joins on it). Expires after 7 days of inactivity, like the saved chat.
 function getOrCreateSessionId(): string {
@@ -22,6 +26,7 @@ function getOrCreateSessionId(): string {
 		if (raw) {
 			const { id, at } = JSON.parse(raw) as { id?: string; at?: number };
 			if (id && typeof at === 'number' && Date.now() - at < STORAGE_TTL_MS) {
+				sessionWasReturning = true;
 				localStorage.setItem(SESSION_KEY, JSON.stringify({ id, at: Date.now() }));
 				return id;
 			}
@@ -35,6 +40,7 @@ function getOrCreateSessionId(): string {
 }
 
 export const SESSION_ID = getOrCreateSessionId();
+export const SESSION_RETURNING = sessionWasReturning;
 
 export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
@@ -374,7 +380,8 @@ export const chat = () => {
 		messages: restored ?? [initMessage],
 		transport: new DefaultChatTransport({
 			api: '/api/chat',
-			body: { sessionId: SESSION_ID }
+			// A function, so each turn carries the visitor's latest pages and dwell times
+			body: () => ({ sessionId: SESSION_ID, visitor: getVisitorContext() })
 		}),
 		onToolCall: async ({ toolCall }) => {
 			// In v6, tool call has toolName + input (not args)
