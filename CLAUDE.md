@@ -311,6 +311,7 @@ The site uses a simple cookie-based JWT auth system:
 - **Visitor auth** (`AUTH_PASSWORD`): Unlocks protected case studies. Sets a `role: USER` JWT cookie.
 - **Admin auth** (`ADMIN_PASSWORD`): Unlocks `/admin`. Sets a `role: ADMIN` JWT cookie.
 - Auth is verified server-side in `src/lib/server/auth.ts` via `authenticateUser(cookies)`.
+- `hooks.server.ts` guards the admin surface: `/admin` pages redirect to `/login`, and the API routes those pages call (`/api/embed/*`, `/api/admin/*`) return 401 without an admin cookie. The one exception is `/api/admin/chunk-audit`, which also accepts `Authorization: Bearer $CRON_SECRET` so the background audit can start its own follow-up runs. The hook checks the URL-decoded path, matching SvelteKit's routing, so `/%61dmin` can't slip past the prefix checks. **New admin-only API routes go under `/api/admin/`** to be covered automatically.
 - The JWT is signed with `JWT_KEY`.
 
 ---
