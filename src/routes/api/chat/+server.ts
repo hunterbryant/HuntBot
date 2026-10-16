@@ -14,7 +14,7 @@ import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/serve
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
-import { getAvailableRoutes, getSiteNavCatalog } from '$lib/server/site-nav-routes';
+import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
 import { UserRole } from '$lib/types';
 import {
@@ -75,7 +75,8 @@ const CLIENT_TOOL_NAMES = new Set([
 	'minimize_chat',
 	'route_to_page',
 	'ask_clarifying_question',
-	'capture_lead_intent'
+	'capture_lead_intent',
+	'reset_conversation'
 ]);
 
 type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
@@ -553,6 +554,15 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 								)
 						})
 					}),
+					reset_conversation: tool({
+						description:
+							'Clear this conversation and start fresh. Call this only when the visitor clearly asks to clear, reset or restart the chat ("start over", "forget all that", "can we start fresh?"). Never call it on your own initiative.',
+						inputSchema: z.object({
+							message: z
+								.string()
+								.describe('A brief sign-off before the chat clears (1 sentence, plain text).')
+						})
+					}),
 					route_to_page: tool({
 						description:
 							'Navigate the user to a page on Hunter\'s site. Routing is an extra, never a substitute for an answer: if the visitor asked a question or asked you to tell, describe, write or explain something, answer in text first and only then (optionally) call this in the same response. Call it on its own only when they explicitly asked to go somewhere ("take me to", "open", "show me the X page"). CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.',
@@ -856,6 +866,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 
 ## Tools
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
+- Use reset_conversation only when the visitor clearly asks to clear or restart the chat. (Typing "clear" already does it instantly, so mention that if they ask how.)
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
@@ -863,6 +874,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 
 ## Navigation
 Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
+When your reply names a project or case study from the list by its title, tappable links to it (up to two) appear under your reply on their own. So name the pages you mean by their listed titles, and save route_to_page for when the visitor asks to be taken somewhere. If they ask for a link, name the page and answer; never say you can't add links, and never mention chips or how the chat renders.
 
 ## iMessage context
 The CONTEXT section may include chunks labeled "[iMessage — contact]". These are Hunter's real text messages, grouped by conversation. Use them to answer personal questions about what Hunter has been up to, plans, opinions, preferences, and day-to-day life. Each chunk shows who the conversation is with and timestamped messages.
@@ -1021,20 +1033,29 @@ ${contextForModel}`;
 				// The prompt asks for a next step after "I don't have that", but bare misses kept
 				// getting through, so the server guarantees one: the closest site pages, sent as a
 				// data part the client renders as links under the reply.
-				if (producedReply && !fastPath && !turn.clientTool && MISS_PATTERN.test(turn.visibleText)) {
+				// The same chips also go under a reply that points at a project or case study by
+				// title, so a visitor can tap through without HuntBot routing them unasked.
+				const isMiss = MISS_PATTERN.test(turn.visibleText);
+				if (producedReply && !fastPath && !turn.clientTool) {
 					try {
 						const related = await timer.time('related', async () => {
-							// Pages retrieval already ranked for this question come first; a site-only
-							// search fills in when CONTEXT held no site pages (notes or texts only).
-							const paths = [...seenSourceUrls]
-								.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
-								.filter((path) => path !== currentPage);
-							if (paths.length < RELATED_PAGE_LIMIT) {
-								const embedding = laneDecision.embedding ?? (await embedQueryText(lastMessageText));
-								paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
-							}
 							const { pages } = await getSiteNavCatalog();
 							const titleOf = new Map(pages.map((p) => [p.path, p.displayTitle]));
+							const paths = pagesNamedIn(turn.visibleText, pages).map((p) => p.path);
+							if (isMiss) {
+								// Pages retrieval already ranked for this question come next; a site-only
+								// search fills in when CONTEXT held no site pages (notes or texts only).
+								paths.push(
+									...[...seenSourceUrls]
+										.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
+										.filter((path) => path !== currentPage)
+								);
+								if (paths.length < RELATED_PAGE_LIMIT) {
+									const embedding =
+										laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+									paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
+								}
+							}
 							return [...new Set(paths)]
 								.filter((path) => path !== '/' && routableRoutes.includes(path))
 								.slice(0, RELATED_PAGE_LIMIT)

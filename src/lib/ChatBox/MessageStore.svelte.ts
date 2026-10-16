@@ -8,13 +8,30 @@ import { toStore, writable } from 'svelte/store';
 // Re-export UIMessage as Message for backward compat with consuming code
 export type { UIMessage as Message };
 
+const STORAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SESSION_KEY = 'huntbot_session_id';
+const CHAT_KEY = 'huntbot_chat_v1';
+const MAX_SAVED_MESSAGES = 50;
+
+// Lives in localStorage so a conversation resumed after closing the browser keeps one session id
+// (PostHog joins on it). Expires after 7 days of inactivity, like the saved chat.
 function getOrCreateSessionId(): string {
-	const key = 'huntbot_session_id';
-	const existing = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(key) : null;
-	if (existing) return existing;
-	const id = crypto.randomUUID();
-	if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(key, id);
-	return id;
+	if (typeof window === 'undefined') return crypto.randomUUID();
+	try {
+		const raw = localStorage.getItem(SESSION_KEY);
+		if (raw) {
+			const { id, at } = JSON.parse(raw) as { id?: string; at?: number };
+			if (id && typeof at === 'number' && Date.now() - at < STORAGE_TTL_MS) {
+				localStorage.setItem(SESSION_KEY, JSON.stringify({ id, at: Date.now() }));
+				return id;
+			}
+		}
+		const id = sessionStorage.getItem(SESSION_KEY) || crypto.randomUUID();
+		localStorage.setItem(SESSION_KEY, JSON.stringify({ id, at: Date.now() }));
+		return id;
+	} catch {
+		return crypto.randomUUID();
+	}
 }
 
 export const SESSION_ID = getOrCreateSessionId();
@@ -184,6 +201,88 @@ const initMessage: UIMessage = {
 
 let chatInstance: Chat | null = null;
 
+/** Ids of messages restored from storage, so the UI doesn't replay their reveal animation. */
+export const restoredMessageIds = new Set<string>();
+
+const SAVED_PART_TYPES = new Set(['text', 'source-url', 'data-related']);
+
+/** Only what's worth showing again: replies, sources, related chips and the contact card. */
+function sanitizeForStorage(messages: UIMessage[]): UIMessage[] {
+	const out: UIMessage[] = [];
+	for (const m of stripTrailingAssistantToolTurns(messages)) {
+		if (m.id === initMessage.id) continue;
+		const role = m.role as string;
+		if (role === 'data') {
+			if ((m as unknown as FunctionMessage).name === 'capture_lead_intent') out.push(m);
+			continue;
+		}
+		if (role !== 'user' && role !== 'assistant') continue;
+		const parts = m.parts.filter((p) => SAVED_PART_TYPES.has(p.type));
+		if (!parts.some((p) => p.type === 'text' && (p as { text: string }).text.trim())) continue;
+		out.push({ ...m, parts });
+	}
+	return out.slice(-MAX_SAVED_MESSAGES);
+}
+
+function clearSavedChat() {
+	try {
+		localStorage.removeItem(CHAT_KEY);
+	} catch {
+		// Storage can be blocked (private mode) — persistence is best-effort
+	}
+}
+
+function saveChat() {
+	if (typeof window === 'undefined' || !chatInstance) return;
+	try {
+		const messages = sanitizeForStorage(chatInstance.messages);
+		if (!messages.some((m) => m.role === 'user')) return;
+		localStorage.setItem(CHAT_KEY, JSON.stringify({ savedAt: Date.now(), messages }));
+		localStorage.setItem(SESSION_KEY, JSON.stringify({ id: SESSION_ID, at: Date.now() }));
+	} catch {
+		// Quota or blocked storage — the chat still works, it just won't survive a restart
+	}
+}
+
+function loadSavedChat(): UIMessage[] | null {
+	if (typeof window === 'undefined') return null;
+	try {
+		const raw = localStorage.getItem(CHAT_KEY);
+		if (!raw) return null;
+		const { savedAt, messages } = JSON.parse(raw) as { savedAt?: number; messages?: UIMessage[] };
+		if (
+			typeof savedAt !== 'number' ||
+			Date.now() - savedAt > STORAGE_TTL_MS ||
+			!Array.isArray(messages) ||
+			!messages.some((m) => m.role === 'user')
+		) {
+			clearSavedChat();
+			return null;
+		}
+		return messages;
+	} catch {
+		clearSavedChat();
+		return null;
+	}
+}
+
+// Typing "clear" works like a terminal: instant, no model call.
+const RESET_COMMAND = /^\/?(clear|reset|start over|new chat)[.!]?$/i;
+
+/** Wipes the conversation (and its saved copy) back to the greeting. */
+export function resetChat(trigger: 'command' | 'tool') {
+	if (!chatInstance) return;
+	void chatInstance.stop();
+	cancelContextFetches();
+	suggestions.set([]);
+	scrollSuggestions.set([]);
+	hoverSuggestions.set([]);
+	clearSavedChat();
+	restoredMessageIds.clear();
+	chatInstance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
+	captureEvent('chat_reset', SESSION_ID, { session_id: SESSION_ID, trigger });
+}
+
 export const botEngaged = writable(false);
 export const minimized = writable(true);
 
@@ -264,9 +363,15 @@ export function getStreamingStatus(messages: UIMessage[]): string | undefined {
 }
 
 export const chat = () => {
+	const restored = loadSavedChat();
+	if (restored) {
+		restored.forEach((m) => restoredMessageIds.add(m.id));
+		botEngaged.set(true);
+	}
+
 	const instance = new Chat({
 		id: 'uniquechatid',
-		messages: [initMessage],
+		messages: restored ?? [initMessage],
 		transport: new DefaultChatTransport({
 			api: '/api/chat',
 			body: { sessionId: SESSION_ID }
@@ -284,9 +389,20 @@ export const chat = () => {
 
 	chatInstance = instance;
 
-	setTimeout(() => {
-		instance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
-	}, 2000);
+	if (!restored) {
+		setTimeout(() => {
+			// A reply may already be streaming if the visitor was quick
+			if (instance.messages.length > 1) return;
+			instance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
+		}, 2000);
+	}
+
+	// Save once a turn settles; tool calls rewrite messages outside streaming and save themselves.
+	$effect.root(() => {
+		$effect(() => {
+			if (instance.status === 'ready' || instance.status === 'error') saveChat();
+		});
+	});
 
 	// Bridge reactive Chat properties to Svelte stores for backward compat.
 	// Deep-read text parts: streaming applies deltas in place on the same message object, so a
@@ -314,14 +430,17 @@ export const chat = () => {
 			value = v;
 			return '';
 		});
-		if (value.trim()) {
+		if (RESET_COMMAND.test(value.trim())) {
+			resetChat('command');
+		} else if (value.trim()) {
 			instance.sendMessage({ text: value.trim() });
 		}
 	}
 
 	async function append(message: { role: string; content: string }) {
 		if (message.role === 'user') {
-			await instance.sendMessage({ text: message.content });
+			if (RESET_COMMAND.test(message.content.trim())) resetChat('command');
+			else await instance.sendMessage({ text: message.content });
 		}
 	}
 
@@ -469,4 +588,5 @@ function handleToolCall(toolCall: {
 	} else {
 		console.log('Unexpected tool call: ', toolCall.toolName);
 	}
+	saveChat();
 }

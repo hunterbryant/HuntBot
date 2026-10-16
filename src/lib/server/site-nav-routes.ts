@@ -76,3 +76,18 @@ export function formatNavPagesForPrompt(pages: NavPage[], currentPage: string): 
 		})
 		.join('\n');
 }
+
+/**
+ * Project and case-study pages a reply names by title, in the order they first appear. Section
+ * pages ("About", "Projects") are left out: their names are ordinary words, so a match there
+ * says nothing about the reply pointing at the page.
+ */
+export function pagesNamedIn(text: string, pages: NavPage[]): NavPage[] {
+	const haystack = text.toLowerCase().replace(/\s+/g, ' ');
+	return pages
+		.filter((p) => p.category !== 'section' && p.displayTitle.trim().length >= 4)
+		.map((page) => ({ page, at: haystack.indexOf(page.displayTitle.toLowerCase().trim()) }))
+		.filter((hit) => hit.at !== -1)
+		.sort((a, b) => a.at - b.at)
+		.map((hit) => hit.page);
+}

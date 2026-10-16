@@ -1,9 +1,10 @@
 import { env } from '$env/dynamic/private';
-import { formatNavPagesForPrompt, getSiteNavCatalog } from '$lib/server/site-nav-routes';
-import { bestMatchScores, getSitePageText, MIN_VECTOR_SCORE } from '$lib/utilities/context';
 import { logRag } from '$lib/server/rag-debug';
-import { json, type RequestHandler } from '@sveltejs/kit';
+import { formatNavPagesForPrompt, getSiteNavCatalog } from '$lib/server/site-nav-routes';
+import { dropAlreadyAnswered } from '$lib/server/suggestion-check';
+import { bestMatchScores, getSitePageText, MIN_VECTOR_SCORE } from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
+import { json, type RequestHandler } from '@sveltejs/kit';
 import { generateText, Output } from 'ai';
 import { z } from 'zod';
 
@@ -13,7 +14,8 @@ const PAGE_TEXT_MAX = 6000;
 
 // The model writes a few more chips than are shown; any whose nearest knowledge-base chunk is
 // below the retrieval floor gets dropped, so a chip never leads straight to "I don't have that".
-const CANDIDATE_COUNT = 5;
+// (6 candidates so the answerability and already-answered checks still usually leave 3.)
+const CANDIDATE_COUNT = 6;
 const SHOWN_COUNT = 3;
 
 // Navigation chips ("Take me to the Lyngen project") are answered by routing, not retrieval.
@@ -65,8 +67,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const { messages, currentPage, scrollDepth, sectionHeading, hoveredContent } =
 			await request.json();
 
-		const path =
-			typeof currentPage === 'string' && currentPage.startsWith('/') ? currentPage : '/';
+		const path = typeof currentPage === 'string' && currentPage.startsWith('/') ? currentPage : '/';
 
 		let navAppendix = '';
 		try {
@@ -82,20 +83,17 @@ export const POST: RequestHandler = async ({ request }) => {
 		const pageText = (await getSitePageText(path).catch(() => null))?.slice(0, PAGE_TEXT_MAX);
 		const pageTextBlock = pageText ? `\n\nPAGE TEXT (what the visitor can see):\n${pageText}` : '';
 
-		const scrollContext =
-			!hasUserMessages
-				? [
-						typeof scrollDepth === 'number'
-							? `Scroll depth: ${scrollDepth}% through the page.`
-							: '',
-						sectionHeading ? `Visible section: "${sectionHeading}"` : '',
-						typeof scrollDepth === 'number' && scrollDepth > 60
-							? "The visitor has scrolled deeply — they're engaged."
-							: ''
-					]
-						.filter(Boolean)
-						.join(' ')
-				: '';
+		const scrollContext = !hasUserMessages
+			? [
+					typeof scrollDepth === 'number' ? `Scroll depth: ${scrollDepth}% through the page.` : '',
+					sectionHeading ? `Visible section: "${sectionHeading}"` : '',
+					typeof scrollDepth === 'number' && scrollDepth > 60
+						? "The visitor has scrolled deeply — they're engaged."
+						: ''
+				]
+					.filter(Boolean)
+					.join(' ')
+			: '';
 
 		let systemPrompt: string;
 
@@ -122,8 +120,8 @@ Example: ${
 Current page: ${path}
 
 Rules:
-- Read the transcript below. Each suggestion MUST tie to something explicit there — names, products, topics, or the assistant's last answer. No generic portfolio prompts (e.g. avoid "What projects are showcased here?" unless the chat was about browsing the site).
-- Prefer deepening the current thread over changing subject.
+- Read the transcript below. Each suggestion must connect to something explicit there — a name, product or topic that came up. No generic portfolio prompts (e.g. avoid "What projects are showcased here?" unless the chat was about browsing the site).
+- The visitor has just read the LAST REPLY. Ask about something it mentions but doesn't explain, or the natural next step. Never ask what the LAST REPLY or an earlier reply already answers, and never repeat a question the visitor already asked.
 - Never follow up on something the assistant said it doesn't have or isn't sure about.
 ${CHIP_RULES}${
 				navAppendix
@@ -163,17 +161,18 @@ Example: ${
 			}`;
 		}
 
-		const conversationContext = hasUserMessages
+		const turns = hasUserMessages
 			? (messages as Array<{ role?: string; content?: unknown; parts?: unknown }>)
 					.filter((m) => m.role === 'user' || m.role === 'assistant')
-					.map((m) => {
-						const text = plainTextFromMessage(m);
-						return text && m.role ? `${m.role}: ${text}` : null;
-					})
-					.filter((line): line is string => line !== null)
+					.map((m) => ({ role: m.role as string, text: plainTextFromMessage(m) }))
+					.filter((t) => t.text)
 					.slice(-8)
-					.join('\n')
+			: [];
+		const conversationContext = turns.length
+			? turns.map((t) => `${t.role}: ${t.text}`).join('\n')
 			: null;
+		const lastReply = [...turns].reverse().find((t) => t.role === 'assistant')?.text ?? '';
+		const visitorQuestions = turns.filter((t) => t.role === 'user').map((t) => t.text);
 
 		const { output } = await generateText({
 			model: openai('gpt-6-luna'),
@@ -184,7 +183,9 @@ Example: ${
 			output: Output.object({ schema: z.object({ questions: z.array(z.string()) }) }),
 			instructions: systemPrompt,
 			prompt: conversationContext
-				? `Recent conversation (most recent last):\n${conversationContext}`
+				? `Recent conversation (most recent last):\n${conversationContext}${
+						lastReply ? `\n\nLAST REPLY (the visitor just read this):\n${lastReply}` : ''
+					}`
 				: 'No conversation yet — suggest openers.'
 		});
 
@@ -192,7 +193,7 @@ Example: ${
 			.map((s) => s.trim())
 			.filter((s) => s.length > 0)
 			.slice(0, CANDIDATE_COUNT);
-		const suggestions = await keepAnswerable(candidates);
+		const suggestions = await keepAnswerable(candidates, lastReply, visitorQuestions);
 
 		return json({ suggestions });
 	} catch (err) {
@@ -201,20 +202,36 @@ Example: ${
 	}
 };
 
-/** Drops chips the knowledge base can't back up, keeping the model's order. If the check itself
- *  fails, the chips go out unchecked rather than not at all. */
-async function keepAnswerable(candidates: string[]): Promise<string[]> {
+/** Drops chips the knowledge base can't back up, and (after a reply) chips that reply already
+ *  answers, keeping the model's order. If either check itself fails, its chips go out unchecked
+ *  rather than not at all. */
+async function keepAnswerable(
+	candidates: string[],
+	lastReply: string,
+	visitorQuestions: string[]
+): Promise<string[]> {
 	const questions = candidates.filter((c) => !NAV_CHIP.test(c));
-	let scores: number[];
-	try {
-		scores = await bestMatchScores(questions);
-	} catch (err) {
-		console.warn('Suggestion answerability check failed:', err);
-		return candidates.slice(0, SHOWN_COUNT);
-	}
-	const scoreOf = new Map(questions.map((q, i) => [q, scores[i]]));
-	logRag('suggestion scores', Object.fromEntries(scoreOf));
+	const [scoresResult, answered] = await Promise.all([
+		bestMatchScores(questions).catch((err) => {
+			console.warn('Suggestion answerability check failed:', err);
+			return null;
+		}),
+		// Starter, scroll and hover chips have no reply to repeat.
+		lastReply
+			? dropAlreadyAnswered(questions, lastReply, visitorQuestions)
+			: Promise.resolve({ kept: questions, probabilities: {} })
+	]);
+	const scoreOf = new Map(questions.map((q, i) => [q, scoresResult?.[i] ?? 0]));
+	logRag('suggestion scores', {
+		scores: Object.fromEntries(scoreOf),
+		already_answered: answered.probabilities
+	});
+	const notAnswered = new Set(answered.kept);
 	return candidates
-		.filter((c) => NAV_CHIP.test(c) || (scoreOf.get(c) ?? 0) >= MIN_VECTOR_SCORE)
+		.filter(
+			(c) =>
+				NAV_CHIP.test(c) ||
+				(notAnswered.has(c) && (scoresResult === null || (scoreOf.get(c) ?? 0) >= MIN_VECTOR_SCORE))
+		)
 		.slice(0, SHOWN_COUNT);
 }
