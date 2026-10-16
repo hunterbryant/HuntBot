@@ -8,7 +8,7 @@ import {
 	searchRepoCode
 } from '$lib/server/github-repo';
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
-import { captureServerEvent, runInBackground } from '$lib/server/posthog';
+import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
@@ -213,6 +213,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				rerankInputTokens: null as number | null,
 				excludedByAudit: 0,
 				retrievalError: null as string | null,
+				contextCacheHit: false,
 				// What decided whether the router ran: the deep lane always runs it, otherwise the
 				// Decisions sufficiency check when available, else the chunk-count heuristic.
 				routerGate: null as 'deep_lane' | 'decisions' | 'heuristic' | null,
@@ -251,6 +252,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					context_answers_question: turn.contextAnswersQuestion,
 					context_excluded_by_audit: turn.excludedByAudit,
 					retrieval_error: turn.retrievalError,
+					context_cache_hit: turn.contextCacheHit,
 					rerank_engine: turn.rerankEngine,
 					rerank_failed: turn.rerankFailed,
 					rerank_input_tokens: turn.rerankInputTokens,
@@ -275,8 +277,12 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					timings_ms: timer.timings
 				});
 
-				// Both post-reply audits run after the response has finished, so they're kept alive
-				// with waitUntil; otherwise the function can be frozen before they're sent.
+				// Both post-reply audits only produce PostHog events, so without a key they'd be paid
+				// calls whose results go nowhere.
+				if (!isAnalyticsEnabled()) return;
+
+				// Both run after the response has finished, so they're kept alive with waitUntil;
+				// otherwise the function can be frozen before they're sent.
 				if (turn.visibleText.trim() && !turn.pipelineError) {
 					runInBackground(
 						sendRagReflectionToPosthog({
@@ -352,7 +358,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					rerankEngine: 'none',
 					rerankFailed: false,
 					rerankInputTokens: null,
-					excludedByAudit: 0
+					excludedByAudit: 0,
+					fromCache: false
 				};
 				const [retrieved, availableRoutes, aboutPageText] = await Promise.all([
 					fastPath
@@ -382,6 +389,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				turn.rerankFailed = retrieved.rerankFailed;
 				turn.rerankInputTokens = retrieved.rerankInputTokens;
 				turn.excludedByAudit = retrieved.excludedByAudit;
+				turn.contextCacheHit = retrieved.fromCache;
 				turn.aboutText = aboutPageText;
 
 				// RAG router: only worth a full LLM round trip when initial retrieval came back

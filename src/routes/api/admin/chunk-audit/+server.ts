@@ -138,22 +138,27 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 			return json({ started: false, status: current }, { status: 409 });
 		} else {
 			const now = new Date().toISOString();
-			status = {
-				state: 'running',
-				startedAt: now,
-				updatedAt: now,
-				finishedAt: null,
-				audited: 0,
-				lowValue: 0,
-				sensitive: 0,
-				refused: 0,
-				inputTokens: 0,
-				error: null
-			};
+			// A stale `running` status is a chain that died partway: resume it, keeping its start
+			// time and totals so the finished job reports everything it did, not just the tail.
+			const resumed = current?.state === 'running';
+			status = resumed
+				? { ...current, updatedAt: now, inputTokens: current.inputTokens ?? 0 }
+				: {
+						state: 'running',
+						startedAt: now,
+						updatedAt: now,
+						finishedAt: null,
+						audited: 0,
+						lowValue: 0,
+						sensitive: 0,
+						refused: 0,
+						inputTokens: 0,
+						error: null
+					};
 			await saveChunkAuditStatus(status);
 			console.log(
 				'[HuntBot chunk audit] started',
-				JSON.stringify({ resumed: current?.state === 'running' })
+				JSON.stringify({ resumed, audited_so_far: status.audited })
 			);
 		}
 	} catch (err) {

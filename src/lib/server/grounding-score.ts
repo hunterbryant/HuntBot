@@ -5,6 +5,9 @@ import { experimental_decide, Experimental_DecisionRefusalError } from 'ai';
 
 // Everything the reply could legitimately draw on, trimmed so one call stays small and fast.
 const CONTEXT_MAX_CHARS = 12_000;
+// Router and fallback search results are appended after the full site pages, so a plain
+// head-slice would drop exactly the evidence those turns were answered from.
+const CONTEXT_TAIL_CHARS = 5_000;
 const ABOUT_MAX_CHARS = 6_000;
 const TOOL_OUTPUT_MAX_CHARS = 2_000;
 const GROUNDING_TIMEOUT_MS = 10_000;
@@ -32,6 +35,14 @@ const VISITOR_INTENTS = {
 	curious: 'A general visitor browsing out of curiosity',
 	testing: 'Someone poking at the chatbot itself: jailbreaks, trick questions or off-topic tests'
 };
+
+/** Trim CONTEXT to the limit while keeping its end, where supplemental search results go. */
+function headAndTail(text: string): string {
+	if (text.length <= CONTEXT_MAX_CHARS) return text;
+	const head = text.slice(0, CONTEXT_MAX_CHARS - CONTEXT_TAIL_CHARS);
+	const tail = text.slice(-CONTEXT_TAIL_CHARS);
+	return `${head}\n\n[… middle of CONTEXT omitted …]\n\n${tail}`;
+}
 
 /**
  * Cheap per-turn audit of every reply, sent to PostHog as `rag_grounding` (joined to
@@ -109,7 +120,7 @@ async function scoreReply(
 			reply: assistantText,
 			evidence: {
 				about_hunter: options.aboutText?.slice(0, ABOUT_MAX_CHARS) ?? '',
-				context: options.contextText.slice(0, CONTEXT_MAX_CHARS),
+				context: headAndTail(options.contextText),
 				tool_results: options.toolOutputs.map((t) => ({
 					tool: t.name,
 					output: t.output.slice(0, TOOL_OUTPUT_MAX_CHARS)

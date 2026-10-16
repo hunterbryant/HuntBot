@@ -4,6 +4,11 @@ import { waitUntil } from '@vercel/functions';
 /** distinct_id for server-side jobs with no visitor behind them (e.g. the chunk audit). */
 export const SYSTEM_DISTINCT_ID = 'huntbot-system';
 
+/** False when no PostHog key is configured, e.g. local dev or a preview without one. */
+export function isAnalyticsEnabled(): boolean {
+	return !!publicEnv.PUBLIC_POSTHOG_API_KEY;
+}
+
 /**
  * Send one server-side event to PostHog. The request is registered with Vercel's `waitUntil`, so
  * it still completes when it's sent after the response has finished (a plain un-awaited fetch can

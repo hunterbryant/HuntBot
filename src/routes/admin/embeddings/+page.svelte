@@ -46,6 +46,8 @@
 	let auditStatus: ChunkAuditStatus | null = null;
 	let auditStale = false;
 	let auditStarting = false;
+	// Why the last start or status check failed (expired login, server error); shown in red.
+	let auditError = '';
 	let auditPoll: ReturnType<typeof setTimeout> | undefined;
 
 	const AUDIT_POLL_MS = 5000;
@@ -54,6 +56,10 @@
 		clearTimeout(auditPoll);
 		try {
 			const res = await fetch('/api/admin/chunk-audit');
+			if (res.status === 401) {
+				auditError = 'Your admin login has expired. Log in again to check or start the audit.';
+				return;
+			}
 			const data = await res.json();
 			auditStatus = data.status;
 			auditStale = data.stale;
@@ -67,8 +73,22 @@
 
 	const triggerChunkAudit = async () => {
 		auditStarting = true;
+		auditError = '';
 		try {
-			await fetch('/api/admin/chunk-audit', { method: 'POST' });
+			const res = await fetch('/api/admin/chunk-audit', { method: 'POST' });
+			// 409 means a run is already going, which the status line below shows.
+			if (res.status === 401) {
+				auditError = 'Your admin login has expired. Log in again, then click Audit.';
+				return;
+			}
+			if (!res.ok && res.status !== 409) {
+				const data = await res.json().catch(() => ({}));
+				auditError = `The audit didn't start: ${data.error ?? `HTTP ${res.status}`}`;
+				return;
+			}
+		} catch (err) {
+			auditError = `The audit didn't start: ${err instanceof Error ? err.message : err}`;
+			return;
 		} finally {
 			auditStarting = false;
 		}
@@ -563,6 +583,9 @@
 							{/if}
 						</p>
 						<p class="text-xs text-stone-400 dark:text-stone-500">{auditCounts}</p>
+					{/if}
+					{#if auditError}
+						<p class="text-xs text-red-500">{auditError}</p>
 					{/if}
 				</div>
 			</div>

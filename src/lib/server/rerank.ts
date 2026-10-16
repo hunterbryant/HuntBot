@@ -8,6 +8,9 @@ import { experimental_decide, rerank, type Experimental_DecisionQuestion } from 
 // Dedicated cross-encoder reranker — ~0.2–0.6s per call vs. seconds for an LLM-based rerank.
 const COHERE_RERANK_MODEL = 'rerank-v4.0-fast';
 const COHERE_TIMEOUT_MS = 3000;
+// The Decisions call sits on the critical path of every standard/deep turn, so a slow call has
+// to fail over to vector order like any other error instead of holding up the reply.
+const DECISIONS_TIMEOUT_MS = 4000;
 
 // Ordered rubric for each chunk's relevance. The Decisions API returns a probability-weighted
 // fractional score in [0, RELEVANCE_LEVELS.length - 1], which ranks far more finely than an
@@ -19,9 +22,10 @@ const RELEVANCE_LEVELS = [
 	'Directly answers the question'
 ];
 
-// Excerpts go into the decision state once and every question refers to them by id. Long
-// enough for the sufficiency question below to judge whether a chunk actually answers.
-const DECISION_PREVIEW_CHARS = 500;
+// Excerpts go into the decision state once and every question refers to them by id. Site and
+// notes chunks are embedded at 1000 chars, so this is the whole chunk: the sufficiency question
+// below can't judge an answer it can't see (iMessage chunks are longer and get trimmed).
+const DECISION_EXCERPT_CHARS = 1200;
 // Earlier visitor messages shown to the sufficiency question, so follow-ups ("what about
 // the second one?") can be judged against what they refer to.
 const SUFFICIENCY_HISTORY_TURNS = 3;
@@ -90,7 +94,7 @@ async function rankWithDecisions(
 	const excerpts = docs.map((doc, i) => ({
 		id: `chunk_${i}`,
 		source: String(doc.metadata?.source ?? 'unknown'),
-		text: doc.pageContent.slice(0, DECISION_PREVIEW_CHARS)
+		text: doc.pageContent.slice(0, DECISION_EXCERPT_CHARS)
 	}));
 
 	const questions: Record<string, Experimental_DecisionQuestion> = {};
@@ -124,7 +128,8 @@ async function rankWithDecisions(
 			}),
 			excerpts
 		},
-		questions
+		questions,
+		abortSignal: AbortSignal.timeout(DECISIONS_TIMEOUT_MS)
 	});
 
 	// Stable sort: ties keep their incoming (vector-score) order.

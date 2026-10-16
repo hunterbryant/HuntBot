@@ -32,6 +32,8 @@ const BROWSE_PAGES = new Set(['/', '/case-studies', '/projects', '/information']
 const QDRANT_TOP_K = 16;
 const MIN_VECTOR_SCORE = 0.3;
 const RERANK_TOP_K = 5;
+// Extra results per search to make up for chunks the chunk audit excludes.
+const AUDIT_HEADROOM = 8;
 
 type ScoredDoc = { doc: Document; vectorScore: number };
 
@@ -150,11 +152,26 @@ async function searchByEmbedding(
 	if (!collection) {
 		throw new Error('QDRANT_COLLECTION is not set');
 	}
-	const results = await qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
-	// Chunks the chunk audit flagged as boilerplate or sensitive (see $lib/server/chunk-audit).
-	// Filtered here rather than in Qdrant so retrieval never depends on an audit index existing.
-	const kept = results.filter(([doc]) => !isExcludedByAudit(doc.metadata));
-	if (stats) stats.excludedByAudit += results.length - kept.length;
+	// Chunks the chunk audit flagged as boilerplate or sensitive (see $lib/server/chunk-audit) are
+	// dropped here rather than with a Qdrant filter, so retrieval never depends on an audit index
+	// existing. A few extra results are fetched so dropping them doesn't shrink the top-k.
+	const results = await qdrantSimilaritySearchWithScore(
+		client,
+		collection,
+		embedding,
+		k + AUDIT_HEADROOM,
+		filter
+	);
+	const kept: [Document, number][] = [];
+	for (const result of results) {
+		if (kept.length >= k) break;
+		if (isExcludedByAudit(result[0].metadata)) {
+			// Counted only when it would have made the cut, so the stat means "pushed out".
+			if (stats) stats.excludedByAudit++;
+		} else {
+			kept.push(result);
+		}
+	}
 	return kept;
 }
 
@@ -260,6 +277,8 @@ export type RetrievedContext = {
 	rerankInputTokens: number | null;
 	/** Candidates dropped because the chunk audit flagged them low-value or sensitive. */
 	excludedByAudit: number;
+	/** Served from the first-turn context cache: no rewrite, search or rerank ran this turn. */
+	fromCache: boolean;
 };
 
 export const getContext = async (
@@ -276,7 +295,9 @@ export const getContext = async (
 		if (cached && cached.expires > Date.now()) {
 			logRag('getContext cache hit', { lane, currentPage });
 			timer.mark('context_cache_hit');
-			return cached.context;
+			// The cached sufficiency judgment still holds for the same question, but this turn ran
+			// no rerank or search, so it reports none of their cost.
+			return { ...cached.context, rerankInputTokens: null, excludedByAudit: 0, fromCache: true };
 		}
 	}
 
@@ -495,7 +516,8 @@ export const getContext = async (
 		rerankEngine: rerank.engine,
 		rerankFailed: rerank.failed,
 		rerankInputTokens: rerank.inputTokens,
-		excludedByAudit: searchStats.excludedByAudit
+		excludedByAudit: searchStats.excludedByAudit,
+		fromCache: false
 	};
 	if (cacheKey && contextText) {
 		if (contextCache.size >= CONTEXT_CACHE_MAX) {
@@ -599,8 +621,7 @@ export async function bestMatchScores(queries: string[]): Promise<number[]> {
 	const embeddings = await getEmbeddings().embedDocuments(queries);
 	return Promise.all(
 		embeddings.map(async (embedding) => {
-			// A few extra, in case the nearest ones were excluded by the chunk audit.
-			const [top] = await searchByEmbedding(embedding, 4, PUBLIC_SOURCES_FILTER);
+			const [top] = await searchByEmbedding(embedding, 1, PUBLIC_SOURCES_FILTER);
 			return top ? top[1] : 0;
 		})
 	);

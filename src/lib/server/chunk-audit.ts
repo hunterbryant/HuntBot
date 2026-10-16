@@ -1,6 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { CONFIG_POINT_ID } from '$lib/server/imessage-config';
-import { getPointVectorForUpsert, getQdrantClient } from '$lib/server/qdrant-search';
+import { getQdrantClient, readConfigPoint, writeConfigPoint } from '$lib/server/qdrant-search';
 import { createOpenAI } from '@ai-sdk/openai';
 import {
 	experimental_decide,
@@ -67,7 +67,6 @@ function sourceKind(source: unknown): SourceKind {
 // Progress of the background audit, kept in Qdrant like the iMessage toggle so the admin page
 // can show it from any device and after the page that started it is closed.
 const STATUS_POINT_ID = 'a0000000-0000-0000-0000-000000000002';
-const VECTOR_DIMS = 512;
 
 export type ChunkAuditStatus = {
 	state: 'running' | 'done' | 'error';
@@ -85,21 +84,12 @@ export type ChunkAuditStatus = {
 };
 
 export async function getChunkAuditStatus(): Promise<ChunkAuditStatus | null> {
-	const [point] = await getQdrantClient().retrieve(env.QDRANT_COLLECTION!, {
-		ids: [STATUS_POINT_ID],
-		with_payload: true,
-		with_vector: false
-	});
-	return (point?.payload?.chunkAudit as ChunkAuditStatus | undefined) ?? null;
+	const payload = await readConfigPoint(STATUS_POINT_ID);
+	return (payload?.chunkAudit as ChunkAuditStatus | undefined) ?? null;
 }
 
 export async function saveChunkAuditStatus(status: ChunkAuditStatus): Promise<void> {
-	const client = getQdrantClient();
-	const collection = env.QDRANT_COLLECTION!;
-	const vector = await getPointVectorForUpsert(client, collection, new Array(VECTOR_DIMS).fill(0));
-	await client.upsert(collection, {
-		points: [{ id: STATUS_POINT_ID, vector, payload: { type: '_config', chunkAudit: status } }]
-	});
+	await writeConfigPoint(STATUS_POINT_ID, { chunkAudit: status });
 }
 
 function judgedText(payload: Record<string, unknown>): string | null {
@@ -111,9 +101,24 @@ function judgedText(payload: Record<string, unknown>): string | null {
 
 type Usage = { inputTokens: number };
 
+/**
+ * Time limits for one run. New batches (and refusal retries) only start before `softEnd`; every
+ * call is aborted at `hardEnd`, which leaves room under the function's maxDuration to save
+ * progress and start the next run.
+ */
+type Deadline = { softEnd: number; hardEnd: number };
+
+// How far past the run budget an in-flight call may go before it's aborted.
+const CALL_GRACE_MS = 8_000;
+
+function isTimeout(err: unknown): boolean {
+	return err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+}
+
 async function auditBatch(
 	chunks: Chunk[],
-	usageTotal: Usage
+	usageTotal: Usage,
+	deadline: Deadline
 ): Promise<Map<Chunk['id'], ChunkAudit>> {
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 	const questions: Record<string, Experimental_DecisionQuestion> = {};
@@ -136,7 +141,8 @@ async function auditBatch(
 		state: {
 			excerpts: chunks.map((chunk, i) => ({ id: `chunk_${i}`, text: chunk.text }))
 		},
-		questions
+		questions,
+		abortSignal: AbortSignal.timeout(Math.max(1000, deadline.hardEnd - Date.now()))
 	});
 
 	usageTotal.inputTokens += usage.inputTokens ?? 0;
@@ -164,20 +170,25 @@ async function auditBatch(
 /**
  * One refusal fails every question in a decide call, so a refused batch is retried chunk by
  * chunk, and a chunk that's still refused gets marked as such instead of blocking the queue.
+ * Retries stop at the run's soft deadline; chunks not reached stay untagged for the next run.
  */
 async function auditWithRefusalFallback(
 	chunks: Chunk[],
-	usageTotal: Usage
+	usageTotal: Usage,
+	deadline: Deadline
 ): Promise<Map<Chunk['id'], ChunkAudit>> {
 	try {
-		return await auditBatch(chunks, usageTotal);
+		return await auditBatch(chunks, usageTotal, deadline);
 	} catch (err) {
 		if (!Experimental_DecisionRefusalError.isInstance(err)) throw err;
 	}
 	const audits = new Map<Chunk['id'], ChunkAudit>();
 	for (const chunk of chunks) {
+		if (Date.now() >= deadline.softEnd) break;
 		try {
-			for (const [id, audit] of await auditBatch([chunk], usageTotal)) audits.set(id, audit);
+			for (const [id, audit] of await auditBatch([chunk], usageTotal, deadline)) {
+				audits.set(id, audit);
+			}
 		} catch (err) {
 			if (!Experimental_DecisionRefusalError.isInstance(err)) throw err;
 			audits.set(chunk.id, {
@@ -241,6 +252,10 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 		.createPayloadIndex(collection, { field_name: 'metadata.audit.v', field_schema: 'integer' })
 		.catch(() => {});
 
+	const deadline: Deadline = {
+		softEnd: started + budgetMs,
+		hardEnd: started + budgetMs + CALL_GRACE_MS
+	};
 	const usageTotal: Usage = { inputTokens: 0 };
 	const run: ChunkAuditRun = {
 		...emptyCounts(),
@@ -280,14 +295,24 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 		}
 
 		for (let i = 0; i < chunks.length; i += CHUNKS_PER_CALL) {
-			if (Date.now() - started >= budgetMs) return finish(true);
+			if (Date.now() >= deadline.softEnd) return finish(true);
 			const batch = chunks.slice(i, i + CHUNKS_PER_CALL);
-			const audits = await auditWithRefusalFallback(batch, usageTotal);
-			await client.batchUpdate(collection, {
-				operations: [...audits].map(([id, audit]) => ({
-					set_payload: { payload: { audit }, points: [id], key: 'metadata' }
-				}))
-			});
+			let audits: Map<Chunk['id'], ChunkAudit>;
+			try {
+				audits = await auditWithRefusalFallback(batch, usageTotal, deadline);
+			} catch (err) {
+				// A call cut off at the hard deadline just ends this run; the batch stays untagged
+				// and the next run picks it up.
+				if (isTimeout(err)) return finish(true);
+				throw err;
+			}
+			if (audits.size > 0) {
+				await client.batchUpdate(collection, {
+					operations: [...audits].map(([id, audit]) => ({
+						set_payload: { payload: { audit }, points: [id], key: 'metadata' }
+					}))
+				});
+			}
 			for (const chunk of batch) {
 				const audit = audits.get(chunk.id);
 				if (!audit) continue;
