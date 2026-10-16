@@ -118,11 +118,21 @@ function chunkIdForImessage(chatId: string, seq: number): string {
 	return `CHUNK-imsg-${chatId}-${seq}`;
 }
 
+// Every chat turn embeds 2–4 times (lane, search, fallback), each on the visitor's critical path.
+// LangChain's default is 6 retries with exponential backoff (~80s per call), and it doesn't treat
+// OpenAI's "no credits remaining" 429 as final, so an out-of-credit account left the chat stuck
+// for ~5 minutes per turn. One quick retry covers a transient blip; anything worse fails fast and
+// the pipeline's own fallbacks take over.
+const EMBEDDING_MAX_RETRIES = 1;
+const EMBEDDING_TIMEOUT_MS = 10_000;
+
 export function getEmbeddings(): OpenAIEmbeddings {
 	return new OpenAIEmbeddings({
 		modelName: 'text-embedding-3-small',
 		openAIApiKey: env.OPENAI_API_KEY,
-		dimensions: 512
+		dimensions: 512,
+		maxRetries: EMBEDDING_MAX_RETRIES,
+		timeout: EMBEDDING_TIMEOUT_MS
 	});
 }
 
