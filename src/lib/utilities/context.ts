@@ -136,10 +136,14 @@ async function similaritySearchWithScore(
 	return searchByEmbedding(await embedQueryText(query), k, filter);
 }
 
+/** Per-turn counters filled in by searches, reported on the chat_message event. */
+type SearchStats = { excludedByAudit: number };
+
 async function searchByEmbedding(
 	embedding: number[],
 	k: number,
-	filter?: Record<string, unknown>
+	filter?: Record<string, unknown>,
+	stats?: SearchStats
 ): Promise<[Document, number][]> {
 	const client = getQdrantClient();
 	const collection = env.QDRANT_COLLECTION;
@@ -147,9 +151,11 @@ async function searchByEmbedding(
 		throw new Error('QDRANT_COLLECTION is not set');
 	}
 	const results = await qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
-	// Chunks the daily audit flagged as boilerplate or sensitive (see $lib/server/chunk-audit).
+	// Chunks the chunk audit flagged as boilerplate or sensitive (see $lib/server/chunk-audit).
 	// Filtered here rather than in Qdrant so retrieval never depends on an audit index existing.
-	return results.filter(([doc]) => !isExcludedByAudit(doc.metadata));
+	const kept = results.filter(([doc]) => !isExcludedByAudit(doc.metadata));
+	if (stats) stats.excludedByAudit += results.length - kept.length;
+	return kept;
 }
 
 const NOT_A_NAME = new Set([
@@ -223,7 +229,13 @@ async function maybeRerank(
 	if (shouldRerank) {
 		return rerankChunks(query, docs, topK, sufficiency);
 	}
-	return { docs: docs.slice(0, topK), answersQuestion: null };
+	return {
+		docs: docs.slice(0, topK),
+		engine: 'none',
+		failed: false,
+		inputTokens: null,
+		answersQuestion: null
+	};
 }
 
 export type GetContextOptions = {
@@ -242,6 +254,12 @@ export type RetrievedContext = {
 	 * visitor's message. Null when nothing judged it (quick lane, Cohere, too few candidates).
 	 */
 	answersQuestion: number | null;
+	/** Which reranker ran ('none' in the quick lane, with reranking off, or too few candidates). */
+	rerankEngine: RerankResult['engine'];
+	rerankFailed: boolean;
+	rerankInputTokens: number | null;
+	/** Candidates dropped because the chunk audit flagged them low-value or sensitive. */
+	excludedByAudit: number;
 };
 
 export const getContext = async (
@@ -307,19 +325,20 @@ export const getContext = async (
 	onStatus('Searching Hunter’s site and notes…');
 	// Embed once and fan the same vector out to every branch (previously each branch
 	// re-embedded the identical query).
+	const searchStats: SearchStats = { excludedByAudit: 0 };
 	const [mainResults, imessageResults, personResults] = await timer.time(
 		'vector_search',
 		async () => {
 			const embedding = queryEmbedding ?? (await embedQueryText(retrievalQuery));
 			return Promise.all([
-				searchByEmbedding(embedding, QDRANT_TOP_K, mainFilter),
+				searchByEmbedding(embedding, QDRANT_TOP_K, mainFilter, searchStats),
 				imessageEnabled
-					? searchByEmbedding(embedding, QDRANT_TOP_K, imessageFilter)
+					? searchByEmbedding(embedding, QDRANT_TOP_K, imessageFilter, searchStats)
 					: Promise.resolve([] as [Document, number][]),
 				// Best-effort: this filter needs a Qdrant text index on metadata.contact /
 				// metadata.participants, and a failure here must not take down the main search.
 				personFilter
-					? searchByEmbedding(embedding, 8, personFilter).catch((err) => {
+					? searchByEmbedding(embedding, 8, personFilter, searchStats).catch((err) => {
 							console.warn('Person-filtered search failed, skipping:', err?.data ?? err);
 							return [] as [Document, number][];
 						})
@@ -351,15 +370,21 @@ export const getContext = async (
 	}
 	// The rerank query may carry a HyDE answer, so the sufficiency check gets the visitor's
 	// own words (plus earlier turns, for follow-ups) to judge against.
-	const { docs: reranked, answersQuestion } = quick
-		? { docs: sorted.slice(0, RERANK_TOP_K), answersQuestion: null }
+	const rerank: RerankResult = quick
+		? {
+				docs: sorted.slice(0, RERANK_TOP_K),
+				engine: 'none',
+				failed: false,
+				inputTokens: null,
+				answersQuestion: null
+			}
 		: await timer.time('rerank', () =>
 				maybeRerank(retrievalQuery, sorted, RERANK_TOP_K, {
 					message,
 					earlierMessages: conversationHistory
 				})
 			);
-	const docs = diversifyBySource(reranked);
+	const docs = diversifyBySource(rerank.docs);
 
 	const MAX_IMESSAGE_CHUNKS_PER_CHAT = 2;
 	const siteUrls = new Map<string, string>();
@@ -464,7 +489,14 @@ export const getContext = async (
 		console.log(contextText.length > 0 ? contextText : '(empty — no sections matched filters)');
 	}
 
-	const result: RetrievedContext = { text: contextText, answersQuestion };
+	const result: RetrievedContext = {
+		text: contextText,
+		answersQuestion: rerank.answersQuestion,
+		rerankEngine: rerank.engine,
+		rerankFailed: rerank.failed,
+		rerankInputTokens: rerank.inputTokens,
+		excludedByAudit: searchStats.excludedByAudit
+	};
 	if (cacheKey && contextText) {
 		if (contextCache.size >= CONTEXT_CACHE_MAX) {
 			// Map preserves insertion order — drop the oldest entry.

@@ -56,7 +56,13 @@ export function isExcludedByAudit(metadata: Record<string, unknown> | undefined)
 	return audit?.low_value === true || audit?.sensitive === true;
 }
 
-type Chunk = { id: string | number; text: string; isSite: boolean };
+type SourceKind = 'site' | 'notes' | 'imessage';
+type Chunk = { id: string | number; text: string; source: SourceKind };
+
+function sourceKind(source: unknown): SourceKind {
+	if (typeof source === 'string' && source.startsWith('https://www.hunterbryant.io')) return 'site';
+	return source === 'imessage' ? 'imessage' : 'notes';
+}
 
 // Progress of the background audit, kept in Qdrant like the iMessage toggle so the admin page
 // can show it from any device and after the page that started it is closed.
@@ -73,6 +79,8 @@ export type ChunkAuditStatus = {
 	lowValue: number;
 	sensitive: number;
 	refused: number;
+	/** Decisions input tokens across all runs, for cost tracking. */
+	inputTokens: number;
 	error: string | null;
 };
 
@@ -101,7 +109,12 @@ function judgedText(payload: Record<string, unknown>): string | null {
 	return typeof shown === 'string' && shown.trim() ? shown.slice(0, JUDGED_TEXT_CHARS) : null;
 }
 
-async function auditBatch(chunks: Chunk[]): Promise<Map<Chunk['id'], ChunkAudit>> {
+type Usage = { inputTokens: number };
+
+async function auditBatch(
+	chunks: Chunk[],
+	usageTotal: Usage
+): Promise<Map<Chunk['id'], ChunkAudit>> {
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 	const questions: Record<string, Experimental_DecisionQuestion> = {};
 	chunks.forEach((chunk, i) => {
@@ -110,7 +123,7 @@ async function auditBatch(chunks: Chunk[]): Promise<Map<Chunk['id'], ChunkAudit>
 			instructions: `How much real content does excerpt chunk_${i} carry for answering questions about Hunter Bryant?`,
 			criteria: SUBSTANCE_LEVELS
 		};
-		if (!chunk.isSite) {
+		if (chunk.source !== 'site') {
 			questions[`sensitive_${i}`] = {
 				type: 'boolean',
 				instructions: `Excerpt chunk_${i}: ${SENSITIVE_INSTRUCTIONS}`
@@ -118,13 +131,15 @@ async function auditBatch(chunks: Chunk[]): Promise<Map<Chunk['id'], ChunkAudit>
 		}
 	});
 
-	const { answers } = await experimental_decide({
+	const { answers, usage } = await experimental_decide({
 		model: openai.decisionModel('gpt-6-luna'),
 		state: {
 			excerpts: chunks.map((chunk, i) => ({ id: `chunk_${i}`, text: chunk.text }))
 		},
 		questions
 	});
+
+	usageTotal.inputTokens += usage.inputTokens ?? 0;
 
 	const at = new Date().toISOString();
 	const audits = new Map<Chunk['id'], ChunkAudit>();
@@ -150,16 +165,19 @@ async function auditBatch(chunks: Chunk[]): Promise<Map<Chunk['id'], ChunkAudit>
  * One refusal fails every question in a decide call, so a refused batch is retried chunk by
  * chunk, and a chunk that's still refused gets marked as such instead of blocking the queue.
  */
-async function auditWithRefusalFallback(chunks: Chunk[]): Promise<Map<Chunk['id'], ChunkAudit>> {
+async function auditWithRefusalFallback(
+	chunks: Chunk[],
+	usageTotal: Usage
+): Promise<Map<Chunk['id'], ChunkAudit>> {
 	try {
-		return await auditBatch(chunks);
+		return await auditBatch(chunks, usageTotal);
 	} catch (err) {
 		if (!Experimental_DecisionRefusalError.isInstance(err)) throw err;
 	}
 	const audits = new Map<Chunk['id'], ChunkAudit>();
 	for (const chunk of chunks) {
 		try {
-			for (const [id, audit] of await auditBatch([chunk])) audits.set(id, audit);
+			for (const [id, audit] of await auditBatch([chunk], usageTotal)) audits.set(id, audit);
 		} catch (err) {
 			if (!Experimental_DecisionRefusalError.isInstance(err)) throw err;
 			audits.set(chunk.id, {
@@ -176,14 +194,39 @@ async function auditWithRefusalFallback(chunks: Chunk[]): Promise<Map<Chunk['id'
 	return audits;
 }
 
-export type ChunkAuditRun = {
-	audited: number;
-	lowValue: number;
-	sensitive: number;
-	refused: number;
+type AuditCounts = { audited: number; lowValue: number; sensitive: number; refused: number };
+
+export type ChunkAuditRun = AuditCounts & {
 	/** True when untagged chunks may remain for the next run. */
 	more: boolean;
+	bySource: Record<SourceKind, AuditCounts>;
+	inputTokens: number;
+	durationMs: number;
+	/**
+	 * Chunks this run excluded from retrieval, by id (never text, since some are flagged as
+	 * sensitive), so the calls can be spot-checked in the Qdrant dashboard.
+	 */
+	flagged: {
+		id: string | number;
+		source: SourceKind;
+		reason: 'low_value' | 'sensitive';
+		substance: number | null;
+		sensitive_probability: number | null;
+	}[];
 };
+
+const MAX_FLAGGED_PER_RUN = 100;
+
+function emptyCounts(): AuditCounts {
+	return { audited: 0, lowValue: 0, sensitive: 0, refused: 0 };
+}
+
+function count(counts: AuditCounts, audit: ChunkAudit): void {
+	counts.audited++;
+	if (audit.low_value) counts.lowValue++;
+	if (audit.sensitive) counts.sensitive++;
+	if (audit.refused) counts.refused++;
+}
 
 /** Tag untagged chunks until `budgetMs` runs out. Safe to run any number of times. */
 export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditRun> {
@@ -198,7 +241,21 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 		.createPayloadIndex(collection, { field_name: 'metadata.audit.v', field_schema: 'integer' })
 		.catch(() => {});
 
-	const run: ChunkAuditRun = { audited: 0, lowValue: 0, sensitive: 0, refused: 0, more: false };
+	const usageTotal: Usage = { inputTokens: 0 };
+	const run: ChunkAuditRun = {
+		...emptyCounts(),
+		more: false,
+		bySource: { site: emptyCounts(), notes: emptyCounts(), imessage: emptyCounts() },
+		inputTokens: 0,
+		durationMs: 0,
+		flagged: []
+	};
+	const finish = (more: boolean): ChunkAuditRun => {
+		run.more = more;
+		run.inputTokens = usageTotal.inputTokens;
+		run.durationMs = Date.now() - started;
+		return run;
+	};
 
 	while (Date.now() - started < budgetMs) {
 		const { points } = await client.scroll(collection, {
@@ -212,38 +269,39 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 			with_payload: ['content', 'metadata.source', 'metadata.expandedContext'],
 			with_vector: false
 		});
-		if (points.length === 0) return run;
+		if (points.length === 0) return finish(false);
 
 		const chunks: Chunk[] = [];
 		for (const point of points) {
 			const payload = (point.payload ?? {}) as Record<string, unknown>;
 			const text = judgedText(payload);
 			const source = (payload.metadata as Record<string, unknown> | undefined)?.source;
-			if (text) {
-				chunks.push({
-					id: point.id,
-					text,
-					isSite: typeof source === 'string' && source.startsWith('https://www.hunterbryant.io')
-				});
-			}
+			if (text) chunks.push({ id: point.id, text, source: sourceKind(source) });
 		}
 
 		for (let i = 0; i < chunks.length; i += CHUNKS_PER_CALL) {
-			if (Date.now() - started >= budgetMs) {
-				run.more = true;
-				return run;
-			}
-			const audits = await auditWithRefusalFallback(chunks.slice(i, i + CHUNKS_PER_CALL));
+			if (Date.now() - started >= budgetMs) return finish(true);
+			const batch = chunks.slice(i, i + CHUNKS_PER_CALL);
+			const audits = await auditWithRefusalFallback(batch, usageTotal);
 			await client.batchUpdate(collection, {
 				operations: [...audits].map(([id, audit]) => ({
 					set_payload: { payload: { audit }, points: [id], key: 'metadata' }
 				}))
 			});
-			for (const audit of audits.values()) {
-				run.audited++;
-				if (audit.low_value) run.lowValue++;
-				if (audit.sensitive) run.sensitive++;
-				if (audit.refused) run.refused++;
+			for (const chunk of batch) {
+				const audit = audits.get(chunk.id);
+				if (!audit) continue;
+				count(run, audit);
+				count(run.bySource[chunk.source], audit);
+				if ((audit.low_value || audit.sensitive) && run.flagged.length < MAX_FLAGGED_PER_RUN) {
+					run.flagged.push({
+						id: chunk.id,
+						source: chunk.source,
+						reason: audit.sensitive ? 'sensitive' : 'low_value',
+						substance: audit.substance,
+						sensitive_probability: audit.sensitive_probability
+					});
+				}
 			}
 		}
 
@@ -266,6 +324,5 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 		}
 	}
 
-	run.more = true;
-	return run;
+	return finish(true);
 }

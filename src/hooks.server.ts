@@ -43,6 +43,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 			!!env.CRON_SECRET &&
 			event.request.headers.get('authorization') === `Bearer ${env.CRON_SECRET}`;
 		if (!hasCronSecret) {
+			// Visible in the Vercel logs, so probing of the admin API doesn't go unnoticed.
+			console.warn(
+				'[AUTH] Denied admin API',
+				JSON.stringify({ method: event.request.method, path, role: userRole ?? null })
+			);
 			return json({ error: 'Unauthorized' }, { status: 401 });
 		}
 	}

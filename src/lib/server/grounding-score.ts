@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
-import { logRag } from '$lib/server/rag-debug';
+import { captureServerEvent } from '$lib/server/posthog';
 import { createOpenAI } from '@ai-sdk/openai';
-import { experimental_decide } from 'ai';
+import { experimental_decide, Experimental_DecisionRefusalError } from 'ai';
 
 // Everything the reply could legitimately draw on, trimmed so one call stays small and fast.
 const CONTEXT_MAX_CHARS = 12_000;
@@ -42,9 +42,12 @@ const VISITOR_INTENTS = {
  * misses `MISS_PATTERN` doesn't, and guesses who the visitor is. Runs after the reply has
  * streamed, so it never adds visitor latency. `RAG_REFLECTION=1` is still there for
  * claim-by-claim citations; set `RAG_GROUNDING=0` to turn this off.
+ *
+ * Never throws: a failure (including a refusal, which fails every question in the call) is
+ * sent as a `rag_grounding` event with `grounding_error` set, so failure rates are measurable,
+ * and every outcome logs one `[HuntBot grounding]` line (scores only, no message text).
  */
 export async function sendGroundingScoreToPosthog(options: {
-	posthogKey: string;
 	userMessage: string;
 	priorUserMessages: string[];
 	assistantText: string;
@@ -59,11 +62,46 @@ export async function sendGroundingScoreToPosthog(options: {
 }): Promise<void> {
 	if (env.RAG_GROUNDING === '0') return;
 
-	const { posthogKey, userMessage, assistantText, sessionId, runID } = options;
+	const { userMessage, assistantText, sessionId, runID } = options;
 	if (!assistantText.trim()) return;
 
+	const base = {
+		user_message: userMessage,
+		bot_response: assistantText,
+		lane: options.lane,
+		is_admin: options.isAdmin,
+		current_page: options.currentPage,
+		run_id: runID,
+		session_id: sessionId
+	};
+	const started = performance.now();
+	try {
+		await scoreReply(options, base, started);
+	} catch (err) {
+		const refused = Experimental_DecisionRefusalError.isInstance(err);
+		const error = err instanceof Error ? err.message : String(err);
+		const decisionMs = Math.round(performance.now() - started);
+		console.warn(
+			'[HuntBot grounding]',
+			JSON.stringify({ run_id: runID, error, refused, decisionMs })
+		);
+		await captureServerEvent('rag_grounding', sessionId ?? runID, {
+			...base,
+			grounding_error: error,
+			grounding_refused: refused,
+			decision_ms: decisionMs
+		});
+	}
+}
+
+async function scoreReply(
+	options: Parameters<typeof sendGroundingScoreToPosthog>[0],
+	base: Record<string, unknown>,
+	started: number
+): Promise<void> {
+	const { userMessage, assistantText, sessionId, runID } = options;
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
-	const { answers } = await experimental_decide({
+	const { answers, usage } = await experimental_decide({
 		model: openai.decisionModel('gpt-6-luna'),
 		state: {
 			visitor_message: userMessage,
@@ -116,45 +154,34 @@ export async function sendGroundingScoreToPosthog(options: {
 		abortSignal: AbortSignal.timeout(GROUNDING_TIMEOUT_MS)
 	});
 
+	const decisionMs = Math.round(performance.now() - started);
+
 	const grounding = answers.grounding;
-	const makesClaims = answers.makes_claims;
-	const properties = {
+	const scores = {
 		grounding_score: grounding.score,
-		grounding_probabilities: grounding.probabilities ?? null,
-		makes_claims_probability: makesClaims.probability,
+		makes_claims_probability: answers.makes_claims.probability,
 		speaks_as_hunter_probability: answers.speaks_as_hunter.probability,
 		admits_miss_probability: answers.admits_miss.probability,
 		voice_score: answers.voice.score,
-		visitor_intent: answers.visitor_intent.choice,
-		visitor_intent_probabilities: answers.visitor_intent.probabilities ?? null,
-		user_message: userMessage,
-		bot_response: assistantText,
-		lane: options.lane,
-		is_admin: options.isAdmin,
-		current_page: options.currentPage,
-		run_id: runID,
-		session_id: sessionId
+		visitor_intent: answers.visitor_intent.choice
 	};
-	logRag('grounding score', {
-		score: grounding.score,
-		makesClaims: makesClaims.probability,
-		speaksAsHunter: answers.speaks_as_hunter.probability,
-		admitsMiss: answers.admits_miss.probability,
-		voice: answers.voice.score,
-		intent: answers.visitor_intent.choice
-	});
-
-	await fetch('https://us.i.posthog.com/capture/', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
-			api_key: posthogKey,
-			event: 'rag_grounding',
-			distinct_id: sessionId ?? runID,
-			timestamp: new Date().toISOString(),
-			properties
+	console.log(
+		'[HuntBot grounding]',
+		JSON.stringify({
+			run_id: runID,
+			...scores,
+			decision_ms: decisionMs,
+			input_tokens: usage.inputTokens ?? null
 		})
-	}).catch(() => {
-		/* swallow */
+	);
+
+	await captureServerEvent('rag_grounding', sessionId ?? runID, {
+		...base,
+		...scores,
+		grounding_probabilities: grounding.probabilities ?? null,
+		visitor_intent_probabilities: answers.visitor_intent.probabilities ?? null,
+		grounding_error: null,
+		decision_ms: decisionMs,
+		decision_input_tokens: usage.inputTokens ?? null
 	});
 }

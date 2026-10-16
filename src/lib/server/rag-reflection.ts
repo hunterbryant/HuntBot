@@ -1,7 +1,8 @@
 import { env } from '$env/dynamic/private';
+import { ragReflectionSchema } from '$lib/schemas/ragResponse';
+import { captureServerEvent } from '$lib/server/posthog';
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, Output, zodSchema } from 'ai';
-import { ragReflectionSchema } from '$lib/schemas/ragResponse';
 
 const CONTEXT_EXCERPT_MAX = 12_000;
 
@@ -10,7 +11,6 @@ const CONTEXT_EXCERPT_MAX = 12_000;
  * Does not change the user-visible reply.
  */
 export async function sendRagReflectionToPosthog(options: {
-	posthogKey: string;
 	userMessage: string;
 	assistantText: string;
 	contextExcerpt: string;
@@ -20,8 +20,7 @@ export async function sendRagReflectionToPosthog(options: {
 }): Promise<void> {
 	if (env.RAG_REFLECTION !== '1') return;
 
-	const { posthogKey, userMessage, assistantText, contextExcerpt, sessionId, runID, currentPage } =
-		options;
+	const { userMessage, assistantText, contextExcerpt, sessionId, runID, currentPage } = options;
 	if (!assistantText?.trim()) return;
 
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -46,25 +45,13 @@ ${excerpt}
 Fill the JSON schema: internal thinking about grounding, citations mapping claims to chunk ids, and confidence.`
 	});
 
-	await fetch('https://us.i.posthog.com/capture/', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({
-			api_key: posthogKey,
-			event: 'rag_reflection',
-			distinct_id: sessionId ?? runID,
-			timestamp: new Date().toISOString(),
-			properties: {
-				user_message: userMessage,
-				rag_thinking: object.thinking,
-				rag_citations: object.citations,
-				rag_confidence: object.confidence,
-				current_page: currentPage,
-				run_id: runID,
-				session_id: sessionId
-			}
-		})
-	}).catch(() => {
-		/* swallow */
+	await captureServerEvent('rag_reflection', sessionId ?? runID, {
+		user_message: userMessage,
+		rag_thinking: object.thinking,
+		rag_citations: object.citations,
+		rag_confidence: object.confidence,
+		current_page: currentPage,
+		run_id: runID,
+		session_id: sessionId
 	});
 }

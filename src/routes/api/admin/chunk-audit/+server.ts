@@ -5,6 +5,7 @@ import {
 	saveChunkAuditStatus,
 	type ChunkAuditStatus
 } from '$lib/server/chunk-audit';
+import { captureServerEvent, SYSTEM_DISTINCT_ID } from '$lib/server/posthog';
 import { UserRole } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { waitUntil } from '@vercel/functions';
@@ -23,6 +24,10 @@ export const config = { maxDuration: 60 };
  * CRON_SECRET, since the admin's login cookie expires after an hour. Progress is saved after
  * every run, and GET returns it so the admin page can show "running" or "done" whenever it's
  * opened. Clicking Audit again resumes a chain that stopped.
+ *
+ * Every run logs one `[HuntBot chunk audit]` line (counts by source, tokens, and the ids of the
+ * chunks it flagged — never their text) and sends a `chunk_audit_run` PostHog event; the job as a
+ * whole ends with `chunk_audit_finished` or `chunk_audit_failed`.
  */
 
 function isAdmin(locals: App.Locals): boolean {
@@ -51,14 +56,40 @@ async function startNextRun(origin: string): Promise<void> {
 	if (!res.ok) throw new Error(`Next run did not start (HTTP ${res.status})`);
 }
 
+function jobProperties(status: ChunkAuditStatus): Record<string, unknown> {
+	return {
+		started_at: status.startedAt,
+		duration_ms: Date.now() - new Date(status.startedAt).getTime(),
+		audited: status.audited,
+		low_value: status.lowValue,
+		sensitive: status.sensitive,
+		refused: status.refused,
+		input_tokens: status.inputTokens,
+		$process_person_profile: false
+	};
+}
+
 async function runOnce(status: ChunkAuditStatus, origin: string): Promise<void> {
 	try {
 		const run = await auditUntaggedChunks(RUN_BUDGET_MS);
-		console.log('[HuntBot chunk audit]', JSON.stringify(run));
+		console.log('[HuntBot chunk audit]', JSON.stringify({ started_at: status.startedAt, ...run }));
+		await captureServerEvent('chunk_audit_run', SYSTEM_DISTINCT_ID, {
+			started_at: status.startedAt,
+			audited: run.audited,
+			low_value: run.lowValue,
+			sensitive: run.sensitive,
+			refused: run.refused,
+			by_source: run.bySource,
+			input_tokens: run.inputTokens,
+			duration_ms: run.durationMs,
+			more: run.more,
+			$process_person_profile: false
+		});
 		status.audited += run.audited;
 		status.lowValue += run.lowValue;
 		status.sensitive += run.sensitive;
 		status.refused += run.refused;
+		status.inputTokens = (status.inputTokens ?? 0) + run.inputTokens;
 		status.updatedAt = new Date().toISOString();
 		if (run.more && run.audited === 0) {
 			throw new Error('A full run tagged nothing, so it stopped instead of looping');
@@ -70,11 +101,17 @@ async function runOnce(status: ChunkAuditStatus, origin: string): Promise<void> 
 		}
 		status.state = 'done';
 		status.finishedAt = status.updatedAt;
+		console.log('[HuntBot chunk audit] finished', JSON.stringify(jobProperties(status)));
+		await captureServerEvent('chunk_audit_finished', SYSTEM_DISTINCT_ID, jobProperties(status));
 	} catch (err) {
-		console.error('Chunk audit failed:', err);
+		console.error('[HuntBot chunk audit] failed:', err);
 		status.state = 'error';
 		status.error = err instanceof Error ? err.message : String(err);
 		status.updatedAt = new Date().toISOString();
+		await captureServerEvent('chunk_audit_failed', SYSTEM_DISTINCT_ID, {
+			...jobProperties(status),
+			error: status.error
+		});
 	}
 	await saveChunkAuditStatus(status).catch((err) =>
 		console.error('Saving chunk audit status failed:', err)
@@ -110,9 +147,14 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 				lowValue: 0,
 				sensitive: 0,
 				refused: 0,
+				inputTokens: 0,
 				error: null
 			};
 			await saveChunkAuditStatus(status);
+			console.log(
+				'[HuntBot chunk audit] started',
+				JSON.stringify({ resumed: current?.state === 'running' })
+			);
 		}
 	} catch (err) {
 		console.error('Chunk audit could not start:', err);

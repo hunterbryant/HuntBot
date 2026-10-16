@@ -34,8 +34,16 @@ export type SufficiencyInput = {
 	earlierMessages: string[];
 };
 
+export type RerankEngine = 'cohere' | 'decisions' | 'none';
+
 export type RerankResult = {
 	docs: Document[];
+	/** Which reranker ran; 'none' when there were too few candidates to rerank. */
+	engine: RerankEngine;
+	/** The reranker errored and the incoming vector-score order was used instead. */
+	failed: boolean;
+	/** Decisions call input tokens, for cost tracking (null for Cohere / no call). */
+	inputTokens: number | null;
 	/**
 	 * Decisions engine only: probability that the candidate excerpts, taken together, answer
 	 * the visitor's message. Null when nothing judged it (Cohere, no rerank call, or failure),
@@ -76,7 +84,7 @@ async function rankWithDecisions(
 	docs: Document[],
 	topK: number,
 	sufficiency?: SufficiencyInput
-): Promise<{ ranked: Ranked[]; answersQuestion: number | null }> {
+): Promise<{ ranked: Ranked[]; answersQuestion: number | null; inputTokens: number | null }> {
 	const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 
 	const excerpts = docs.map((doc, i) => ({
@@ -106,7 +114,7 @@ async function rankWithDecisions(
 		};
 	}
 
-	const { answers } = await experimental_decide({
+	const { answers, usage } = await experimental_decide({
 		model: openai.decisionModel('gpt-6-luna'),
 		state: {
 			question: query,
@@ -131,7 +139,8 @@ async function rankWithDecisions(
 	const sufficient = answers.answers_question;
 	return {
 		ranked,
-		answersQuestion: sufficient?.type === 'boolean' ? sufficient.probability : null
+		answersQuestion: sufficient?.type === 'boolean' ? sufficient.probability : null,
+		inputTokens: usage.inputTokens ?? null
 	};
 }
 
@@ -148,14 +157,20 @@ export async function rerankChunks(
 	sufficiency?: SufficiencyInput
 ): Promise<RerankResult> {
 	// Few enough candidates that there's nothing to rerank — and no call to piggyback on.
-	if (docs.length <= topK) return { docs, answersQuestion: null };
+	if (docs.length <= topK) {
+		return { docs, engine: 'none', failed: false, inputTokens: null, answersQuestion: null };
+	}
 
 	const cohereKey = env.COHERE_API_KEY;
-	const engine = cohereKey ? 'cohere' : 'decisions';
+	const engine: RerankEngine = cohereKey ? 'cohere' : 'decisions';
 
 	try {
-		const { ranked, answersQuestion } = cohereKey
-			? { ranked: await rankWithCohere(query, docs, topK, cohereKey), answersQuestion: null }
+		const { ranked, answersQuestion, inputTokens } = cohereKey
+			? {
+					ranked: await rankWithCohere(query, docs, topK, cohereKey),
+					answersQuestion: null,
+					inputTokens: null
+				}
 			: await rankWithDecisions(query, docs, topK, sufficiency);
 
 		logRag('rerank results', {
@@ -163,15 +178,25 @@ export async function rerankChunks(
 			inputCount: docs.length,
 			outputCount: ranked.length,
 			scores: ranked.map((r) => ({ idx: r.index, score: Number(r.score.toFixed(3)) })),
-			answersQuestion
+			answersQuestion,
+			inputTokens
 		});
 
 		return {
 			docs: ranked.filter((r) => r.index >= 0 && r.index < docs.length).map((r) => docs[r.index]),
+			engine,
+			failed: false,
+			inputTokens,
 			answersQuestion
 		};
 	} catch (err) {
 		console.warn(`Reranking (${engine}) failed, returning original order:`, err);
-		return { docs: docs.slice(0, topK), answersQuestion: null };
+		return {
+			docs: docs.slice(0, topK),
+			engine,
+			failed: true,
+			inputTokens: null,
+			answersQuestion: null
+		};
 	}
 }

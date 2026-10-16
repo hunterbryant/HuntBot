@@ -63,6 +63,7 @@ HuntBot/
 │   │   │   ├── rerank.ts             # Chunk reranking — Cohere Rerank, or OpenAI Decisions without a Cohere key
 │   │   │   ├── query-lane.ts         # Adaptive-compute lane classifier (quick / standard / deep)
 │   │   │   ├── timing.ts             # Per-request stage timer for latency logging
+│   │   │   ├── posthog.ts            # Server-side PostHog capture (waitUntil + failure logging)
 │   │   │   ├── rag-router.ts         # Supplemental search planning via structured LLM call
 │   │   │   ├── rag-reflection.ts     # Post-hoc grounding audit for PostHog
 │   │   │   ├── grounding-score.ts    # Per-turn reply audit (OpenAI Decisions) for PostHog
@@ -274,6 +275,36 @@ Qdrant Cloud's free tier auto-suspends a cluster after 1 week of inactivity and 
 `vercel.json` schedules a daily Vercel Cron job (`GET /api/cron/qdrant-keepalive`) that runs a real `scroll` read against the collection — genuine data-plane traffic, not just a metadata/health-check call — well within the 1-week suspension window with margin to spare. The endpoint is secured with `CRON_SECRET` per [Vercel's cron job pattern](https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs): set a random 16+ char value for `CRON_SECRET` in the Vercel dashboard and Vercel automatically sends it as the request's `Authorization: Bearer` header. Vercel's Hobby plan caps cron frequency at once/day; that's already ~7x margin under the suspension threshold.
 
 ---
+
+## Observability
+
+Everything worth reflecting on later lands in two places: **Vercel runtime logs** (one structured JSON line per thing, greppable by prefix) and **PostHog** events (joined on `run_id` per chat turn, `session_id` per conversation). Message text goes to PostHog only, never into the always-on log lines, and the chunk audit never sends chunk text anywhere, only ids.
+
+**Server-side PostHog events must go through `captureServerEvent` in `src/lib/server/posthog.ts`.** It registers the request with Vercel's `waitUntil`, so events sent after the response (and the post-reply audits that produce them, via `runInBackground`) aren't lost when the function is frozen, and it logs a `[HuntBot analytics]` line when a send fails instead of swallowing it.
+
+### Vercel log lines
+
+| Prefix | When | What's in it |
+|---|---|---|
+| `[HuntBot timing]` | Every chat turn | Lane, model, lane scores, ms per stage, `rerank_engine`, `rerank_failed`, `answers_question`, `router_gate`, `router_ran`, `retrieval_failed`, `excluded_by_audit` |
+| `[HuntBot grounding]` | Every audited reply | `run_id`, grounding / voice scores, miss and first-person probabilities, `visitor_intent`, `decision_ms`, `input_tokens`; or `error` + `refused` |
+| `[HuntBot chunk audit]` | Each ~45s audit run, plus `started` / `finished` / `failed` | Counts overall and `bySource` (site / notes / imessage), `inputTokens`, `durationMs`, and `flagged` (id, source, reason, scores, up to 100 per run) for spot-checking in Qdrant |
+| `[HuntBot analytics]` | A PostHog send failed | `event`, HTTP `status` or `error` |
+| `[AUTH] Denied admin API` | A request to `/api/embed/*` or `/api/admin/*` without admin auth | `method`, `path`, `role` |
+| `[HuntBot RAG]` | Only in dev or with `RAG_DEBUG=1` | Step-by-step retrieval / rerank / tool detail |
+
+### PostHog events
+
+| Event | Sent by | Key properties |
+|---|---|---|
+| `chat_message` | Chat endpoint, once per turn | See pipeline step 10, plus `rerank_engine`, `rerank_failed`, `rerank_input_tokens`, `router_gate` (`deep_lane` / `decisions` / `heuristic`), `context_answers_question`, `context_excluded_by_audit`, `retrieval_error` |
+| `rag_grounding` | Post-reply Decisions audit | `grounding_score`, `makes_claims_probability`, `speaks_as_hunter_probability`, `admits_miss_probability`, `voice_score`, `visitor_intent` (+ probabilities), `decision_ms`, `decision_input_tokens`, `grounding_error`, `grounding_refused`, `is_admin` |
+| `rag_reflection` | Optional (`RAG_REFLECTION=1`) | `rag_thinking`, `rag_citations`, `rag_confidence` |
+| `chunk_audit_run` | Each audit run | Counts, `by_source`, `input_tokens`, `duration_ms`, `more` |
+| `chunk_audit_finished` / `chunk_audit_failed` | End of an audit job | Job totals, `duration_ms`, `input_tokens`; `error` on failure |
+| Client events | `src/lib/analytics.ts` | `$pageview`, `suggestions_shown`, `suggestion_clicked`, `related_page_clicked`, `contact_clicked`, `not_helpful` |
+
+Chunk audit events use `distinct_id: huntbot-system` with `$process_person_profile: false`, so they don't create a fake person. Filter `is_admin = true` out of chat analytics to drop Hunter's own testing.
 
 ## CMS: Prismic + Slice Machine
 
