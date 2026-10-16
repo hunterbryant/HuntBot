@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import {
 	auditUntaggedChunks,
+	estimateAuditCost,
 	getChunkAuditStatus,
 	saveChunkAuditStatus,
 	type ChunkAuditStatus
@@ -180,7 +181,12 @@ async function runOnce(status: ChunkAuditStatus, origin: string): Promise<void> 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (!isAdmin(locals)) return json({ error: 'Unauthorized' }, { status: 401 });
 	const status = await getChunkAuditStatus().catch(() => null);
-	return json({ status, stale: status?.state === 'running' && isStale(status) });
+	// Counting is two quick Qdrant calls; a failure only hides the estimate, never the status.
+	const estimate = await estimateAuditCost(status).catch((err) => {
+		console.warn('Chunk audit estimate failed:', err);
+		return null;
+	});
+	return json({ status, stale: status?.state === 'running' && isStale(status), estimate });
 };
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {

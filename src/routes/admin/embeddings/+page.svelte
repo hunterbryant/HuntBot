@@ -43,7 +43,17 @@
 		refused: number;
 		error: string | null;
 	};
+	type ChunkAuditEstimate = {
+		totalChunks: number;
+		untaggedChunks: number | null;
+		tokensPerChunk: number;
+		basis: 'measured' | 'default';
+		usdPerMillionInput: number;
+		fullAuditUsd: number;
+		remainingUsd: number | null;
+	};
 	let auditStatus: ChunkAuditStatus | null = null;
+	let auditEstimate: ChunkAuditEstimate | null = null;
 	let auditStale = false;
 	let auditStarting = false;
 	// Why the last start or status check failed (expired login, server error); shown in red.
@@ -67,6 +77,7 @@
 			const data = await res.json();
 			auditStatus = data.status;
 			auditStale = data.stale;
+			auditEstimate = data.estimate ?? null;
 		} catch {
 			// keep the last known status
 		}
@@ -103,6 +114,10 @@
 		}
 		await refreshAuditStatus();
 	};
+
+	const formatUsd = (usd: number) =>
+		usd < 0.01 ? 'under $0.01' : `$${usd.toFixed(usd < 10 ? 2 : 0)}`;
+	const formatCount = (n: number) => n.toLocaleString();
 
 	const formatAuditTime = (iso: string) =>
 		new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -576,6 +591,23 @@
 						boilerplate and sensitive ones. Nothing is re-embedded or deleted. It runs in the
 						background, so you can close this page and check back here later.
 					</p>
+					{#if auditEstimate}
+						<p class="text-xs text-stone-600 dark:text-stone-300">
+							Full audit: {formatCount(auditEstimate.totalChunks)} chunks, about {formatUsd(
+								auditEstimate.fullAuditUsd
+							)}{#if auditEstimate.untaggedChunks !== null && auditEstimate.remainingUsd !== null}
+								· still to audit: {formatCount(auditEstimate.untaggedChunks)}, about {formatUsd(
+									auditEstimate.remainingUsd
+								)}{/if}
+						</p>
+						<p class="text-xs text-stone-400 dark:text-stone-500">
+							Estimate: ~{formatCount(auditEstimate.tokensPerChunk)} input tokens per chunk ({auditEstimate.basis ===
+							'measured'
+								? 'measured on this job'
+								: 'measured on the first production run'}) at ${auditEstimate.usdPerMillionInput} per
+							million on gpt-6-luna.
+						</p>
+					{/if}
 					{#if auditStatus}
 						<p class="flex items-center gap-2 text-xs text-stone-600 dark:text-stone-300">
 							<span
