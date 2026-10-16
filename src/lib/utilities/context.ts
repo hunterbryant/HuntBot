@@ -607,19 +607,29 @@ const PUBLIC_SOURCES_FILTER = {
  * Site pages most related to a query embedding, best first, as local paths ("/projects/lyngen").
  * Used to give a reply that came up empty somewhere concrete to go next.
  */
-export async function findRelatedSitePaths(embedding: number[], limit = 2): Promise<string[]> {
+export async function findRelatedSitePaths(
+	embedding: number[],
+	limit = 2
+): Promise<{ paths: string[]; topScore: number }> {
 	const results = await searchByEmbedding(embedding, QDRANT_TOP_K, PUBLIC_SOURCES_FILTER);
 	const paths: string[] = [];
+	let topScore = 0;
 	for (const [doc, score] of results.sort((a, b) => b[1] - a[1])) {
+		topScore = Math.max(topScore, score);
 		if (score < MIN_VECTOR_SCORE) break;
 		const source = doc.metadata?.source;
 		if (typeof source !== 'string' || !source.startsWith(SITE_ORIGIN)) continue;
 		const path = source.slice(SITE_ORIGIN.length).replace(/\/$/, '') || '/';
-		if (!paths.includes(path)) paths.push(path);
-		if (paths.length >= limit) break;
+		if (!paths.includes(path) && paths.length < limit) paths.push(path);
 	}
-	return paths;
+	return { paths, topScore };
 }
+
+// Page chips under a miss are only worth showing when the visitor's message itself lands near
+// some site content. MIN_VECTOR_SCORE (0.3) is the floor for "could be context"; a topicless
+// follow-up like "show me those details" clears it and used to pull in an unrelated page.
+// Not calibrated against real traffic yet: `related_top_score` on `chat_message` is logged to tune it.
+export const RELATED_MIN_SCORE = 0.45;
 
 /**
  * Best vector score each query gets against the knowledge base (public sources only), in input

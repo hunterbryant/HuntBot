@@ -31,6 +31,7 @@ import {
 	findRelatedSitePaths,
 	getContext,
 	getSitePageText,
+	RELATED_MIN_SCORE,
 	searchKnowledgeBase,
 	type RetrievedContext,
 	type StatusReporter
@@ -269,7 +270,9 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				aboutText: null as string | null,
 				serverToolOutputs: [] as { name: string; output: string }[],
 				visitor: null as VisitorContext | null,
-				orgMentioned: false
+				orgMentioned: false,
+				// Best vector score of the visitor's message against public content, set only on misses
+				relatedTopScore: null as number | null
 			};
 
 			function sendTurnAnalytics() {
@@ -299,6 +302,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					// message a client-side tool (route, lead capture) showed in its place.
 					bot_response: turn.visibleText.trim() || clientToolReplyText(turn.clientTool),
 					related_pages: turn.relatedPages,
+					related_top_score:
+						turn.relatedTopScore === null ? null : Number(turn.relatedTopScore.toFixed(3)),
 					function_call_name: turn.clientTool?.name ?? null,
 					function_call_args: turn.clientTool ? JSON.stringify(turn.clientTool.input) : null,
 					server_tools: turn.serverTools.map((t) => t.name),
@@ -1099,17 +1104,23 @@ ${contextForModel}`;
 							const titleOf = new Map(pages.map((p) => [p.path, p.displayTitle]));
 							const paths = pagesNamedIn(turn.visibleText, pages).map((p) => p.path);
 							if (isMiss) {
-								// Pages retrieval already ranked for this question come next; a site-only
-								// search fills in when CONTEXT held no site pages (notes or texts only).
-								paths.push(
-									...[...seenSourceUrls]
-										.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
-										.filter((path) => path !== currentPage)
-								);
-								if (paths.length < RELATED_PAGE_LIMIT) {
-									const embedding =
-										laneDecision.embedding ?? (await embedQueryText(lastMessageText));
-									paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
+								// Chips under a miss only make sense when the message itself is near some site
+								// content. Meta questions ("what do you know about me?") and topicless
+								// follow-ups ("show me those details") aren't, and used to get an unrelated
+								// page. The same gate covers the pages CONTEXT happened to hold.
+								const embedding =
+									laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+								const found = await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2);
+								turn.relatedTopScore = found.topScore;
+								if (found.topScore >= RELATED_MIN_SCORE) {
+									// Pages retrieval already ranked for this question come first, then the
+									// closest site pages by the message embedding.
+									paths.push(
+										...[...seenSourceUrls]
+											.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
+											.filter((path) => path !== currentPage),
+										...found.paths
+									);
 								}
 							}
 							return [...new Set(paths)]
