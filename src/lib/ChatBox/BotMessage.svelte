@@ -206,7 +206,7 @@
 				use:streamReveal={value}
 			></p>
 			{#if related.length > 0}
-				<!-- On a miss these replace the source links: the reply didn't draw on those pages. -->
+				<!-- Pages the reply names (or the closest ones after a miss) replace the source links. -->
 				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
 					{#each related as relatedPage (relatedPage.path)}
 						<a

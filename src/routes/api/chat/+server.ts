@@ -14,7 +14,7 @@ import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/serve
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
-import { getAvailableRoutes, getSiteNavCatalog } from '$lib/server/site-nav-routes';
+import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
 import { UserRole } from '$lib/types';
 import {
@@ -874,6 +874,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 
 ## Navigation
 Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
+When your reply names a project or case study from the list by its title, tappable links to it (up to two) appear under your reply on their own. So name the pages you mean by their listed titles, and save route_to_page for when the visitor asks to be taken somewhere. If they ask for a link, name the page and answer; never say you can't add links, and never mention chips or how the chat renders.
 
 ## iMessage context
 The CONTEXT section may include chunks labeled "[iMessage — contact]". These are Hunter's real text messages, grouped by conversation. Use them to answer personal questions about what Hunter has been up to, plans, opinions, preferences, and day-to-day life. Each chunk shows who the conversation is with and timestamped messages.
@@ -1032,20 +1033,29 @@ ${contextForModel}`;
 				// The prompt asks for a next step after "I don't have that", but bare misses kept
 				// getting through, so the server guarantees one: the closest site pages, sent as a
 				// data part the client renders as links under the reply.
-				if (producedReply && !fastPath && !turn.clientTool && MISS_PATTERN.test(turn.visibleText)) {
+				// The same chips also go under a reply that points at a project or case study by
+				// title, so a visitor can tap through without HuntBot routing them unasked.
+				const isMiss = MISS_PATTERN.test(turn.visibleText);
+				if (producedReply && !fastPath && !turn.clientTool) {
 					try {
 						const related = await timer.time('related', async () => {
-							// Pages retrieval already ranked for this question come first; a site-only
-							// search fills in when CONTEXT held no site pages (notes or texts only).
-							const paths = [...seenSourceUrls]
-								.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
-								.filter((path) => path !== currentPage);
-							if (paths.length < RELATED_PAGE_LIMIT) {
-								const embedding = laneDecision.embedding ?? (await embedQueryText(lastMessageText));
-								paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
-							}
 							const { pages } = await getSiteNavCatalog();
 							const titleOf = new Map(pages.map((p) => [p.path, p.displayTitle]));
+							const paths = pagesNamedIn(turn.visibleText, pages).map((p) => p.path);
+							if (isMiss) {
+								// Pages retrieval already ranked for this question come next; a site-only
+								// search fills in when CONTEXT held no site pages (notes or texts only).
+								paths.push(
+									...[...seenSourceUrls]
+										.map((url) => url.slice(SITE_ORIGIN_PREFIX.length).replace(/\/$/, '') || '/')
+										.filter((path) => path !== currentPage)
+								);
+								if (paths.length < RELATED_PAGE_LIMIT) {
+									const embedding =
+										laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+									paths.push(...(await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2)));
+								}
+							}
 							return [...new Set(paths)]
 								.filter((path) => path !== '/' && routableRoutes.includes(path))
 								.slice(0, RELATED_PAGE_LIMIT)
