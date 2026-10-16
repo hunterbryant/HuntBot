@@ -69,7 +69,8 @@ function sourceKind(source: unknown): SourceKind {
 const STATUS_POINT_ID = 'a0000000-0000-0000-0000-000000000002';
 
 export type ChunkAuditStatus = {
-	state: 'running' | 'done' | 'error';
+	/** `paused`: Vercel's loop limit stopped the chain; Resume (or the open admin page) continues it. */
+	state: 'running' | 'paused' | 'done' | 'error';
 	startedAt: string;
 	/** Bumped after every ~45s run; a stale value while `running` means the chain stopped. */
 	updatedAt: string;
@@ -350,4 +351,68 @@ export async function auditUntaggedChunks(budgetMs: number): Promise<ChunkAuditR
 	}
 
 	return finish(true);
+}
+
+// gpt-6-luna input price in USD per million tokens, as listed by third-party price trackers in
+// Oct 2026 (not confirmed against an OpenAI page for the Decisions API). Override with
+// CHUNK_AUDIT_USD_PER_M_INPUT when the real rate is known. Output is ignored: Decisions answers
+// are a few tokens per question.
+const DEFAULT_USD_PER_M_INPUT = 0.1;
+// Measured on production's first run (1,325,113 input tokens for 1,232 chunks); used until the
+// current job has measured its own rate.
+const DEFAULT_TOKENS_PER_CHUNK = 1_076;
+
+export type ChunkAuditEstimate = {
+	/** Every chunk in the collection: what a full audit (or a re-audit after a version bump) covers. */
+	totalChunks: number;
+	/** Chunks not yet tagged at the current version: what the next Audit / Resume will do. */
+	untaggedChunks: number | null;
+	tokensPerChunk: number;
+	/** `measured` when the current job's own token usage is the basis, else the stored default. */
+	basis: 'measured' | 'default';
+	usdPerMillionInput: number;
+	fullAuditUsd: number;
+	remainingUsd: number | null;
+};
+
+/** Rough cost of auditing the collection, from chunk counts and measured tokens per chunk. */
+export async function estimateAuditCost(
+	status: ChunkAuditStatus | null
+): Promise<ChunkAuditEstimate> {
+	const client = getQdrantClient();
+	const collection = env.QDRANT_COLLECTION!;
+	const notConfig = { has_id: [CONFIG_POINT_ID, STATUS_POINT_ID] };
+
+	const { count: totalChunks } = await client.count(collection, {
+		filter: { must_not: [notConfig] },
+		exact: true
+	});
+	// Needs the metadata.audit.v index the first audit run creates; before that, nothing is tagged.
+	const untaggedChunks = await client
+		.count(collection, {
+			filter: {
+				must_not: [notConfig, { key: 'metadata.audit.v', match: { value: CHUNK_AUDIT_VERSION } }]
+			},
+			exact: true
+		})
+		.then((r) => r.count)
+		.catch(() => (status ? null : totalChunks));
+
+	const measured = status && status.audited > 0 && status.inputTokens > 0;
+	const tokensPerChunk = measured
+		? Math.round(status.inputTokens / status.audited)
+		: DEFAULT_TOKENS_PER_CHUNK;
+	const configured = Number(env.CHUNK_AUDIT_USD_PER_M_INPUT);
+	const usdPerMillionInput = configured > 0 ? configured : DEFAULT_USD_PER_M_INPUT;
+	const usdFor = (chunks: number) => (chunks * tokensPerChunk * usdPerMillionInput) / 1_000_000;
+
+	return {
+		totalChunks,
+		untaggedChunks,
+		tokensPerChunk,
+		basis: measured ? 'measured' : 'default',
+		usdPerMillionInput,
+		fullAuditUsd: usdFor(totalChunks),
+		remainingUsd: untaggedChunks === null ? null : usdFor(untaggedChunks)
+	};
 }

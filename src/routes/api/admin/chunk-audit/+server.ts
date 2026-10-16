@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import {
 	auditUntaggedChunks,
+	estimateAuditCost,
 	getChunkAuditStatus,
 	saveChunkAuditStatus,
 	type ChunkAuditStatus
@@ -10,12 +11,17 @@ import { UserRole } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import { waitUntil } from '@vercel/functions';
 
-// Leave headroom under the function limit for the last batch and its Qdrant writes.
-const RUN_BUDGET_MS = 45_000;
-// Runs save progress every ~45s, so a `running` status older than this means the chain died.
-const STALE_AFTER_MS = 3 * 60_000;
+// Vercel stops a chain of self-calls after about six hops (508 INFINITE_LOOP_DETECTED), so each
+// run does as much as the 300s function limit allows: fewer hops for the same work. Calls still
+// in flight are cut off 8s past the budget (see chunk-audit.ts), leaving time to save and hand off.
+const RUN_BUDGET_MS = 240_000;
+// Runs save progress every ~4 minutes, so a `running` status older than this means the chain died.
+const STALE_AFTER_MS = 6 * 60_000;
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 300 };
+
+/** Vercel refused the next hop because the chain of self-calls got too long. */
+class LoopLimitError extends Error {}
 
 /**
  * Background chunk audit (see $lib/server/chunk-audit). The admin page's POST starts it and
@@ -23,7 +29,8 @@ export const config = { maxDuration: 60 };
  * if untagged chunks remain, calls this endpoint again to start the next run — authorized with
  * CRON_SECRET, since the admin's login cookie expires after an hour. Progress is saved after
  * every run, and GET returns it so the admin page can show "running" or "done" whenever it's
- * opened. Clicking Audit again resumes a chain that stopped.
+ * opened. When Vercel's loop limit stops the chain the job is `paused`, not failed: Resume (or the
+ * admin page, while it's open) starts a fresh chain that carries on with the same totals.
  *
  * Every run logs one `[HuntBot chunk audit]` line (counts by source, tokens, and the ids of the
  * chunks it flagged — never their text) and sends a `chunk_audit_run` PostHog event; the job as a
@@ -93,6 +100,7 @@ async function startNextRun(requestOrigin: string): Promise<void> {
 			'[HuntBot chunk audit] next run refused',
 			JSON.stringify({ status: res.status, detail })
 		);
+		if (res.status === 508) throw new LoopLimitError(detail);
 		throw new Error(`Next run did not start (HTTP ${res.status}${detail ? `; ${detail}` : ''})`);
 	}
 }
@@ -145,6 +153,17 @@ async function runOnce(status: ChunkAuditStatus, origin: string): Promise<void> 
 		console.log('[HuntBot chunk audit] finished', JSON.stringify(jobProperties(status)));
 		await captureServerEvent('chunk_audit_finished', SYSTEM_DISTINCT_ID, jobProperties(status));
 	} catch (err) {
+		if (err instanceof LoopLimitError) {
+			// Not a failure: the work so far is saved and Resume starts a fresh chain.
+			status.state = 'paused';
+			status.error = null;
+			status.updatedAt = new Date().toISOString();
+			console.log('[HuntBot chunk audit] paused', JSON.stringify(jobProperties(status)));
+			await saveChunkAuditStatus(status).catch((e) =>
+				console.error('Saving chunk audit status failed:', e)
+			);
+			return;
+		}
 		console.error('[HuntBot chunk audit] failed:', err);
 		status.state = 'error';
 		status.error = err instanceof Error ? err.message : String(err);
@@ -162,7 +181,12 @@ async function runOnce(status: ChunkAuditStatus, origin: string): Promise<void> 
 export const GET: RequestHandler = async ({ locals }) => {
 	if (!isAdmin(locals)) return json({ error: 'Unauthorized' }, { status: 401 });
 	const status = await getChunkAuditStatus().catch(() => null);
-	return json({ status, stale: status?.state === 'running' && isStale(status) });
+	// Counting is two quick Qdrant calls; a failure only hides the estimate, never the status.
+	const estimate = await estimateAuditCost(status).catch((err) => {
+		console.warn('Chunk audit estimate failed:', err);
+		return null;
+	});
+	return json({ status, stale: status?.state === 'running' && isStale(status), estimate });
 };
 
 export const POST: RequestHandler = async ({ locals, request, url }) => {
@@ -179,11 +203,16 @@ export const POST: RequestHandler = async ({ locals, request, url }) => {
 			return json({ started: false, status: current }, { status: 409 });
 		} else {
 			const now = new Date().toISOString();
-			// A stale `running` status is a chain that died partway: resume it, keeping its start
-			// time and totals so the finished job reports everything it did, not just the tail.
-			const resumed = current?.state === 'running';
+			// A paused job, or a stale `running` one whose chain died partway, is resumed: it keeps
+			// its start time and totals so the finished job reports everything it did.
+			const resumed = current?.state === 'running' || current?.state === 'paused';
 			status = resumed
-				? { ...current, updatedAt: now, inputTokens: current.inputTokens ?? 0 }
+				? {
+						...current,
+						state: 'running',
+						updatedAt: now,
+						inputTokens: current.inputTokens ?? 0
+					}
 				: {
 						state: 'running',
 						startedAt: now,
