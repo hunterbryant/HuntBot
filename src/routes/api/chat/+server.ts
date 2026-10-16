@@ -65,8 +65,8 @@ const LANE_MODEL_CONFIG: Record<
 	{ model: string; reasoningEffort: 'low' | 'medium'; maxOutputTokens: number }
 > = {
 	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 600 },
-	standard: { model: 'gpt-6-astra', reasoningEffort: 'low', maxOutputTokens: 600 },
-	deep: { model: 'gpt-6-astra', reasoningEffort: 'medium', maxOutputTokens: 1500 }
+	standard: { model: 'gpt-6-sol', reasoningEffort: 'low', maxOutputTokens: 600 },
+	deep: { model: 'gpt-6-sol', reasoningEffort: 'medium', maxOutputTokens: 1500 }
 };
 
 // Tools with no server `execute` — the client renders their input as the reply/action.
