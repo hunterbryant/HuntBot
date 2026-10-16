@@ -4,7 +4,8 @@ export enum SupportedActions {
 	route_to_page = 'route_to_page',
 	minimize_chat = 'minimize_chat',
 	ask_clarifying_question = 'ask_clarifying_question',
-	capture_lead_intent = 'capture_lead_intent'
+	capture_lead_intent = 'capture_lead_intent',
+	reset_conversation = 'reset_conversation'
 }
 
 export enum FunctionState {

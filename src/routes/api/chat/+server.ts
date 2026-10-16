@@ -75,7 +75,8 @@ const CLIENT_TOOL_NAMES = new Set([
 	'minimize_chat',
 	'route_to_page',
 	'ask_clarifying_question',
-	'capture_lead_intent'
+	'capture_lead_intent',
+	'reset_conversation'
 ]);
 
 type ContextConfidence = 'empty' | 'thin' | 'moderate' | 'strong';
@@ -553,6 +554,15 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 								)
 						})
 					}),
+					reset_conversation: tool({
+						description:
+							'Clear this conversation and start fresh. Call this only when the visitor clearly asks to clear, reset or restart the chat ("start over", "forget all that", "can we start fresh?"). Never call it on your own initiative.',
+						inputSchema: z.object({
+							message: z
+								.string()
+								.describe('A brief sign-off before the chat clears (1 sentence, plain text).')
+						})
+					}),
 					route_to_page: tool({
 						description:
 							'Navigate the user to a page on Hunter\'s site. Routing is an extra, never a substitute for an answer: if the visitor asked a question or asked you to tell, describe, write or explain something, answer in text first and only then (optionally) call this in the same response. Call it on its own only when they explicitly asked to go somewhere ("take me to", "open", "show me the X page"). CRITICAL: only call this with an exact URL copied verbatim from the approved list in the system prompt. Never construct, infer, or approximate a URL. If the exact URL is not in the list, do not call this function.',
@@ -856,6 +866,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 
 ## Tools
 - Prefer answering from CONTEXT first (including any PRE-RUN VECTOR SEARCHES section). Use search_knowledge_base only if CONTEXT is still insufficient or the user pivots to a new entity/topic. You can search multiple times with different queries if needed.
+- Use reset_conversation only when the visitor clearly asks to clear or restart the chat. (Typing "clear" already does it instantly, so mention that if they ask how.)
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.

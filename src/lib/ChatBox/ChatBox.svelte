@@ -31,6 +31,7 @@
 		getMessageRelated,
 		streamingAssistantHasText,
 		getStreamingStatus,
+		restoredMessageIds,
 		SESSION_ID
 	} from './MessageStore.svelte';
 	import type { FunctionMessage } from '$lib/types';
@@ -39,7 +40,8 @@
 
 	const { messages, isLoading, handleSubmit, input, append } = chat();
 
-	const animatedMessageIds = new Set<string>();
+	// Restored replies were already read, so they skip the reveal animation
+	const animatedMessageIds = new Set<string>(restoredMessageIds);
 
 	function shouldAnimate(id: string): boolean {
 		if (animatedMessageIds.has(id)) return false;
@@ -153,6 +155,19 @@
 			}
 		}
 		prevLoading = $isLoading ?? false;
+	}
+
+	// Chips normally arrive after a streamed reply; a restored conversation has none yet, so
+	// fetch them the first time the visitor opens it.
+	let restoredChipsFetched = false;
+	$: if (
+		!restoredChipsFetched &&
+		restoredMessageIds.size > 0 &&
+		!$minimized &&
+		$messages.some((m) => m.role === 'user')
+	) {
+		restoredChipsFetched = true;
+		fetchSuggestions($messages, $page.url.pathname);
 	}
 
 	// Clear suggestions when user starts typing
