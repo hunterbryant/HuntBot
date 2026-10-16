@@ -17,17 +17,36 @@ const GROUNDING_LEVELS = [
 	'Fully supported: every factual claim traces to the evidence'
 ];
 
+// The voice rules from the system prompt's "How Hunter talks" section, as one ordered rubric.
+const VOICE_LEVELS = [
+	'Off-voice: corporate jargon, chatbot pleasantries, markdown or lists, or a long multi-paragraph answer',
+	'Mostly off-voice: several of those problems',
+	'Mostly on-voice: plain, short and specific, with one small slip',
+	'On-voice: plain text, one to three sentences (up to four for a hiring pitch), specific, no jargon or pleasantries'
+];
+
+const VISITOR_INTENTS = {
+	recruiter: 'A recruiter or hiring manager evaluating Hunter for a role',
+	client: 'Someone exploring freelance, contract or project work with Hunter',
+	peer: 'A designer or builder interested in his craft, process or how this site was made',
+	curious: 'A general visitor browsing out of curiosity',
+	testing: 'Someone poking at the chatbot itself: jailbreaks, trick questions or off-topic tests'
+};
+
 /**
- * Cheap grounding check on every reply, sent to PostHog as `rag_grounding` (joined to
+ * Cheap per-turn audit of every reply, sent to PostHog as `rag_grounding` (joined to
  * `chat_message` on run_id). One OpenAI Decisions call scores how well the reply is supported by
  * what the model was given — CONTEXT, the ABOUT HUNTER page and any server-tool output — and
  * whether it makes factual claims at all, so misses and small talk can be filtered out of the
- * score. Runs after the reply has streamed, so it never adds visitor latency. `RAG_REFLECTION=1`
- * is still there for claim-by-claim citations; set `RAG_GROUNDING=0` to turn this off.
+ * score. The same call also checks the voice rules (third person, plain and short), catches
+ * misses `MISS_PATTERN` doesn't, and guesses who the visitor is. Runs after the reply has
+ * streamed, so it never adds visitor latency. `RAG_REFLECTION=1` is still there for
+ * claim-by-claim citations; set `RAG_GROUNDING=0` to turn this off.
  */
 export async function sendGroundingScoreToPosthog(options: {
 	posthogKey: string;
 	userMessage: string;
+	priorUserMessages: string[];
 	assistantText: string;
 	contextText: string;
 	aboutText: string | null;
@@ -48,6 +67,7 @@ export async function sendGroundingScoreToPosthog(options: {
 		model: openai.decisionModel('gpt-6-luna'),
 		state: {
 			visitor_message: userMessage,
+			earlier_visitor_messages: options.priorUserMessages.slice(-5),
 			reply: assistantText,
 			evidence: {
 				about_hunter: options.aboutText?.slice(0, ABOUT_MAX_CHARS) ?? '',
@@ -69,6 +89,28 @@ export async function sendGroundingScoreToPosthog(options: {
 				instructions:
 					"How well is the reply's factual content supported by the evidence (about_hunter, context, tool_results)? Judge support only, not tone or style.",
 				criteria: GROUNDING_LEVELS
+			},
+			// The bot talks about Hunter in the third person; it is never Hunter himself.
+			speaks_as_hunter: {
+				type: 'boolean',
+				instructions:
+					'Does the reply speak as Hunter himself, in the first person ("I designed…", "my work"), rather than about him in the third person? "I" meaning the chatbot itself ("I don\'t have that") does not count.'
+			},
+			admits_miss: {
+				type: 'boolean',
+				instructions:
+					"Does the reply say, in any wording, that it doesn't have or can't find the information the visitor asked for?"
+			},
+			voice: {
+				type: 'score',
+				instructions: 'How well does the reply follow this voice spec?',
+				criteria: VOICE_LEVELS
+			},
+			visitor_intent: {
+				type: 'choice',
+				instructions:
+					'Based on visitor_message and earlier_visitor_messages, who is this visitor most likely to be?',
+				criteria: VISITOR_INTENTS
 			}
 		},
 		abortSignal: AbortSignal.timeout(GROUNDING_TIMEOUT_MS)
@@ -80,6 +122,11 @@ export async function sendGroundingScoreToPosthog(options: {
 		grounding_score: grounding.score,
 		grounding_probabilities: grounding.probabilities ?? null,
 		makes_claims_probability: makesClaims.probability,
+		speaks_as_hunter_probability: answers.speaks_as_hunter.probability,
+		admits_miss_probability: answers.admits_miss.probability,
+		voice_score: answers.voice.score,
+		visitor_intent: answers.visitor_intent.choice,
+		visitor_intent_probabilities: answers.visitor_intent.probabilities ?? null,
 		user_message: userMessage,
 		bot_response: assistantText,
 		lane: options.lane,
@@ -90,7 +137,11 @@ export async function sendGroundingScoreToPosthog(options: {
 	};
 	logRag('grounding score', {
 		score: grounding.score,
-		makesClaims: makesClaims.probability
+		makesClaims: makesClaims.probability,
+		speaksAsHunter: answers.speaks_as_hunter.probability,
+		admitsMiss: answers.admits_miss.probability,
+		voice: answers.voice.score,
+		intent: answers.visitor_intent.choice
 	});
 
 	await fetch('https://us.i.posthog.com/capture/', {

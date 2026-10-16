@@ -65,7 +65,8 @@ HuntBot/
 │   │   │   ├── timing.ts             # Per-request stage timer for latency logging
 │   │   │   ├── rag-router.ts         # Supplemental search planning via structured LLM call
 │   │   │   ├── rag-reflection.ts     # Post-hoc grounding audit for PostHog
-│   │   │   ├── grounding-score.ts    # Per-turn grounding score (OpenAI Decisions) for PostHog
+│   │   │   ├── grounding-score.ts    # Per-turn reply audit (OpenAI Decisions) for PostHog
+│   │   │   ├── chunk-audit.ts        # In-place quality/privacy tags on Qdrant chunks (OpenAI Decisions)
 │   │   │   ├── rag-debug.ts          # RAG logging helpers
 │   │   │   ├── qdrant-search.ts      # Low-level Qdrant client + vector search
 │   │   │   ├── imessage-config.ts    # iMessage feature toggle (cached in Qdrant)
@@ -97,7 +98,8 @@ HuntBot/
 │       ├── api/
 │       │   ├── chat/+server.ts       # POST — main chat endpoint (RAG + streaming)
 │       │   ├── cron/
-│       │   │   └── qdrant-keepalive/ # Daily Vercel Cron ping to keep the free Qdrant cluster active
+│       │   │   ├── qdrant-keepalive/ # Daily Vercel Cron ping to keep the free Qdrant cluster active
+│       │   │   └── chunk-audit/      # Daily Vercel Cron tagging untagged chunks (see chunk-audit.ts)
 │       │   └── embed/                # GET endpoints to trigger Qdrant embedding jobs
 │       │       ├── urls/             # Recursively crawls hunterbryant.io
 │       │       ├── notion-url/       # Embeds content from Notion via API
@@ -211,7 +213,7 @@ The `VITE_PRISMIC_ENVIRONMENT` env var can optionally override the Prismic repos
 8. LangSmith traces the full pipeline run (retrieval + LLM call) for observability
    - **Never a silent turn**: the model's UI stream is forwarded chunk-by-chunk rather than merged, and if a turn ends with no text and no client-visible tool call (e.g. reasoning used up the output budget), a short fallback line is sent before `finish` and an `Model produced an empty reply` warning is logged. Note that `maxOutputTokens` includes reasoning tokens, so caps are set well above the length of a 1–3 sentence reply.
    - `gpt-6-*` models need `@ai-sdk/openai` ≥ 3.0.127 (now on 4.x with AI SDK 7) to be recognized as reasoning models — older versions silently drop reasoning settings (watch for `AI SDK Warning … not supported for non-reasoning models` in logs).
-   - **Grounding score** (`src/lib/server/grounding-score.ts`): after every non-trivial reply, one OpenAI Decisions call scores how well the reply is supported by the CONTEXT, the ABOUT HUNTER page text and any server-tool output (`grounding`, 0–3, probability-weighted), and whether it makes factual claims at all (`makes_claims`, so misses and small talk can be filtered out). It's sent as a separate `rag_grounding` PostHog event that joins to `chat_message` on `run_id`. It runs after the stream finishes, so it adds no visitor latency. Disable with `RAG_GROUNDING=0`.
+   - **Grounding score** (`src/lib/server/grounding-score.ts`): after every non-trivial reply, one OpenAI Decisions call scores how well the reply is supported by the CONTEXT, the ABOUT HUNTER page text and any server-tool output (`grounding`, 0–3, probability-weighted), and whether it makes factual claims at all (`makes_claims`, so misses and small talk can be filtered out). The same call also answers `speaks_as_hunter` (first-person slips against the "HuntBot is not Hunter" rule), `admits_miss` (misses in any wording, which `MISS_PATTERN` can't catch), `voice` (0–3 against the voice rules) and `visitor_intent` (recruiter / client / peer / curious / testing, with probabilities). A refusal on any question fails the whole call, which only drops that turn's event. It's sent as a separate `rag_grounding` PostHog event that joins to `chat_message` on `run_id`. It runs after the stream finishes, so it adds no visitor latency. Disable with `RAG_GROUNDING=0`.
    - **Suggestion chips** (`/api/chat/suggestions`) are written from the page text / transcript, then checked against the knowledge base: the model writes 5 candidates, each is embedded and matched against public sources (no iMessage), and any whose best vector score is under `MIN_VECTOR_SCORE` is dropped before the top 3 are shown, so a chip never leads straight to "I don't have that". Navigation chips ("Take me to…") skip the check. Scroll-driven chip fetches are capped at 2 per page.
    - All structured helper calls (router, reflection, suggestions) use `generateText` + `Output.object` — `generateObject` is deprecated in AI SDK 7. The suggestion and proactive endpoints also go through the AI SDK rather than the raw `openai` client, and log failures instead of silently returning empty results.
 9. **Latency logging** (`src/lib/server/timing.ts`): every turn logs one `[HuntBot timing]` JSON line (lane, model, lane scores, and ms per stage: `classify`, `rewrite`, `vector_search`, `rerank`, `page_fetch`, `retrieval`, `router`, `supplemental`, `fallback`, `model_start`, `first_token`, `total`, plus per model step `stepN` / `stepN_first_output` and per tool `tool_<name>` from AI SDK 7's `step.performance`) and attaches the same `timings_ms` + `lane` to the PostHog `chat_message` event
@@ -259,6 +261,12 @@ All embedders use:
 - Dimensions: `512`
 - Chunk size: `1000` characters, overlap: `200`
 - LangChain `QdrantVectorStore.fromDocuments()`
+
+### Chunk audit (quality + privacy tags, no re-embedding)
+
+`src/lib/server/chunk-audit.ts` tags every chunk with `metadata.audit` using OpenAI Decisions (8 chunks per call): a `substance` score (0–3, boilerplate → rich), and for notes/iMessage chunks a `sensitive` probability (contact details, financial/medical/legal details, credentials, private details about other people). The tags are written in place with Qdrant `set_payload`, so vectors are never touched and nothing needs re-embedding. A daily Vercel Cron (`GET /api/cron/chunk-audit`, `CRON_SECRET`-protected like the keepalive) tags whatever isn't tagged at the current `CHUNK_AUDIT_VERSION`, within a 45s budget per run, so the existing index gets cleaned gradually and new embeds are picked up the day after they're written. Bump `CHUNK_AUDIT_VERSION` after changing the rubric to re-audit everything.
+
+Retrieval (`searchByEmbedding` in `context.ts`) drops chunks flagged `low_value` (substance < 0.75) or `sensitive` (probability ≥ 0.8) right after each Qdrant search. That's done in code rather than as a Qdrant filter, so retrieval never depends on an audit index existing, and untagged chunks are always kept. Refused chunks are tagged `refused: true` and kept. A run logs one `[HuntBot chunk audit]` line with counts.
 
 ### Keeping the free Qdrant cluster alive
 

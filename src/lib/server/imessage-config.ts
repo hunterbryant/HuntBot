@@ -1,7 +1,7 @@
 import { env } from '$env/dynamic/private';
 import { getPointVectorForUpsert, getQdrantClient } from '$lib/server/qdrant-search';
 
-const CONFIG_POINT_ID = 'a0000000-0000-0000-0000-000000000001';
+export const CONFIG_POINT_ID = 'a0000000-0000-0000-0000-000000000001';
 const VECTOR_DIMS = 512;
 const CACHE_TTL_MS = 60_000;
 

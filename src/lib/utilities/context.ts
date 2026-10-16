@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { rewriteRetrievalQuery } from '$lib/rewrite';
+import { isExcludedByAudit } from '$lib/server/chunk-audit';
 import { getImessageEnabled } from '$lib/server/imessage-config';
 import { getQdrantClient, qdrantSimilaritySearchWithScore } from '$lib/server/qdrant-search';
 import type { QueryLane } from '$lib/server/query-lane';
@@ -145,7 +146,10 @@ async function searchByEmbedding(
 	if (!collection) {
 		throw new Error('QDRANT_COLLECTION is not set');
 	}
-	return qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
+	const results = await qdrantSimilaritySearchWithScore(client, collection, embedding, k, filter);
+	// Chunks the daily audit flagged as boilerplate or sensitive (see $lib/server/chunk-audit).
+	// Filtered here rather than in Qdrant so retrieval never depends on an audit index existing.
+	return results.filter(([doc]) => !isExcludedByAudit(doc.metadata));
 }
 
 const NOT_A_NAME = new Set([
@@ -563,7 +567,8 @@ export async function bestMatchScores(queries: string[]): Promise<number[]> {
 	const embeddings = await getEmbeddings().embedDocuments(queries);
 	return Promise.all(
 		embeddings.map(async (embedding) => {
-			const [top] = await searchByEmbedding(embedding, 1, PUBLIC_SOURCES_FILTER);
+			// A few extra, in case the nearest ones were excluded by the chunk audit.
+			const [top] = await searchByEmbedding(embedding, 4, PUBLIC_SOURCES_FILTER);
 			return top ? top[1] : 0;
 		})
 	);

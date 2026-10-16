@@ -299,6 +299,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					void sendGroundingScoreToPosthog({
 						posthogKey,
 						userMessage: lastMessageText,
+						priorUserMessages,
 						assistantText: turn.visibleText,
 						contextText: turn.contextForReflection,
 						aboutText: turn.aboutText,
