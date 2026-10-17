@@ -224,7 +224,10 @@ export function displayName(orgName: string): string {
 	// "L.L.C." comes through as "L L C"
 	while (words.length > 1 && words[words.length - 1].length === 1) words.pop();
 	const name = words.join(' ');
-	return name === name.toUpperCase() ? name.charAt(0) + name.slice(1).toLowerCase() : name;
+	if (name === name.toUpperCase()) return name.charAt(0) + name.slice(1).toLowerCase();
+	// "google" typed in /simulate: capitalise each word
+	if (name === name.toLowerCase()) return name.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+	return name;
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -466,7 +469,25 @@ const key = (org: OrgRef) => (org.domain ?? coreOrgName(org.name)).toLowerCase()
  * of a company with no job board it answers "none" now and fills the cache from a background web
  * search for later turns, unless `waitForWeb` (a visitor named the company) says to wait for it. Job boards are public and unauthenticated; nothing about the visitor is sent.
  */
-export async function lookupCompanyRoles(
+const inFlight = new Map<string, Promise<CompanyRoles>>();
+
+/**
+ * Concurrent lookups for the same company share one run (two requests used to start two web
+ * agents that could disagree), see `lookupOnce`.
+ */
+export function lookupCompanyRoles(
+	org: OrgRef,
+	opts: { waitForWeb?: boolean } = {}
+): Promise<CompanyRoles> {
+	const k = `${key(org)}|${opts.waitForWeb ? 'wait' : 'bg'}`;
+	const running = inFlight.get(k);
+	if (running) return running;
+	const run = lookupOnce(org, opts).finally(() => inFlight.delete(k));
+	inFlight.set(k, run);
+	return run;
+}
+
+async function lookupOnce(
 	org: OrgRef,
 	{ waitForWeb = false }: { waitForWeb?: boolean } = {}
 ): Promise<CompanyRoles> {
