@@ -21,17 +21,21 @@ MUD = "#ad6e5e"
 MUD_LIGHT = "#fddbd2"
 PAPER = "#fafaf9"
 
-# Commits per month, from:
-#   git log --format='%ad' --date=format:'%Y-%m' | sort | uniq -c
+# Commits per month on main, merges included, from:
+#   git log origin/main --format='%ad' --date=format:'%Y-%m' | sort | uniq -c
+# Cloud sessions clone shallowly, so run `git fetch --unshallow origin main` first or the early
+# months come out short.
 COMMITS = {
-	"2024-02": 18,
-	"2024-03": 20,
+	"2023-12": 95,
+	"2024-01": 116,
+	"2024-02": 19,
+	"2024-03": 30,
 	"2024-04": 11,
 	"2025-11": 1,
 	"2026-03": 93,
 	"2026-04": 4,
 	"2026-08": 24,
-	"2026-10": 22,
+	"2026-10": 67,
 }
 
 DEFS = f"""
@@ -150,6 +154,9 @@ ICONS = {
 		<path d="M50,6 L94,50 L50,94 L6,50 Z" class="ink paper" />
 		<path d="M41,38 c0,-8 18,-10 18,0 c0,7 -9,7 -9,15" class="ink" stroke="{mud}" />
 		<circle cx="50" cy="65" r="3" fill="{mud}" />""",
+	"pulse": """
+		<rect x="6" y="14" width="88" height="72" rx="8" class="ink paper" />
+		<polyline points="16,56 34,56 42,38 52,72 62,30 70,56 84,56" class="ink" stroke="{mud}" />""",
 	"blocks": """
 		<rect x="8" y="8" width="84" height="56" rx="6" class="ink paper" />
 		<line x1="20" y1="24" x2="78" y2="24" class="ink thin" /><line x1="20" y1="36" x2="78" y2="36" class="ink thin" />
@@ -254,15 +261,21 @@ def system_map():
 		parts.append(line(1018, y - 14, 836, 290 + (y - 300) * 0.35))
 	# What HuntBot uses directly, below it
 	parts += [
-		line(380, 372, 300, 488),
-		line(460, 372, 560, 488),
-		icon("sparkle", 290, 550, 100),
-		text(290, 640, "AI model"),
-		text(290, 666, "OpenAI", cls="small"),
-		icon("calendar", 520, 550, 76),
-		icon("code", 620, 550, 76),
-		text(570, 640, "Live lookups"),
-		text(570, 666, "Calendar · GitHub", cls="small"),
+		line(370, 368, 230, 488),
+		line(420, 374, 520, 488),
+		line(472, 366, 830, 488),
+		icon("sparkle", 220, 550, 100),
+		text(220, 640, "AI model"),
+		text(220, 666, "OpenAI", cls="small"),
+		icon("calendar", 430, 550, 76),
+		icon("code", 520, 550, 76),
+		icon("pulse", 610, 550, 76),
+		text(520, 640, "Live lookups"),
+		text(520, 666, "Calendar · GitHub · intervals.icu", cls="small"),
+		f'<rect x="770" y="500" width="140" height="100" rx="12" fill="#fff" stroke="{INK}" stroke-width="2.5" stroke-dasharray="8 8" />',
+		text(840, 560, "python", cls="mono"),
+		text(840, 640, "Code sandbox"),
+		text(840, 666, "Vercel Sandbox", cls="small"),
 	]
 	return page(1200, 710, "".join(parts))
 
@@ -322,7 +335,7 @@ def slide(title, body):
 
 def slide_lanes():
 	parts = [icon("ask", 150, 330, 130)]
-	lanes = [("quick", 1, "gpt-6-luna"), ("standard", 2, "gpt-6-astra, low effort"), ("deep", 3, "gpt-6-astra, medium effort")]
+	lanes = [("quick", 1, "gpt-6-luna"), ("standard", 2, "gpt-6.1-sol, low effort"), ("deep", 3, "gpt-6.1-sol, medium effort")]
 	for k, (lane, bars, model) in enumerate(lanes):
 		y = 200 + k * 130
 		fill = MUD_LIGHT if lane == "standard" else "#fff"
@@ -492,11 +505,45 @@ def tool_loop():
 	return page(1200, 410, "".join(parts))
 
 
+# ---------------------------------------------------------------- training analysis
+
+
+def analysis():
+	y = 230
+	sx, sw = 560, 330  # the sandbox
+	parts = [
+		text(110, 110, "Model"),
+		icon("sparkle", 110, y, 100),
+		line(170, y, 206, y),
+		text(362, 110, "Python script"),
+		f'<rect x="214" y="{y - 64}" width="296" height="128" rx="12" fill="#fff" stroke="{INK}" stroke-width="2.5" />',
+		text(236, y - 26, "import csv", cls="mono", anchor="start"),
+		text(236, y + 4, "rows = csv.DictReader(", cls="mono", anchor="start"),
+		text(236, y + 34, "  open('weekly.csv'))", cls="mono", anchor="start", extra=' xml:space="preserve"'),
+		line(518, y, sx - 10, y),
+		# The sandbox: preloaded files inside, network shut except one host
+		text(sx + sw / 2, 110, "Sandbox"),
+		f'<rect x="{sx}" y="{y - 92}" width="{sw}" height="184" rx="16" fill="none" stroke="{INK}" stroke-width="2.5" stroke-dasharray="8 8" />',
+		pill(sx + 30, y - 66, 180, 36, "weekly.csv"),
+		pill(sx + 30, y - 18, 180, 36, "activities.csv"),
+		pill(sx + 30, y + 30, 180, 36, "wellness.csv", fill="mud"),
+		text(sx + 270, y + 6, "+ API", cls="small"),
+		line(sx + sw + 8, y - 40, 1004, y - 40, both=True),
+		icon("pulse", 1080, y - 40, 100),
+		text(1080, y + 40, "intervals.icu"),
+		text(1080, y + 66, "read-only, his data", cls="small"),
+		# Only what the script prints goes back
+		f'<path d="M{sx + sw / 2},{y + 100} V{y + 136} Q{sx + sw / 2},{y + 150} {sx + sw / 2 - 14},{y + 150} H124 Q110,{y + 150} 110,{y + 136} V{y + 62}" fill="none" stroke="{INK}" stroke-width="3" stroke-linecap="round" marker-end="url(#head)" />',
+		text(560, y + 190, "Only what the script prints goes back to the model", cls="note"),
+	]
+	return page(1200, 450, "".join(parts))
+
+
 # ---------------------------------------------------------------- timeline
 
 
 def timeline():
-	months = [(y, m) for y in (2024, 2025, 2026) for m in range(1, 13)][:35]  # Jan 2024 to Nov 2026
+	months = [(2023, 12)] + [(y, m) for y in (2024, 2025, 2026) for m in range(1, 13)][:35]  # Dec 2023 to Nov 2026
 	x0, x1, base, top = 70, 1130, 400, 110
 	step_w = (x1 - x0) / len(months)
 	scale = (base - top) / max(COMMITS.values())
@@ -522,10 +569,10 @@ def timeline():
 			+ text((a + b) / 2, base + 62, label, cls="note" if muted else "label")
 		)
 
-	parts.append(era("2024-02", "2024-04", "Launch"))
+	parts.append(era("2023-12", "2024-04", "Build + launch"))
 	parts.append(era("2024-05", "2025-10", "Quiet stretch", muted=True))
 	parts.append(era("2026-03", "2026-04", "Rebuild"))
-	parts.append(era("2026-08", "2026-10", "Tools + speed"))
+	parts.append(era("2026-08", "2026-10", "Tools + data"))
 
 	for year in (2024, 2025, 2026):
 		x = mx(f"{year}-01") - step_w / 2
@@ -550,6 +597,7 @@ for name, build in {
 	"step-5-check": slide_check,
 	"hyde": hyde,
 	"tool-loop": tool_loop,
+	"analysis": analysis,
 	"timeline": timeline,
 }.items():
 	(HERE / f"{name}.html").write_text(build())
