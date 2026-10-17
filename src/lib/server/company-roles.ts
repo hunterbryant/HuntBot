@@ -4,15 +4,16 @@ import { safeFetchText } from '$lib/server/safe-fetch';
 import { describeError } from '$lib/server/tool-log';
 import { createOpenAI } from '@ai-sdk/openai';
 import { waitUntil } from '@vercel/functions';
-import { generateText, Output, zodSchema } from 'ai';
+import { generateText, Output, tool, zodSchema } from 'ai';
+import { compile } from 'html-to-text';
 import { z } from 'zod';
 
 // Open design roles at the company a visitor's network belongs to, so HuntBot can ask "are you
 // hiring for the Maps designer role?" instead of guessing blind. The network owner comes from the
 // IPinfo lookup (ip-org.ts) and is only a guess: VPNs, coworking spaces and parent companies all
-// look like an org. The lookup tries the public job-board APIs (Greenhouse, Lever, Ashby: keyless,
-// structured, current) and only falls back to a web search when no board is found, in the
-// background, so a slow search never delays a reply.
+// look like an org. The lookup tries the public job-board APIs first (Greenhouse, Lever, Ashby,
+// SmartRecruiters, Workable: keyless, structured, current) and otherwise runs a web agent that finds
+// the company's careers page and reads it; every role link is re-checked before it's returned.
 
 /** What the lookup needs of an org: a name, and a domain when one is known. */
 export type OrgRef = Pick<IpOrg, 'name' | 'domain'>;
@@ -27,8 +28,8 @@ export type CompanyRoles = {
 };
 
 const REQUEST_TIMEOUT_MS = 2500;
-const OVERALL_TIMEOUT_MS = 5000;
-const WEB_TIMEOUT_MS = 8000;
+const OVERALL_TIMEOUT_MS = 3000;
+const WEB_TIMEOUT_MS = 20_000;
 const MAX_ROLES = 5;
 const MAX_SLUGS = 4;
 const HIT_TTL_MS = 12 * 60 * 60_000;
@@ -47,10 +48,9 @@ export function isDesignRole(title: string): boolean {
 	return DESIGN_TITLE.test(title) && !NOT_DESIGN.test(title);
 }
 
-type Source = 'ats' | 'site' | 'page' | 'web' | 'cache' | 'none';
-// Where a hit came from: a job-board API (ats), one of the big companies' own career sites (site),
-// links scraped from the company's careers page (page), or a web search (web).
-const AUTHORITATIVE = new Set<Source>(['ats', 'site']);
+type Source = 'ats' | 'web' | 'cache' | 'none';
+// Where a hit came from: a job-board API (ats) or the web agent (web).
+const AUTHORITATIVE = new Set<Source>(['ats']);
 type Stored = { company: string; roles: CompanyRole[]; source: Exclude<Source, 'cache'> };
 const cache = new Map<string, { expires: number; value: Stored }>();
 
@@ -230,137 +230,6 @@ async function workable(slug: string): Promise<Board | null> {
 	};
 }
 
-// Big companies that run their own career sites instead of a shared job board. Each adapter reads
-// the site's public search (no key) for design roles; adding one means adding a function here.
-const ACRONYMS = new Set(['ux', 'ui', 'ai', 'ml', 'xr', 'vr', 'ar', 'hci', 'cx', 'ii', 'iii']);
-const SMALL = new Set(['and', 'of', 'for', 'the', 'to', 'in']);
-const titleCase = (slug: string) =>
-	slug
-		.split('-')
-		.map((w, i) =>
-			ACRONYMS.has(w)
-				? w.toUpperCase()
-				: i && SMALL.has(w)
-					? w
-					: w.charAt(0).toUpperCase() + w.slice(1)
-		)
-		.join(' ');
-
-async function googleCareers(): Promise<Board | null> {
-	const queries = ['product designer', 'ux designer', 'interaction designer'];
-	const pages = await Promise.all(
-		queries.map(async (q) => {
-			try {
-				const res = await fetch(
-					`https://www.google.com/about/careers/applications/jobs/results/?q=${encodeURIComponent(q)}`,
-					{
-						headers: { 'User-Agent': 'Mozilla/5.0 (compatible; huntbot)' },
-						signal: AbortSignal.timeout(4500)
-					}
-				);
-				return res.ok ? await res.text() : '';
-			} catch {
-				return '';
-			}
-		})
-	);
-	const seen = new Set<string>();
-	const jobs: CompanyRole[] = [];
-	for (const html of pages) {
-		// The listing links carry the title in the slug: jobs/results/<id>-<title-slug>
-		for (const m of html.matchAll(/jobs\/results\/(\d+)-([a-z0-9-]+)/g)) {
-			if (seen.has(m[1])) continue;
-			seen.add(m[1]);
-			jobs.push({
-				title: titleCase(m[2]),
-				location: null,
-				url: `https://www.google.com/about/careers/applications/jobs/results/${m[1]}-${m[2]}`
-			});
-		}
-	}
-	return jobs.length ? { company: 'Google', jobs } : null;
-}
-
-async function amazonJobs(): Promise<Board | null> {
-	const data = (await getJson(
-		'https://www.amazon.jobs/en/search.json?base_query=product+designer&result_limit=40'
-	)) as { jobs?: { title?: string; job_path?: string; normalized_location?: string }[] } | null;
-	if (!Array.isArray(data?.jobs)) return null;
-	return {
-		company: 'Amazon',
-		jobs: data.jobs.flatMap((j) =>
-			str(j.title) && str(j.job_path)
-				? [
-						{
-							title: str(j.title)!,
-							location: str(j.normalized_location),
-							url: `https://www.amazon.jobs${j.job_path}`
-						}
-					]
-				: []
-		)
-	};
-}
-
-async function netflixJobs(): Promise<Board | null> {
-	const data = (await getJson(
-		'https://explore.jobs.netflix.net/api/apply/v2/jobs?domain=netflix.com&query=designer&num=40'
-	)) as {
-		positions?: { name?: string; location?: string; canonicalPositionUrl?: string }[];
-	} | null;
-	if (!Array.isArray(data?.positions)) return null;
-	return {
-		company: 'Netflix',
-		jobs: data.positions.flatMap((j) =>
-			str(j.name) && str(j.canonicalPositionUrl)
-				? [{ title: str(j.name)!, location: str(j.location), url: str(j.canonicalPositionUrl)! }]
-				: []
-		)
-	};
-}
-
-const OWN_SITES: { match: RegExp; lookup: () => Promise<Board | null> }[] = [
-	{ match: /^(google|alphabet)$/, lookup: googleCareers },
-	{ match: /^amazon$/, lookup: amazonJobs },
-	{ match: /^netflix$/, lookup: netflixJobs }
-];
-
-async function fromOwnSite(org: OrgRef): Promise<Board | null> {
-	const slugs = slugCandidates(org);
-	const site = OWN_SITES.find((s) => slugs.some((slug) => s.match.test(slug)));
-	return site ? site.lookup() : null;
-}
-
-/**
- * Last keyless resort for a custom careers site: fetch likely careers URLs on the company's own
- * domain and keep links whose text reads as a design role. Server-rendered pages only.
- */
-async function fromCareersPage(org: OrgRef): Promise<Board | null> {
-	const domain = (org.domain ?? `${slugCandidates(org)[0] ?? ''}.com`)
-		.toLowerCase()
-		.replace(/^www\./, '');
-	if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return null;
-	const candidates = [
-		`https://careers.${domain}`,
-		`https://jobs.${domain}`,
-		`https://${domain}/careers`,
-		`https://www.${domain}/careers`
-	];
-	const pages = await Promise.all(candidates.map((u) => safeFetchText(u).catch(() => null)));
-	const jobs: CompanyRole[] = [];
-	const seen = new Set<string>();
-	for (const page of pages) {
-		if (!page || !page.ok) continue;
-		for (const m of page.text.matchAll(/\[([^\]\n]{6,120})\]\((https:\/\/[^)\s]+)\)/g)) {
-			const title = m[1].trim();
-			if (!isDesignRole(title) || seen.has(m[2]) || !isTrustedRoleUrl(m[2], org)) continue;
-			seen.add(m[2]);
-			jobs.push({ title, location: null, url: m[2] });
-		}
-	}
-	return jobs.length ? { company: displayName(org.name), jobs } : null;
-}
-
 async function fromBoards(org: OrgRef): Promise<{ company: string; roles: CompanyRole[] } | null> {
 	const slugs = slugCandidates(org);
 	const attempts = slugs.flatMap((slug) =>
@@ -426,20 +295,64 @@ const webRolesSchema = z.object({
 		.max(MAX_ROLES)
 });
 
-/** Web search for design roles, used only when no job board was found. Never throws. */
+const htmlToText = compile({
+	wordwrap: false,
+	selectors: [
+		{ selector: 'a', options: { hideLinkHrefIfSameAsText: true } },
+		{ selector: 'img', format: 'skip' }
+	]
+});
+const MAX_PAGE_CHARS = 8000;
+const MAX_AGENT_STEPS = 6;
+
+const DEAD_POSTING =
+	/(no longer (available|accepting)|position (has been|is) (filled|closed)|job (not found|has expired|is closed)|page not found|this (job|position) (is|has been) (closed|removed|filled))/i;
+
+/** Keeps a role only if its link opens and the page doesn't say the posting is gone. */
+async function stillOpen(role: CompanyRole): Promise<boolean> {
+	const page = await safeFetchText(role.url).catch(() => null);
+	if (!page || !page.ok) return false;
+	return !DEAD_POSTING.test(page.text.slice(0, 20000).replace(/<[^>]+>/g, ' '));
+}
+
+/**
+ * The general path for any company: a short agent loop that searches the web for the company's
+ * careers page, opens pages (SSRF-guarded) and follows links to its design roles, then the server
+ * re-fetches every returned link and drops dead or untrusted ones, so a role the model made up
+ * can't reach a visitor. Slower than the job-board APIs (several model steps), so it only runs
+ * when those find nothing, and the result is cached. Never throws.
+ */
 async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 		const { output } = await generateText({
 			model: openai.responses('gpt-6-luna'),
-			tools: { web_search: openai.tools.webSearch({ searchContextSize: 'low' }) },
+			tools: {
+				web_search: openai.tools.webSearch({ searchContextSize: 'low' }),
+				fetch_page: tool({
+					description:
+						"Open a public https page and read its text, with links shown as 'text [url]'. Use it to read a careers page or job listing, and to follow links (a Design team page, a job search with a design filter) that a search result points to.",
+					inputSchema: z.object({ url: z.string().describe('The full https URL.') }),
+					execute: async ({ url }) => {
+						const page = await safeFetchText(url);
+						if (!page.ok) return `Could not open that page: ${page.reason}`;
+						const text = /html/i.test(page.contentType) ? htmlToText(page.text) : page.text;
+						return text.slice(0, MAX_PAGE_CHARS) || 'The page had no readable text.';
+					}
+				})
+			},
+			stopWhen: ({ steps }) => steps.length >= MAX_AGENT_STEPS,
 			output: Output.object({ schema: zodSchema(webRolesSchema) }),
 			reasoning: 'low',
 			abortSignal: AbortSignal.timeout(WEB_TIMEOUT_MS),
 			providerOptions: { openai: { reasoningSummary: null } },
-			prompt: `Find up to ${MAX_ROLES} currently open product design, UX, visual or design-systems roles at ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''}, from their own careers page or job board. Only include roles you can see are open now, each with the direct link to the posting. If the company has no open design roles or you can't find its careers page, return an empty list. Do not guess.`
+			prompt: `Find up to ${MAX_ROLES} currently open product design, UX, visual or design-systems roles at ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''}. Search for the company's own careers page or job board, open it, and look for design roles (try a design filter, a Design team page, or a job search for "product designer" / "UX designer" if the site has one; pages that need JavaScript may show nothing, so also try search results that list its postings). Only include roles you saw on a page, each with the direct link to that posting. If the company has no open design roles or you can't reach its careers page, return an empty list. Never guess or fill in a role from memory.`
 		});
-		return output.roles.filter((r) => isDesignRole(r.title) && isTrustedRoleUrl(r.url, org));
+		const candidates = output.roles.filter(
+			(r) => isDesignRole(r.title) && isTrustedRoleUrl(r.url, org)
+		);
+		const open = await Promise.all(candidates.map(stillOpen));
+		return candidates.filter((_, i) => open[i]);
 	} catch (error) {
 		console.warn('[HuntBot tools] company roles web search failed', {
 			error: describeError(error)
@@ -449,28 +362,15 @@ async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 }
 
 /**
- * Job-board APIs and the big companies' own sites in parallel; the careers-page scrape only when
- * those turn up no design roles. A board that exists but has no design roles right now still
- * counts as an answer ("ats", zero roles), so the web search isn't spent on a company we can read.
+ * The job-board APIs only. A board that exists but has no design roles isn't an answer (a guessed
+ * slug can land on an unrelated or empty board: "apple", "meta"), so that falls through to the
+ * web agent rather than claiming there are none.
  */
 async function findRoles(org: OrgRef): Promise<Stored | null> {
-	const [boards, own] = await Promise.all([
-		fromBoards(org).catch(() => null),
-		fromOwnSite(org).catch(() => null)
-	]);
-	const ownRoles = own?.jobs.filter((j) => isDesignRole(j.title)).slice(0, MAX_ROLES) ?? [];
-	if (boards?.roles.length) return { company: boards.company, roles: boards.roles, source: 'ats' };
-	if (own && ownRoles.length)
-		return { company: own.company ?? displayName(org.name), roles: ownRoles, source: 'site' };
-	const page = await fromCareersPage(org).catch(() => null);
-	if (page) {
-		const roles = page.jobs.slice(0, MAX_ROLES);
-		if (roles.length)
-			return { company: page.company ?? displayName(org.name), roles, source: 'page' };
-	}
-	// A guessed slug can land on an unrelated or empty board ("apple", "meta"), so a board with no
-	// design roles isn't an answer: fall through to the web search rather than claim there are none.
-	return null;
+	const boards = await fromBoards(org).catch(() => null);
+	return boards?.roles.length
+		? { company: boards.company, roles: boards.roles, source: 'ats' }
+		: null;
 }
 
 const key = (org: OrgRef) => (org.domain ?? coreOrgName(org.name)).toLowerCase();

@@ -10,6 +10,9 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 // so it's phrased as a question and the chat route's prompt asks at most once per conversation.
 // No LLM: the text is a template, so it can't invent a role.
 
+// The web agent behind a company with no job board can take ~20s; the chat opener waits for it.
+export const config = { maxDuration: 60 };
+
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const none = json({ message: null });
 	let body: { visitor?: { gpc?: unknown }; simulateOrg?: unknown } = {};

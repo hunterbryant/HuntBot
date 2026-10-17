@@ -11,7 +11,7 @@ export type ToolCallLog = {
 	/** How many Notion pages, role listings, doc sections or evidence chunks came back. */
 	results?: number;
 	/** company_roles: where the roles came from. */
-	source?: 'ats' | 'site' | 'page' | 'web' | 'cache' | 'none';
+	source?: 'ats' | 'web' | 'cache' | 'none';
 	/** match_job_description: requirements extracted from the posting, and how many had no evidence. */
 	requirements?: number;
 	gaps?: number;
