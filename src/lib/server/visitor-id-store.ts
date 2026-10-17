@@ -8,10 +8,16 @@ import { createHash } from 'node:crypto';
 // Two kinds of record:
 // - `pixel`: page-view token -> company, written by the RB2B webhook, kept 24h
 // - `referrer`: referrer host -> company (or none), written by the referrer classifier, kept 30 days
+// - `board`: company -> its careers and job-board URLs, found once by company-roles.ts, kept 30 days
 // Never throws: a missing store just means the layer stays quiet.
 
-export type StoreKind = 'pixel' | 'referrer';
-const TTL_MS: Record<StoreKind, number> = { pixel: 24 * 3600_000, referrer: 30 * 24 * 3600_000 };
+export type StoreKind = 'pixel' | 'referrer' | 'board';
+const TTL_MS: Record<StoreKind, number> = {
+	pixel: 24 * 3600_000,
+	referrer: 30 * 24 * 3600_000,
+	// a company's careers / job-board URLs (company-roles.ts)
+	board: 30 * 24 * 3600_000
+};
 
 const collection = () => (env.QDRANT_COLLECTION ? `${env.QDRANT_COLLECTION}_visitor_ids` : null);
 let ready: Promise<boolean> | null = null;
