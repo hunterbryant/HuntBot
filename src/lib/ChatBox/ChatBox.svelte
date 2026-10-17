@@ -561,7 +561,7 @@
 			{#if isScrolling && !scrolledToBottom}
 				<div
 					transition:fade|global
-					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white dark:to-black"
+					class="sticky top-[calc(100%-6rem)] z-10 mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white dark:to-black"
 				>
 					<button
 						on:click={() => {
