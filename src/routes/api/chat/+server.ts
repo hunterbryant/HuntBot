@@ -25,7 +25,11 @@ import {
 	getWeeklySummary,
 	getWellness,
 	intervalsNetworkPolicy,
-	trainingDataFiles
+	logTrainingCall,
+	newFetchStats,
+	trainingAnalyticsProps,
+	trainingDataFiles,
+	type TrainingCallRecord
 } from '$lib/server/training';
 import {
 	buildVisitorContext,
@@ -98,6 +102,7 @@ const LANE_MODEL_CONFIG: Record<
 // Steps per turn. Analysis turns get more, so the model can fix a script that errored
 // or follow up with a second query before answering.
 const MAX_STEPS = 3;
+
 const MAX_ANALYSIS_STEPS = 6;
 // The route's maxDuration is 300s. Past this point into a turn no new analysis starts
 // (one run can take ~50s with sandbox startup), and the step loop stops, so the model
@@ -294,6 +299,10 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				contextForReflection: '',
 				aboutText: null as string | null,
 				serverToolOutputs: [] as { name: string; output: string }[],
+				// One record per get_training_totals / analyze_training_data call, and whether
+				// the turn ran out of time for more analysis (ANALYSIS_DEADLINE_MS).
+				trainingCalls: [] as TrainingCallRecord[],
+				analysisDeadlineHit: false,
 				visitor: null as VisitorContext | null,
 				orgMentioned: false,
 				// Best vector score of the visitor's message against public content, set only on misses
@@ -338,6 +347,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					server_tool_args: turn.serverTools.length
 						? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
 						: null,
+					...trainingAnalyticsProps(turn.trainingCalls, turn.analysisDeadlineHit),
 					context_confidence: turn.contextConfidence,
 					context_answers_question: turn.contextAnswersQuestion,
 					context_excluded_by_audit: turn.excludedByAudit,
@@ -628,6 +638,13 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						? (routableRoutes as [string, ...string[]])
 						: (['/'] as [string, ...string[]]);
 
+				// Logs one [HuntBot training] line and keeps the record for the PostHog event.
+				const recordTraining = (record: TrainingCallRecord) => {
+					turn.trainingCalls.push(record);
+					logTrainingCall(runID, record);
+				};
+				const msSince = (t0: number) => Math.round(performance.now() - t0);
+
 				const tools = {
 					minimize_chat: tool({
 						description:
@@ -815,10 +832,32 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						execute: async ({ start_date, end_date }) => {
 							reportStatus('Checking his training log…');
 							logRag('tool get_training_totals', { start_date, end_date });
+							const t0 = performance.now();
+							const base = {
+								tool: 'get_training_totals',
+								startDate: start_date,
+								endDate: end_date
+							} as const;
 							const rangeError = checkDateRange(start_date, end_date);
-							if (rangeError) return rangeError;
-							const summary = await getWeeklySummary(start_date, end_date);
-							if (!summary) return 'Training data is not connected.';
+							if (rangeError) {
+								recordTraining({ ...base, outcome: 'bad_dates', totalMs: msSince(t0) });
+								return rangeError;
+							}
+							const stats = newFetchStats();
+							const summary = await getWeeklySummary(start_date, end_date, stats);
+							const fetched = {
+								...base,
+								totalMs: msSince(t0),
+								fetchMs: msSince(t0),
+								requests: stats.requests,
+								cacheHits: stats.cacheHits,
+								fetchFailures: stats.failures
+							};
+							if (!summary) {
+								recordTraining({ ...fetched, outcome: 'data_unavailable' });
+								return 'Training data is not connected.';
+							}
+							recordTraining({ ...fetched, outcome: 'ok', weekRows: summary.weeks.length });
 							return formatTrainingTotals(summary);
 						}
 					}),
@@ -852,25 +891,79 @@ Only what the script prints to stdout is returned, so print the final numbers yo
 								include_location,
 								code: code.slice(0, 500)
 							});
+							const t0 = performance.now();
+							const base = {
+								tool: 'analyze_training_data',
+								startDate: start_date,
+								endDate: end_date,
+								includeLocation: include_location
+							} as const;
 							const rangeError = checkDateRange(start_date, end_date);
-							if (rangeError) return rangeError;
-							if (!isSandboxAvailable()) return 'Code execution is not available right now.';
+							if (rangeError) {
+								recordTraining({ ...base, outcome: 'bad_dates', totalMs: msSince(t0) });
+								return rangeError;
+							}
+							if (!isSandboxAvailable()) {
+								recordTraining({ ...base, outcome: 'sandbox_unavailable', totalMs: msSince(t0) });
+								return 'Code execution is not available right now.';
+							}
 							if (Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
+								turn.analysisDeadlineHit = true;
+								recordTraining({ ...base, outcome: 'deadline', totalMs: msSince(t0) });
 								return 'Out of time for more analysis this turn. Answer with what you already have, and say if it is incomplete.';
 							}
 							reportStatus('Checking his training log…');
+							const stats = newFetchStats();
 							const [summary, activities, wellness] = await Promise.all([
-								getWeeklySummary(start_date, end_date),
-								getActivities(start_date, end_date, { withLocation: include_location }),
-								getWellness(start_date, end_date)
+								getWeeklySummary(start_date, end_date, stats),
+								getActivities(start_date, end_date, { withLocation: include_location, stats }),
+								getWellness(start_date, end_date, stats)
 							]);
-							if (!summary) return 'Training data is not connected.';
+							const fetchMs = msSince(t0);
+							timer.timings.analysis_fetch = (timer.timings.analysis_fetch ?? 0) + fetchMs;
+							const fetched = {
+								...base,
+								fetchMs,
+								requests: stats.requests,
+								cacheHits: stats.cacheHits,
+								fetchFailures: stats.failures,
+								weekRows: summary?.weeks.length,
+								activities: activities?.activities.length,
+								hiddenStrava: activities?.hidden,
+								wellnessDays: wellness?.length
+							};
+							if (!summary) {
+								recordTraining({ ...fetched, outcome: 'data_unavailable', totalMs: msSince(t0) });
+								return 'Training data is not connected.';
+							}
 							const { files, note } = trainingDataFiles(summary, activities, wellness);
 							reportStatus('Crunching the numbers…');
 							const run = await runPython(code, files, {
 								networkPolicy: intervalsNetworkPolicy(activities?.ids)
 							});
-							if (!run.ok) return `The analysis could not run: ${run.error}`;
+							if (!run.ok) {
+								timer.timings.analysis_sandbox = (timer.timings.analysis_sandbox ?? 0) + run.ms;
+								recordTraining({
+									...fetched,
+									outcome: 'run_failed',
+									totalMs: msSince(t0),
+									sandboxError: run.error.slice(0, 300),
+									sandboxPhase: run.phase
+								});
+								return `The analysis could not run: ${run.error}`;
+							}
+							timer.timings.analysis_sandbox =
+								(timer.timings.analysis_sandbox ?? 0) + run.createMs + run.runMs;
+							recordTraining({
+								...fetched,
+								outcome: run.exitCode === 0 ? 'ok' : 'script_error',
+								totalMs: msSince(t0),
+								sandboxCreateMs: run.createMs,
+								sandboxRunMs: run.runMs,
+								exitCode: run.exitCode,
+								stdoutBytes: run.stdoutBytes,
+								stderrHead: run.stderr ? run.stderr.slice(0, 300) : undefined
+							});
 							return [
 								note,
 								`Exit code: ${run.exitCode}`,
@@ -1103,7 +1196,10 @@ ${contextForModel}`;
 						const analyzing = steps.some((step) =>
 							step.toolCalls.some((call) => call.toolName === 'analyze_training_data')
 						);
-						if (analyzing && Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) return true;
+						if (analyzing && Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
+							turn.analysisDeadlineHit = true;
+							return true;
+						}
 						return steps.length >= (analyzing ? MAX_ANALYSIS_STEPS : MAX_STEPS);
 					},
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
@@ -1150,7 +1246,12 @@ ${contextForModel}`;
 						}
 						for (const tc of toolCalls ?? []) {
 							const ms = performance.toolExecutionMs[tc.toolCallId];
-							if (ms != null) timer.timings[`tool_${tc.toolName}`] = Math.round(ms);
+							// Summed, so a tool called several times in a turn (a script retried) shows
+							// its total time rather than just the last call.
+							if (ms != null) {
+								const key = `tool_${tc.toolName}`;
+								timer.timings[key] = (timer.timings[key] ?? 0) + Math.round(ms);
+							}
 						}
 
 						const callNames =

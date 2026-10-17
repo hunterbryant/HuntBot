@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import type { NetworkPolicy } from '@vercel/sandbox';
+import { warnOnce } from './warn-once';
 
 const API_ORIGIN = 'https://intervals.icu/api/v1';
 const CACHE_TTL_MS = 15 * 60 * 1000;
@@ -79,6 +80,10 @@ export type ActivityList = {
 	hidden: number;
 };
 
+/** Counts for one tool call: network requests made, cache hits, and failed requests. */
+export type FetchStats = { requests: number; cacheHits: number; failures: number };
+export const newFetchStats = (): FetchStats => ({ requests: 0, cacheHits: 0, failures: 0 });
+
 const MAX_CACHE_ENTRIES = 200;
 const cache = new Map<string, { value: unknown; expiresAt: number }>();
 
@@ -103,13 +108,29 @@ function icuAuthHeader(): string {
 async function icuGet<T>(
 	path: string,
 	params: Record<string, string>,
-	{ cacheResponse = true } = {}
+	{ cacheResponse = true, stats }: { cacheResponse?: boolean; stats?: FetchStats } = {}
 ): Promise<T | null> {
-	if (!env.INTERVALS_ATHLETE_ID || !env.INTERVALS_API_KEY) return null;
+	if (!env.INTERVALS_ATHLETE_ID || !env.INTERVALS_API_KEY) {
+		warnOnce(
+			'training-not-configured',
+			'[HuntBot training] Training tools are off: INTERVALS_API_KEY and INTERVALS_ATHLETE_ID must both be set',
+			{
+				missing: [
+					!env.INTERVALS_API_KEY && 'INTERVALS_API_KEY',
+					!env.INTERVALS_ATHLETE_ID && 'INTERVALS_ATHLETE_ID'
+				].filter(Boolean)
+			}
+		);
+		return null;
+	}
 
 	const url = `${API_ORIGIN}${path}?${new URLSearchParams(params)}`;
 	const cached = cache.get(url);
-	if (cached && cached.expiresAt > Date.now()) return cached.value as T;
+	if (cached && cached.expiresAt > Date.now()) {
+		if (stats) stats.cacheHits++;
+		return cached.value as T;
+	}
+	if (stats) stats.requests++;
 
 	try {
 		const res = await fetch(url, {
@@ -117,6 +138,7 @@ async function icuGet<T>(
 			signal: AbortSignal.timeout(6000)
 		});
 		if (!res.ok) {
+			if (stats) stats.failures++;
 			console.warn('[HuntBot training] intervals.icu request failed', { path, status: res.status });
 			return null;
 		}
@@ -124,6 +146,7 @@ async function icuGet<T>(
 		if (cacheResponse) cacheSet(url, value);
 		return value;
 	} catch (error) {
+		if (stats) stats.failures++;
 		console.warn('[HuntBot training] intervals.icu request failed', {
 			path,
 			error: error instanceof Error ? error.message : String(error)
@@ -161,7 +184,11 @@ const athletePath = (path: string) =>
  * truth for "how much did he ride" questions. Returns null if not configured or the
  * request fails.
  */
-export async function getWeeklySummary(start: string, end: string): Promise<WeeklySummary | null> {
+export async function getWeeklySummary(
+	start: string,
+	end: string,
+	stats?: FetchStats
+): Promise<WeeklySummary | null> {
 	type SummaryRow = {
 		athlete_id: string;
 		date: string;
@@ -181,10 +208,11 @@ export async function getWeeklySummary(start: string, end: string): Promise<Week
 
 	// Buckets are anchored on Mondays, so reach back 6 days to include the week `start` falls in.
 	const earliestAnchor = addDays(start, -6);
-	const rows = await icuGet<SummaryRow[]>(athletePath('/athlete-summary.json'), {
-		start: earliestAnchor,
-		end
-	});
+	const rows = await icuGet<SummaryRow[]>(
+		athletePath('/athlete-summary.json'),
+		{ start: earliestAnchor, end },
+		{ stats }
+	);
 	if (!rows) return null;
 
 	// The endpoint also returns athletes Hunter follows; keep only his own rows.
@@ -234,13 +262,16 @@ const isLatLng = (p: number[] | undefined): p is [number, number] =>
  * Start, end and center (middle of the bounding box) of one activity's GPS track, to
  * 4 decimal places (about 10 m). Null for indoor activities and failed lookups.
  */
-async function getActivityLocation(id: string): Promise<ActivityLocation | null> {
+async function getActivityLocation(
+	id: string,
+	stats?: FetchStats
+): Promise<ActivityLocation | null> {
 	if (locationCache.has(id)) return locationCache.get(id) ?? null;
 
 	const map = await icuGet<{ bounds?: number[][]; latlngs?: number[][] }>(
 		`/activity/${encodeURIComponent(id)}/map`,
 		{},
-		{ cacheResponse: false }
+		{ cacheResponse: false, stats }
 	);
 	if (!map) return null; // Failed request: don't cache, so it's retried next time.
 
@@ -273,7 +304,7 @@ async function getActivityLocation(id: string): Promise<ActivityLocation | null>
 export async function getActivities(
 	start: string,
 	end: string,
-	{ withLocation = false } = {}
+	{ withLocation = false, stats }: { withLocation?: boolean; stats?: FetchStats } = {}
 ): Promise<ActivityList | null> {
 	type ActivityRow = {
 		id?: string;
@@ -292,26 +323,30 @@ export async function getActivities(
 		trainer?: boolean;
 	};
 
-	const rows = await icuGet<ActivityRow[]>(athletePath('/activities'), {
-		oldest: start,
-		newest: `${end}T23:59:59`,
-		fields: [
-			'id',
-			'name',
-			'type',
-			'start_date_local',
-			'distance',
-			'moving_time',
-			'total_elevation_gain',
-			'icu_average_watts',
-			'icu_training_load',
-			'average_heartrate',
-			'max_heartrate',
-			'icu_weight',
-			'device_name',
-			'trainer'
-		].join(',')
-	});
+	const rows = await icuGet<ActivityRow[]>(
+		athletePath('/activities'),
+		{
+			oldest: start,
+			newest: `${end}T23:59:59`,
+			fields: [
+				'id',
+				'name',
+				'type',
+				'start_date_local',
+				'distance',
+				'moving_time',
+				'total_elevation_gain',
+				'icu_average_watts',
+				'icu_training_load',
+				'average_heartrate',
+				'max_heartrate',
+				'icu_weight',
+				'device_name',
+				'trainer'
+			].join(',')
+		},
+		{ stats }
+	);
 	if (!rows) return null;
 
 	const visible = rows.filter((r) => r.type && r.start_date_local);
@@ -326,7 +361,7 @@ export async function getActivities(
 		await Promise.all(
 			Array.from({ length: LOCATION_LOOKUP_CONCURRENCY }, async () => {
 				for (let id = queue.shift(); id; id = queue.shift()) {
-					locations.set(id, await getActivityLocation(id));
+					locations.set(id, await getActivityLocation(id, stats));
 				}
 			})
 		);
@@ -412,12 +447,14 @@ export function formatTrainingTotals(summary: WeeklySummary): string {
  */
 export async function getWellness(
 	start: string,
-	end: string
+	end: string,
+	stats?: FetchStats
 ): Promise<Record<string, string | number | null>[] | null> {
-	const rows = await icuGet<Record<string, unknown>[]>(athletePath('/wellness'), {
-		oldest: start,
-		newest: end
-	});
+	const rows = await icuGet<Record<string, unknown>[]>(
+		athletePath('/wellness'),
+		{ oldest: start, newest: end },
+		{ stats }
+	);
 	if (!rows) return null;
 	return rows.map((row) => {
 		const out: Record<string, string | number | null> = {};
@@ -480,6 +517,107 @@ export function intervalsNetworkPolicy(ownActivityIds: string[] = []): NetworkPo
 				)
 			]
 		}
+	};
+}
+
+export type TrainingCallOutcome =
+	| 'ok'
+	| 'bad_dates'
+	/** Not configured, or every request to intervals.icu failed (see fetchFailures). */
+	| 'data_unavailable'
+	| 'sandbox_unavailable'
+	/** The turn was too far along (ANALYSIS_DEADLINE_MS) to start another run. */
+	| 'deadline'
+	/** The sandbox couldn't start or the run threw (timeout, network, quota). */
+	| 'run_failed'
+	/** The script ran but exited non-zero (a Python error). */
+	| 'script_error';
+
+/** What one training tool call did, for the log line and the turn's PostHog event. */
+export type TrainingCallRecord = {
+	tool: 'get_training_totals' | 'analyze_training_data';
+	outcome: TrainingCallOutcome;
+	startDate: string;
+	endDate: string;
+	includeLocation?: boolean;
+	totalMs: number;
+	fetchMs?: number;
+	sandboxCreateMs?: number;
+	sandboxRunMs?: number;
+	requests?: number;
+	cacheHits?: number;
+	fetchFailures?: number;
+	weekRows?: number;
+	activities?: number;
+	/** Activities intervals.icu returned only as stubs (synced from Strava). */
+	hiddenStrava?: number;
+	wellnessDays?: number;
+	exitCode?: number;
+	stdoutBytes?: number;
+	/** Start of the script's stderr (a Python traceback), for diagnosing script errors. */
+	stderrHead?: string;
+	/** Why the sandbox couldn't start or run, and which of the two it was. */
+	sandboxError?: string;
+	sandboxPhase?: 'create' | 'run';
+};
+
+/**
+ * One JSON line per training tool call, always on. Numbers and error text only — never
+ * the script's output or any of Hunter's data, which belong in PostHog if anywhere.
+ */
+export function logTrainingCall(runId: string, r: TrainingCallRecord): void {
+	const line = JSON.stringify({
+		run_id: runId,
+		tool: r.tool,
+		outcome: r.outcome,
+		start_date: r.startDate,
+		end_date: r.endDate,
+		include_location: r.includeLocation,
+		total_ms: r.totalMs,
+		fetch_ms: r.fetchMs,
+		sandbox_create_ms: r.sandboxCreateMs,
+		sandbox_run_ms: r.sandboxRunMs,
+		requests: r.requests,
+		cache_hits: r.cacheHits,
+		fetch_failures: r.fetchFailures || undefined,
+		week_rows: r.weekRows,
+		activities: r.activities,
+		hidden_strava: r.hiddenStrava,
+		wellness_days: r.wellnessDays,
+		exit_code: r.exitCode,
+		stdout_bytes: r.stdoutBytes,
+		stderr_head: r.stderrHead,
+		sandbox_error: r.sandboxError,
+		sandbox_phase: r.sandboxPhase
+	});
+	if (r.outcome === 'ok') console.log('[HuntBot training]', line);
+	else console.warn('[HuntBot training]', line);
+}
+
+/**
+ * PostHog `chat_message` properties for the turn's training tool calls, or nothing when it
+ * made none. `analysis_failures` counts runs that never started or exited non-zero.
+ */
+export function trainingAnalyticsProps(
+	calls: TrainingCallRecord[],
+	deadlineHit: boolean
+): Record<string, unknown> {
+	if (calls.length === 0) return {};
+	const analysis = calls.filter((c) => c.tool === 'analyze_training_data');
+	const failed = analysis.filter((c) => c.outcome !== 'ok');
+	// Runs that got as far as starting a sandbox, whether or not they finished.
+	const ran = analysis.filter((c) => ['ok', 'script_error', 'run_failed'].includes(c.outcome));
+	return {
+		training_calls: calls.length,
+		training_outcomes: calls.map((c) => c.outcome),
+		analysis_runs: ran.length,
+		analysis_failures: failed.length,
+		analysis_deadline_hit: deadlineHit,
+		training_hidden_strava: Math.max(0, ...calls.map((c) => c.hiddenStrava ?? 0)),
+		training_fetch_failures: calls.reduce((n, c) => n + (c.fetchFailures ?? 0), 0),
+		training_cache_hits: calls.reduce((n, c) => n + (c.cacheHits ?? 0), 0),
+		sandbox_error: failed.find((c) => c.sandboxError)?.sandboxError ?? null,
+		analysis_stderr: failed.find((c) => c.stderrHead)?.stderrHead ?? null
 	};
 }
 
