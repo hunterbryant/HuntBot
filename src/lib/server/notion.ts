@@ -296,40 +296,42 @@ const UUID = /^[0-9a-f]{8}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{4}-?[0-9a-f]{12}$
 
 async function listDatabases(notion: Client) {
 	if (databaseList && databaseList.expires > Date.now()) return databaseList.value;
-	const found = await withRetry(
-		() =>
-			notion.search({
-				filter: { property: 'object', value: 'database' },
-				page_size: 50
-			}),
-		1
-	);
-	const value = found.results.map((r) => {
-		const db = r as unknown as { id: string; title?: Array<{ plain_text: string }> };
-		return { id: db.id, title: getPlainText(db.title ?? []).trim() || 'Untitled' };
-	});
+	const value: { id: string; title: string }[] = [];
+	let cursor: string | undefined;
+	// A few pages of 100, so a big workspace isn't silently cut off.
+	for (let page = 0; page < 3; page++) {
+		const found = await withRetry(
+			() =>
+				notion.search({
+					filter: { property: 'object', value: 'database' },
+					start_cursor: cursor,
+					page_size: 100
+				}),
+			1
+		);
+		for (const r of found.results) {
+			const db = r as unknown as { id: string; title?: Array<{ plain_text: string }> };
+			value.push({ id: db.id, title: getPlainText(db.title ?? []).trim() || 'Untitled' });
+		}
+		if (!found.has_more || !found.next_cursor) break;
+		cursor = found.next_cursor;
+	}
 	databaseList = { expires: Date.now() + SCHEMA_TTL_MS, value };
 	return value;
 }
 
-// Which databases a visitor may look inside. Notion answers anonymous visitors, so "everything the
-// integration can see" is too wide for databases (journals, finances, people notes): by default
-// only the Home database that's already indexed for the chatbot is open. NOTION_DATABASES is a
-// comma-separated list of database names or ids, or "*" for all of them. Pages that aren't in any
-// database stay reachable through search, as before.
-const DEFAULT_DATABASES = ['637fbb5a-0236-401f-a1ee-8e5e05775b5e'];
+// Which databases a visitor may look inside: all of them by default (everything the integration
+// is shared with). NOTION_DATABASES narrows it to a comma-separated list of database names or ids.
 const normId = (id: string) => id.replace(/-/g, '').toLowerCase();
 
 /** The allowed database ids (dashes stripped), or null when every database is allowed. */
 async function allowedDatabaseIds(notion: Client): Promise<Set<string> | null> {
 	const raw = (env.NOTION_DATABASES ?? '').trim();
-	if (raw === '*') return null;
+	if (!raw || raw === '*') return null;
 	const entries = raw
-		? raw
-				.split(',')
-				.map((e) => e.trim())
-				.filter(Boolean)
-		: DEFAULT_DATABASES;
+		.split(',')
+		.map((e) => e.trim())
+		.filter(Boolean);
 	const ids = new Set<string>();
 	const names: string[] = [];
 	for (const e of entries) {

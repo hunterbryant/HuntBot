@@ -77,7 +77,7 @@ QDRANT_URL=  QDRANT_API_KEY=  QDRANT_COLLECTION=
 QDRANT_VECTOR_NAME=        # optional: dense vector name; auto-detected when unset
 COHERE_API_KEY=            # optional: Rerank; without it reranking uses the OpenAI Decisions API
 NOTION_INTEGRATION_TOKEN=  # content embedding and the live query_notion tool
-NOTION_DATABASES=          # optional: Notion databases visitors may query/read, comma-separated names or ids (default: the Home database only); "*" for all
+NOTION_DATABASES=          # optional: restrict the Notion databases visitors may query/read to these names or ids (comma-separated); unset or "*" = everything the integration can see
 GOOGLE_CALENDAR_CLIENT_ID=  GOOGLE_CALENDAR_CLIENT_SECRET=  GOOGLE_CALENDAR_REFRESH_TOKEN=   # calendar.readonly OAuth
 GOOGLE_CALENDAR_ID=        # optional (default "primary")
 GOOGLE_CALENDAR_TIMEZONE=  # optional IANA zone (default America/Los_Angeles)
