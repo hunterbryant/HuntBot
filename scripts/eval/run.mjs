@@ -8,7 +8,8 @@
 //
 // Env: EVAL_BASE_URL (required), EVAL_CRON_SECRET (the deployment's CRON_SECRET; tags the turns as
 // admin traffic so PostHog ignores them), EVAL_BYPASS_SECRET (Vercel Deployment Protection
-// automation bypass, for previews). Uses real models and Hunter's real data, so run it sparingly.
+// automation bypass, for previews), EVAL_COOKIE (a raw Cookie header, e.g. the _vercel_jwt a
+// `?_vercel_share=` link sets). Uses real models and Hunter's real data, so run it sparingly.
 import { readFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
@@ -35,6 +36,7 @@ if (selected.length === 0) {
 
 const headers = { 'content-type': 'application/json' };
 if (process.env.EVAL_CRON_SECRET) headers['x-huntbot-eval'] = process.env.EVAL_CRON_SECRET;
+if (process.env.EVAL_COOKIE) headers.cookie = process.env.EVAL_COOKIE;
 if (process.env.EVAL_BYPASS_SECRET) {
 	headers['x-vercel-protection-bypass'] = process.env.EVAL_BYPASS_SECRET;
 }
