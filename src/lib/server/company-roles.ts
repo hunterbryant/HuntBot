@@ -1,9 +1,10 @@
 import { env } from '$env/dynamic/private';
 import { oneLine } from '$lib/server/clean-text';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
-import { safeFetchText } from '$lib/server/safe-fetch';
+import { resolvePublicHost, safeFetchText } from '$lib/server/safe-fetch';
 import { describeError } from '$lib/server/tool-log';
 import { getRecord, putRecord } from '$lib/server/visitor-id-store';
+import { warnOnce } from '$lib/server/warn-once';
 import { createOpenAI } from '@ai-sdk/openai';
 import { waitUntil } from '@vercel/functions';
 import { generateText, Output, tool, zodSchema } from 'ai';
@@ -422,6 +423,164 @@ export function pageTitle(html: string): string | null {
 	return title.replace(/&amp;/g, '&').replace(/&#39;|&#x27;/g, "'");
 }
 
+// --- JavaScript rendering (Firecrawl) -------------------------------------------------------------
+//
+// Some career sites (Meta, Uber...) render their job lists with JavaScript and have no public API,
+// so a plain fetch sees an empty shell. Firecrawl loads the page in a real browser and returns its
+// text with links. It's the catch-all for any site, used only when a plain fetch comes back empty
+// or a discovered careers / search page needs reading. Optional: without FIRECRAWL_API_KEY the
+// layer is simply off. Free tier ~1,000 credits a month (1 credit per scrape), so calls are capped
+// per warm instance and every result is cached by the company-level cache.
+
+const FIRECRAWL_TIMEOUT_MS = 20_000;
+const FIRECRAWL_PER_HOUR = 40;
+let firecrawlCalls: number[] = [];
+
+function firecrawlAllowed(): boolean {
+	if (!env.FIRECRAWL_API_KEY) {
+		warnOnce(
+			'firecrawl-off',
+			'[HuntBot tools] Firecrawl is off (FIRECRAWL_API_KEY unset): JavaScript-only career sites stay unreadable'
+		);
+		return false;
+	}
+	const now = Date.now();
+	firecrawlCalls = firecrawlCalls.filter((t) => now - t < 3600_000);
+	if (firecrawlCalls.length >= FIRECRAWL_PER_HOUR) return false;
+	firecrawlCalls.push(now);
+	return true;
+}
+
+/** The page as rendered in a browser: markdown with links, or null. Never throws. */
+export async function renderPage(
+	url: string
+): Promise<{ markdown: string; title: string | null } | null> {
+	if (!firecrawlAllowed()) return null;
+	// Same rule as everything we fetch for a visitor: https only, and a public host.
+	const target = await resolvePublicHost(url);
+	if ('reason' in target) return null;
+	try {
+		const res = await fetch('https://api.firecrawl.dev/v2/scrape', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				Authorization: `Bearer ${env.FIRECRAWL_API_KEY}`
+			},
+			body: JSON.stringify({
+				url: target.url.toString(),
+				formats: ['markdown'],
+				onlyMainContent: false,
+				waitFor: 2500,
+				timeout: FIRECRAWL_TIMEOUT_MS
+			}),
+			signal: AbortSignal.timeout(FIRECRAWL_TIMEOUT_MS + 3000)
+		});
+		if (!res.ok) {
+			console.warn('[HuntBot tools] Firecrawl request failed', { status: res.status });
+			return null;
+		}
+		const data = (await res.json()) as {
+			success?: boolean;
+			data?: { markdown?: string; metadata?: { title?: string | string[] } };
+		};
+		const markdown = data.data?.markdown ?? '';
+		const t = data.data?.metadata?.title;
+		return markdown ? { markdown, title: (Array.isArray(t) ? t[0] : t) ?? null } : null;
+	} catch (error) {
+		console.warn('[HuntBot tools] Firecrawl request failed', { error: describeError(error) });
+		return null;
+	}
+}
+
+/** Plain fetch first (free, fast); a page with almost no text is rendered in a browser instead. */
+async function readPage(url: string): Promise<string | null> {
+	const page = await safeFetchText(url, { truncate: true });
+	if (page.ok) {
+		const text = /html/i.test(page.contentType) ? htmlToText(page.text) : page.text;
+		if (text.trim().length >= 600) return text;
+	}
+	const rendered = await renderPage(url);
+	if (rendered) return rendered.markdown;
+	return page.ok ? htmlToText(page.text) : null;
+}
+
+/**
+ * Careers and job-search pages found by discovery, rendered in a browser: every link whose text
+ * reads as a design role and that lands on a trusted host is a candidate, and each candidate's own
+ * posting page is checked afterwards (see stillOpen). Generic: no site-specific selectors.
+ */
+async function fromRenderedPages(urls: string[], org: OrgRef): Promise<CompanyRole[]> {
+	const pages = await Promise.all(urls.slice(0, 3).map((u) => renderPage(u).catch(() => null)));
+	const found = new Map<string, CompanyRole>();
+	for (const page of pages) {
+		if (!page) continue;
+		for (const m of page.markdown.matchAll(/\[([^\]\n]{4,160})\]\((https:\/\/[^)\s]+)\)/g)) {
+			// "[Product Designer\n...](url)" cards: the title is the first line of the link text
+			const title = m[1].replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim();
+			if (!isDesignRole(title) || !isTrustedRoleUrl(m[2], org) || found.has(m[2])) continue;
+			found.set(m[2], { title, location: null, url: m[2] });
+		}
+	}
+	const candidates = [...found.values()].slice(0, 12);
+	const open = await Promise.all(
+		candidates.map((r) => stillOpen(r, !isTrustedRoleUrl(r.url, org, { loose: false })))
+	);
+	return sanitizeRoles(candidates.filter((_, i) => open[i])).slice(0, MAX_ROLES);
+}
+
+/**
+ * Roles from what a web search *cites*, not from what the model writes: the search's source URLs
+ * on trusted hosts are opened, and the posting page's own title (og:title, which JavaScript-only
+ * career sites like Meta's still render server-side) decides whether it's a design role. So the
+ * answer doesn't depend on the model's willingness to return a list. Never throws.
+ */
+async function fromSearchSources(org: OrgRef, timeoutMs: number): Promise<CompanyRole[]> {
+	const name = coreOrgName(org.name);
+	try {
+		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
+		const result = await generateText({
+			model: openai.responses('gpt-6-luna'),
+			tools: { web_search: openai.tools.webSearch({ searchContextSize: 'medium' }) },
+			reasoning: 'low',
+			abortSignal: AbortSignal.timeout(timeoutMs),
+			providerOptions: { openai: { reasoningSummary: null } },
+			prompt: `Search the web for current open product designer, UX designer, interaction designer and design systems job postings at ${name}${org.domain ? ` (${org.domain})` : ''}, on the company's own careers site or job platform (try a few queries, e.g. "${name} product designer careers", "${name} UX designer job"). List the postings you find, each with its title and link, citing each source.`
+		});
+		const urls = [
+			...new Set(
+				result.sources.flatMap((src) =>
+					src.sourceType === 'url' && isTrustedRoleUrl(src.url, org) ? [src.url] : []
+				)
+			)
+		].slice(0, 12);
+		const pages = await Promise.all(
+			urls.map(async (url) => {
+				const page = await safeFetchText(url, { truncate: true }).catch(() => null);
+				if (!page || !page.ok) return null;
+				const title = pageTitle(page.text);
+				return title && isDesignRole(title) && !DEAD_POSTING.test(visibleText(page.text))
+					? { title, location: null, url }
+					: null;
+			})
+		);
+		const roles = sanitizeRoles(pages.flatMap((r) => (r ? [r] : []))).slice(0, MAX_ROLES);
+		// Counts only: which step lost the candidates.
+		console.log('[HuntBot tools] company roles sources', {
+			company: displayName(org.name),
+			cited: result.sources.length,
+			trusted: urls.length,
+			design_titled: roles.length
+		});
+		return roles;
+	} catch (error) {
+		console.warn('[HuntBot tools] company roles sources failed', {
+			company: displayName(org.name),
+			error: describeError(error)
+		});
+		return [];
+	}
+}
+
 /**
  * The general path for any company: a short agent loop that searches the web for the company's
  * careers page, opens pages (SSRF-guarded) and follows links to its design roles, then the server
@@ -445,9 +604,8 @@ async function fromWebSearch(
 						"Open a public https page and read its text, with links shown as 'text [url]'. Use it to read a careers page or job listing, and to follow links (a Design team page, a job search with a design filter) that a search result points to.",
 					inputSchema: z.object({ url: z.string().describe('The full https URL.') }),
 					execute: async ({ url }) => {
-						const page = await safeFetchText(url, { truncate: true });
-						if (!page.ok) return `Could not open that page: ${page.reason}`;
-						const text = /html/i.test(page.contentType) ? htmlToText(page.text) : page.text;
+						const text = await readPage(url);
+						if (text === null) return 'Could not open that page.';
 						return text.slice(0, MAX_PAGE_CHARS) || 'The page had no readable text.';
 					}
 				})
@@ -492,6 +650,12 @@ async function fromWebSearch(
 
 const discoverySchema = z.object({
 	careers_url: z.string().nullable().describe("The company's own careers / job search page."),
+	job_search_url: z
+		.string()
+		.nullable()
+		.describe(
+			'A job search results page on its careers site already filtered for "product designer" (the query in the URL), if the site has one.'
+		),
 	board_urls: z
 		.array(z.string())
 		.max(5)
@@ -525,7 +689,7 @@ async function discoverBoards(org: OrgRef): Promise<Discovery | null> {
 			reasoning: 'low',
 			abortSignal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
 			providerOptions: { openai: { reasoningSummary: null } },
-			prompt: `Where does ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''} list its open jobs? Give its careers page and the URLs of the job platform it uses for listings if any (Workday myworkdayjobs.com, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Eightfold or similar), as seen in search results. Also give up to 3 URLs of individual open design or product job postings on that platform exactly as they appear in search results, because they reveal its board name. Don't list job aggregators (LinkedIn, Indeed, Glassdoor). Use null / an empty list when you can't find them; never guess a URL.`
+			prompt: `Where does ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''} list its open jobs? Give its careers page and the URLs of the job platform it uses for listings if any (Workday myworkdayjobs.com, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Eightfold or similar), as seen in search results. Also give a job search results URL filtered for product designer if the careers site has one. Also give up to 3 URLs of individual open design or product job postings on that platform exactly as they appear in search results, because they reveal its board name. Don't list job aggregators (LinkedIn, Indeed, Glassdoor). Use null / an empty list when you can't find them; never guess a URL.`
 		});
 		// Kept only once something read from it (see fromDiscoveredBoards), so a search that found
 		// the wrong platform isn't remembered for a month.
@@ -697,6 +861,18 @@ async function fromDiscoveredBoards(
 			return { roles, via: hit.via };
 		}
 	}
+	// No platform API to read (a company's own JavaScript-rendered site): render its job search /
+	// careers pages in a browser and read the design-role links off them.
+	const pages = [found.job_search_url, found.careers_url, ...found.board_urls].filter(
+		(u): u is string => Boolean(u)
+	);
+	if (pages.length) {
+		const roles = await fromRenderedPages([...new Set(pages)], org).catch(() => []);
+		if (roles.length) {
+			await putRecord('board', key(org), found as unknown as Record<string, unknown>);
+			return { roles, via: 'rendered' };
+		}
+	}
 	return null;
 }
 
@@ -713,6 +889,10 @@ async function fromWeb(
 	// Discovery + platform API and the page-reading agent run side by side (a slow discovery used to
 	// eat the agent's time); the platform API's answer wins when it has one.
 	const agent = fromWebSearch(org, timeout).catch(() => [] as CompanyRole[]);
+	// The agent often comes back empty on JavaScript-only career sites, so a second search runs
+	// beside it and its cited pages are judged by their own titles (it doesn't depend on a list the
+	// model writes); the agent's roles win when it has any.
+	const sources = fromSearchSources(org, timeout).catch(() => [] as CompanyRole[]);
 	const board = await fromDiscoveredBoards(org).catch(() => null);
 	if (board) {
 		console.log('[HuntBot tools] company roles path', {
@@ -725,11 +905,9 @@ async function fromWeb(
 	}
 	let roles = await agent;
 	let via = 'agent';
-	// The agent sometimes comes back empty on a company it can find on another run: one more go,
-	// search-results only, while there's time.
-	if (!roles.length && Date.now() - t0 < timeout / 2) {
-		roles = await fromWebSearch(org, timeout - (Date.now() - t0), true).catch(() => []);
-		via = 'agent-retry';
+	if (!roles.length) {
+		roles = await sources;
+		via = 'search-sources';
 	}
 	console.log('[HuntBot tools] company roles path', {
 		company: displayName(org.name),
