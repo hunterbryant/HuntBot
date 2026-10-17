@@ -401,11 +401,12 @@ export async function getWellness(
 }
 
 /**
- * Sandbox network policy that lets analysis code read Hunter's intervals.icu data:
- * GET requests to his athlete endpoints and to individual activities only. The API key
- * is added by Vercel's proxy, so it never enters the sandbox, and everything else —
- * writes, other hosts, other athletes' data, his private chats and account
- * connections — is refused.
+ * Sandbox network policy that lets analysis code read all of Hunter's own intervals.icu
+ * data: GET requests to his athlete endpoints, individual activities and the API spec.
+ * The API key is added by Vercel's proxy, so it never enters the sandbox. Other people's
+ * data is refused (his chats, athlete-summary, which includes athletes he follows,
+ * folder sharing lists, other athlete IDs), as are writes, deletes and other hosts,
+ * since visitors write the prompts.
  */
 export function intervalsNetworkPolicy(): NetworkPolicy {
 	const athleteId = env.INTERVALS_ATHLETE_ID ?? '';
@@ -418,21 +419,18 @@ export function intervalsNetworkPolicy(): NetworkPolicy {
 		allow: {
 			'intervals.icu': [
 				{
-					// Other people's data and private messages: his chats, account links,
-					// athlete-summary (includes athletes he follows), folder sharing lists, and
-					// anything trying to climb out of an allowed path.
 					match: {
 						path: {
-							regex: `(\\.\\.|%2[eE]|//|^/api/v1/athlete/${athleteId}/(chats|connections|athlete-summary)|/shared-with)`
+							regex: `(\\.\\.|%2[eE]|//|^/api/v1/athlete/${athleteId}/(chats|athlete-summary)|/shared-with)`
 						}
 					},
-					...refuse('Not available to HuntBot.')
+					...refuse("Not available to HuntBot: it holds other people's data.")
 				},
 				{
 					match: {
 						method: ['GET'],
 						path: {
-							regex: `^/api/v1/(athlete/${athleteId}([/.].*)?|activity/[A-Za-z0-9]+([/.].*)?)$`
+							regex: `^/api/v1/(docs|athlete/${athleteId}([/.].*)?|activity/[A-Za-z0-9]+([/.].*)?)$`
 						}
 					},
 					transform: [
@@ -443,7 +441,9 @@ export function intervalsNetworkPolicy(): NetworkPolicy {
 						}
 					]
 				},
-				refuse(`Read-only: only GET /api/v1/athlete/${athleteId}/... and /api/v1/activity/{id}/...`)
+				refuse(
+					`Read-only access to Hunter's own data: GET /api/v1/athlete/${athleteId}/..., /api/v1/activity/{id}/... and /api/v1/docs.`
+				)
 			]
 		}
 	};

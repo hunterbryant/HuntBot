@@ -51,7 +51,6 @@ import {
 	convertToModelMessages,
 	createUIMessageStream,
 	createUIMessageStreamResponse,
-	isStepCount,
 	smoothStream,
 	streamText,
 	tool,
@@ -60,6 +59,10 @@ import {
 } from 'ai';
 import OpenAI from 'openai';
 import { z } from 'zod';
+
+// Analysis turns can run several sandboxed scripts (each up to ~45s with sandbox startup),
+// so give the function the same ceiling as the chunk audit.
+export const config = { maxDuration: 300 };
 
 // Matches SITE_ORIGIN in src/lib/utilities/context.ts — used to turn a full source URL
 // into a short readable slug for the source-url UI parts.
@@ -80,14 +83,21 @@ function isTrivialMessage(text: string): boolean {
 // the fast model; deep questions get more reasoning. Reasoning tokens count against
 // maxOutputTokens, so every lane leaves headroom beyond the 1–3 sentence reply itself
 // (a 180-token cap let reasoning swallow the whole budget and return an empty reply).
+// The cap is per step and also has to fit a Python script for analyze_training_data,
+// which is why it's well above what a reply needs.
 const LANE_MODEL_CONFIG: Record<
 	QueryLane,
 	{ model: string; reasoningEffort: 'low' | 'medium'; maxOutputTokens: number }
 > = {
-	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 600 },
-	standard: { model: 'gpt-6.1-sol', reasoningEffort: 'low', maxOutputTokens: 600 },
-	deep: { model: 'gpt-6.1-sol', reasoningEffort: 'medium', maxOutputTokens: 1500 }
+	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 2000 },
+	standard: { model: 'gpt-6.1-sol', reasoningEffort: 'low', maxOutputTokens: 2000 },
+	deep: { model: 'gpt-6.1-sol', reasoningEffort: 'medium', maxOutputTokens: 3000 }
 };
+
+// Steps per turn. Analysis turns get more, so the model can fix a script that errored
+// or follow up with a second query before answering.
+const MAX_STEPS = 3;
+const MAX_ANALYSIS_STEPS = 6;
 
 // Tools with no server `execute` — the client renders their input as the reply/action.
 const CLIENT_TOOL_NAMES = new Set([
@@ -810,7 +820,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 - fitness.csv: weekStart, fitness (CTL), fatigue (ATL), form (TSB), weightLb at the end of each week.
 - activities.csv: date, startTime (HH:MM local), name, sport, distanceMi, movingHours, elevationFt, avgWatts, trainingLoad, avgHr, maxHr, weightLb, device, startLat, startLng, endLat, endLng, centerLat, centerLng. Empty cells are missing values. The location columns are only filled when include_location is true, for the most recent 50 outdoor activities: where the ride started and ended, and the middle of its bounding box, to about 10 m. Only activities recorded straight to intervals.icu. Ones synced from Strava are missing here (the result says how many), so per-activity answers can be incomplete; totals should come from weekly.csv.
 - wellness.csv: one row per day, every field intervals.icu has, in its units. id is the date (YYYY-MM-DD). Includes sleepScore, sleepSecs (seconds), sleepQuality (1–4, 1 best), avgSleepingHR, hrv, restingHR, readiness, steps, weight (kg), vo2max, mood, stress, soreness, fatigue, ctl, atl. Columns are missing when he never logged that field.
-For anything else, the script can read the intervals.icu API directly with urllib: GET https://intervals.icu/api/v1/athlete/${env.INTERVALS_ATHLETE_ID || '{id}'}/... (e.g. /power-curves.json?type=Ride, /gear.json, /events?oldest=…&newest=…, /activities/search?q=…) and https://intervals.icu/api/v1/activity/{activityId}/... (e.g. /intervals, /best-efforts). Send no auth header; it's added for you. Only GET works, nothing else is reachable, and Strava-synced activities return empty stubs there too.
+For anything else in his intervals.icu account, the script can call the API directly with urllib (GET https://intervals.icu/api/v1/athlete/{id}/..., /api/v1/activity/{activityId}/... and /api/v1/docs; send no auth header, it's added for you). His athlete ID is ${env.INTERVALS_ATHLETE_ID || '(not set)'}. Useful endpoints: /athlete/{id} (profile), /athlete/{id}/activities?oldest=…&newest=… (full activity objects), /athlete/{id}/wellness?oldest=…&newest=…, /athlete/{id}/power-curves.json?type=Ride&curves=1y, /athlete/{id}/pace-curves.json, /athlete/{id}/hr-curves.json, /athlete/{id}/gear.json, /athlete/{id}/events?oldest=…&newest=… (planned workouts, races, notes), /athlete/{id}/activities/search?q=…, /activity/{activityId} plus /intervals, /best-efforts, /streams.json, /map. If you're unsure of an endpoint or field name, the full OpenAPI spec is at https://intervals.icu/api/v1/docs (large JSON; search it in code rather than printing it). Only GET works, no other host is reachable, and endpoints holding other people's data (his chats, athlete-summary, sharing lists) return 403. Strava-synced activities are empty stubs everywhere in the API.
 Only print() output is returned, so print the final numbers you need.`,
 						inputSchema: z.object({
 							start_date: z.string().describe('Start date of the data to load, YYYY-MM-DD.'),
@@ -1016,7 +1026,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
-- Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data when the answer needs computing (biggest week, month-by-month trend, this year vs last, averages, longest ride) and for anything beyond training volume: sleep, HRV, resting HR, readiness, power curves, gear, planned workouts. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight, sleep, HRV, readiness and devices are fine to share as plain numbers and facts ("his sleep score's averaged 82 this month"), without reading anything medical into them. For location, name the places the coordinates fall in (a town, a climb, a park, a road) rather than pasting raw numbers.
+- Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data when the answer needs computing (biggest week, month-by-month trend, this year vs last, averages, longest ride) and for any other question his intervals.icu data can answer: sleep, HRV, resting HR, readiness, power curves, FTP, best efforts, gear, planned workouts and races. Don't say you don't have that kind of data before trying it. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight, sleep, HRV, readiness and devices are fine to share as plain numbers and facts ("his sleep score's averaged 82 this month"), without reading anything medical into them. For location, name the places the coordinates fall in (a town, a climb, a park, a road) rather than pasting raw numbers.
 
 ## Navigation
 Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
@@ -1077,7 +1087,13 @@ ${contextForModel}`;
 					instructions: systemPrompt,
 					messages: modelMessages,
 					tools,
-					stopWhen: isStepCount(3),
+					stopWhen: ({ steps }) =>
+						steps.length >=
+						(steps.some((step) =>
+							step.toolCalls.some((call) => call.toolName === 'analyze_training_data')
+						)
+							? MAX_ANALYSIS_STEPS
+							: MAX_STEPS),
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
