@@ -617,10 +617,23 @@ async function fromDiscoveredBoards(
 ): Promise<{ roles: CompanyRole[]; via: string } | null> {
 	const found = await discoverBoards(org);
 	if (!found) return null;
+	const hostOf = (u: string) => {
+		try {
+			return new URL(u).hostname;
+		} catch {
+			return 'invalid';
+		}
+	};
 	const domain =
 		(found.domain ?? org.domain ?? '').replace(/^https?:\/\//, '').replace(/^www\./, '') || null;
 	const urls = [...found.board_urls, ...(found.careers_url ? [found.careers_url] : [])].slice(0, 6);
 	const boards = await Promise.all(urls.map((u) => fromBoardUrl(u, domain).catch(() => null)));
+	// Hosts and counts only: shows what discovery found and which adapter (if any) could read it.
+	console.log('[HuntBot tools] company roles discovery', {
+		company: displayName(org.name),
+		hosts: urls.map(hostOf),
+		adapters: boards.map((b) => (b ? `${b.via}:${b.board.jobs.length}` : null))
+	});
 	for (const hit of boards) {
 		const roles = sanitizeRoles(hit?.board.jobs.filter((j) => isDesignRole(j.title)) ?? []).slice(
 			0,
