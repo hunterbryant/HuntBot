@@ -42,7 +42,7 @@ const CACHE_MAX = 200;
 const DESIGN_TITLE =
 	/\b(product design|designer|ux|ui\/ux|user experience|interaction design|visual design|brand design|design system|design research|ux research|content design|design manager|design director|head of design|design lead|design program)/i;
 const NOT_DESIGN =
-	/\b(engineer|engineering|verification|physical design|hardware|mechanical|electrical|manufacturing|silicon|asic|circuit|civil|architect(?!ure)|interior|fashion|graphic production)\b/i;
+	/\b(engineer|verification|physical design|electrical|manufacturing|silicon|asic|circuit|civil|architect(?!ure)|interior|fashion|graphic production)\b/i;
 
 export function isDesignRole(title: string): boolean {
 	return DESIGN_TITLE.test(title) && !NOT_DESIGN.test(title);
@@ -51,7 +51,41 @@ export function isDesignRole(title: string): boolean {
 type Source = 'ats' | 'web' | 'cache' | 'none';
 // Where a hit came from: a job-board API (ats) or the web agent (web).
 const AUTHORITATIVE = new Set<Source>(['ats']);
-type Stored = { company: string; roles: CompanyRole[]; source: Exclude<Source, 'cache'> };
+type Stored = {
+	company: string;
+	roles: CompanyRole[];
+	source: Exclude<Source, 'cache'>;
+	/** The web agent already ran for this company (and found nothing), so waiting for it again is pointless. */
+	webTried?: boolean;
+};
+
+const oneLine = (t: string, max: number) =>
+	t
+		.replace(/[\u0000-\u001f\u007f]+/g, ' ')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.slice(0, max);
+
+/**
+ * Role text comes from third-party job boards and a web agent, and ends up in the system prompt and
+ * in chips: one line, capped, https links only. Applied where roles enter the module.
+ */
+export function sanitizeRoles(roles: CompanyRole[]): CompanyRole[] {
+	return roles.flatMap((r) => {
+		const title = oneLine(r.title, 80);
+		let url: string;
+		try {
+			const u = new URL(r.url);
+			if (u.protocol !== 'https:' || u.toString().length > 300) return [];
+			url = u.toString();
+		} catch {
+			return [];
+		}
+		return title
+			? [{ title, location: r.location ? oneLine(r.location, 60) || null : null, url }]
+			: [];
+	});
+}
 const cache = new Map<string, { expires: number; value: Stored }>();
 
 function remember(key: string, value: Stored) {
@@ -190,7 +224,10 @@ export function displayName(orgName: string): string {
 	// "L.L.C." comes through as "L L C"
 	while (words.length > 1 && words[words.length - 1].length === 1) words.pop();
 	const name = words.join(' ');
-	return name === name.toUpperCase() ? name.charAt(0) + name.slice(1).toLowerCase() : name;
+	if (name === name.toUpperCase()) return name.charAt(0) + name.slice(1).toLowerCase();
+	// "google" typed in /simulate: capitalise each word
+	if (name === name.toLowerCase()) return name.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+	return name;
 }
 
 const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -405,7 +442,7 @@ async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 			design_and_trusted: candidates.length,
 			still_open: kept.length
 		});
-		return kept;
+		return sanitizeRoles(kept);
 	} catch (error) {
 		console.warn('[HuntBot tools] company roles web search failed', {
 			error: describeError(error)
@@ -421,9 +458,8 @@ async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
  */
 async function findRoles(org: OrgRef): Promise<Stored | null> {
 	const boards = await fromBoards(org).catch(() => null);
-	return boards?.roles.length
-		? { company: boards.company, roles: boards.roles, source: 'ats' }
-		: null;
+	const roles = boards ? sanitizeRoles(boards.roles) : [];
+	return boards && roles.length ? { company: boards.company, roles, source: 'ats' } : null;
 }
 
 const key = (org: OrgRef) => (org.domain ?? coreOrgName(org.name)).toLowerCase();
@@ -433,26 +469,69 @@ const key = (org: OrgRef) => (org.domain ?? coreOrgName(org.name)).toLowerCase()
  * of a company with no job board it answers "none" now and fills the cache from a background web
  * search for later turns, unless `waitForWeb` (a visitor named the company) says to wait for it. Job boards are public and unauthenticated; nothing about the visitor is sent.
  */
-export async function lookupCompanyRoles(
+const inFlight = new Map<string, Promise<CompanyRoles>>();
+
+/**
+ * Concurrent lookups for the same company share one run (two requests used to start two web
+ * agents that could disagree), see `lookupOnce`.
+ */
+export function lookupCompanyRoles(
+	org: OrgRef,
+	opts: { waitForWeb?: boolean } = {}
+): Promise<CompanyRoles> {
+	const k = `${key(org)}|${opts.waitForWeb ? 'wait' : 'bg'}`;
+	const running = inFlight.get(k);
+	if (running) return running;
+	const run = lookupOnce(org, opts).finally(() => inFlight.delete(k));
+	inFlight.set(k, run);
+	return run;
+}
+
+async function lookupOnce(
 	org: OrgRef,
 	{ waitForWeb = false }: { waitForWeb?: boolean } = {}
 ): Promise<CompanyRoles> {
 	const k = key(org);
 	const hit = cache.get(k);
-	// A cached miss is only worth serving when the caller isn't willing to wait for a web search.
+	// A cached miss is served to callers who'd otherwise wait for the web agent only when that
+	// agent has already run for this company; otherwise they'd re-run it for every visitor.
 	if (
 		hit &&
 		hit.expires > Date.now() &&
-		(hit.value.roles.length || AUTHORITATIVE.has(hit.value.source) || !waitForWeb)
+		(hit.value.roles.length ||
+			AUTHORITATIVE.has(hit.value.source) ||
+			hit.value.webTried ||
+			!waitForWeb)
 	) {
 		return { ...hit.value, source: 'cache' };
 	}
 
+	// Never replaces roles already cached (a slow lookup can finish after a faster one).
+	const keepBetter = (value: Stored) => {
+		const existing = cache.get(k);
+		if (
+			existing &&
+			existing.expires > Date.now() &&
+			existing.value.roles.length &&
+			!value.roles.length
+		) {
+			return;
+		}
+		remember(k, value);
+	};
+
 	const none: Stored = { company: displayName(org.name), roles: [], source: 'none' };
+	const lookup = findRoles(org);
+	let timedOut = false;
 	try {
 		const found = await Promise.race([
-			findRoles(org),
-			new Promise<null>((resolve) => setTimeout(() => resolve(null), OVERALL_TIMEOUT_MS))
+			lookup,
+			new Promise<null>((resolve) =>
+				setTimeout(() => {
+					timedOut = true;
+					resolve(null);
+				}, OVERALL_TIMEOUT_MS)
+			)
 		]);
 		if (found) {
 			remember(k, found);
@@ -461,22 +540,39 @@ export async function lookupCompanyRoles(
 	} catch {
 		// fall through to "none"
 	}
+	if (timedOut) {
+		// A slow board still answered: keep its result for the next visitor instead of dropping it,
+		// and don't cache a miss for an hour on the strength of a timeout.
+		waitUntil(
+			lookup
+				.then((late) => {
+					if (late) keepBetter(late);
+				})
+				.catch(() => {})
+		);
+	} else {
+		remember(k, none);
+	}
 
-	remember(k, none);
-	if (env.COMPANY_ROLES_WEB === '0') return none;
+	if (env.COMPANY_ROLES_WEB === '0') {
+		if (!timedOut) remember(k, { ...none, webTried: true });
+		return none;
+	}
 	if (waitForWeb) {
-		// A visitor asked about this company by name, so the web search is worth waiting for.
+		// The visitor named the company, or it's the chat-open opener: the web search is worth waiting for.
 		const roles = await fromWebSearch(org);
 		if (roles.length) {
 			const value = { company: none.company, roles, source: 'web' as const };
-			remember(k, value);
+			keepBetter(value);
 			return value;
 		}
+		if (!timedOut) remember(k, { ...none, webTried: true });
 		return none;
 	}
 	waitUntil(
 		fromWebSearch(org).then((roles) => {
-			if (roles.length) remember(k, { company: none.company, roles, source: 'web' });
+			if (roles.length) keepBetter({ company: none.company, roles, source: 'web' });
+			else if (!timedOut) keepBetter({ ...none, webTried: true });
 		})
 	);
 	return none;

@@ -115,6 +115,11 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 		}
 	}
 	roleOpenerAsked = true;
+	// Only the newest call may post: a simulate and the on-open trigger can start together.
+	const run = ++roleOpenerRun;
+	const stale = () => run !== roleOpenerRun;
+	const withoutOpeners = () =>
+		(chatInstance?.messages ?? []).filter((m) => !String(m.id).startsWith('role-opener-'));
 	try {
 		const response = await fetch('/api/chat/role-opener', {
 			method: 'POST',
@@ -126,18 +131,21 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 		});
 		if (!response.ok) return;
 		const data = await response.json();
-		if (!chatInstance) return;
+		if (!chatInstance || stale()) return;
 		if (!data.message) {
 			if (simulate) {
 				chatInstance.messages = [
-					...chatInstance.messages,
+					...withoutOpeners(),
 					{
 						id: 'role-opener-' + Date.now(),
 						role: 'assistant' as const,
 						parts: [
 							{
 								type: 'text' as const,
-								text: `Simulating ${simulate}, but I couldn't find open design roles there.`
+								text:
+									data.reason === 'rate_limited'
+										? 'Too many simulations from here, try again in a few minutes.'
+										: `Simulating ${simulate}, but I couldn't find open design roles there.`
 							}
 						]
 					}
@@ -148,7 +156,7 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 		// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
 		if (chatInstance.messages.some((m) => m.role === 'user')) return;
 		chatInstance.messages = [
-			...chatInstance.messages,
+			...withoutOpeners(),
 			{
 				id: 'role-opener-' + Date.now(),
 				role: 'assistant' as const,
@@ -166,6 +174,7 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 	}
 }
 let roleOpenerAsked = false;
+let roleOpenerRun = 0;
 
 export function fetchScrollSuggestions(
 	currentPage: string,
@@ -356,6 +365,12 @@ function runSimulateCommand(text: string): boolean {
 	const name = match[1]?.trim();
 	const off = !name || /^(off|none|reset)$/i.test(name);
 	setSimulatedOrg(off ? null : name);
+	// Resetting re-runs the on-open trigger in ChatBox; mark it done so only this call asks.
+	try {
+		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+	} catch {
+		roleOpenerAsked = true;
+	}
 	resetChat('command');
 	if (!off) void triggerRoleOpener(name);
 	return true;

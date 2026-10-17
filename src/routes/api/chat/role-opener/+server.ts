@@ -5,6 +5,7 @@ import {
 	scoreRoleForHunter
 } from '$lib/server/company-roles';
 import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
+import { allowLookup } from '$lib/server/lookup-limit';
 import { logToolCall } from '$lib/server/tool-log';
 import { visitorContextEnabled } from '$lib/server/visitor-context';
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -31,21 +32,22 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	if (!visitorContextEnabled()) return none;
 	// `/simulate <Company>` names a company on purpose, so it isn't a network lookup and GPC
 	// doesn't apply; it only ever affects that visitor's own chat.
+	// Anyone can simulate (it only changes their own chat); the rate limit below bounds the cost.
 	const simulated = simulatedOrg(body.simulateOrg);
+	let ip: string | null = null;
+	try {
+		ip = getClientAddress();
+	} catch {
+		// not available in every runtime
+	}
+	if (!allowLookup(ip))
+		return json({ message: null, ...(simulated && { reason: 'rate_limited' }) });
 	if (!simulated && (request.headers.get('sec-gpc') === '1' || body.visitor?.gpc === true)) {
 		return none;
 	}
 
 	let org: IpOrg | null = simulated;
-	if (!org) {
-		let ip: string | null = null;
-		try {
-			ip = getClientAddress();
-		} catch {
-			// not available in every runtime
-		}
-		org = await lookupIpOrg(ip);
-	}
+	if (!org) org = await lookupIpOrg(ip);
 	if (!org || org.orgClass !== 'org') return none;
 	const miss = (reason: string) => json({ message: null, ...(simulated && { reason }) });
 

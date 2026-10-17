@@ -12,6 +12,7 @@
 	import arrowdown from '$lib/assets/arrow-down.svg';
 	import { navEngaged, chatOpen, mobile } from '$lib/nav/navstore';
 	import { page } from '$app/stores';
+	import { browser } from '$app/environment';
 	import ActionMessage from './ActionMessage.svelte';
 	import {
 		chat,
@@ -183,7 +184,7 @@
 
 	// Open-role opener: the first time the chat opens with no conversation, the server may ask
 	// whether the visitor is hiring for a role at their company (see triggerRoleOpener).
-	$: if (!$minimized && !$messages.some((m) => m.role === 'user')) {
+	$: if (browser && !$minimized && !$messages.some((m) => m.role === 'user')) {
 		triggerRoleOpener();
 	}
 

@@ -25,8 +25,8 @@ const SITE_ORIGIN = 'https://www.hunterbryant.io';
 const toText = compile({ wordwrap: false });
 
 const GREENHOUSE = /^https:\/\/(?:job-)?boards(?:\.eu)?\.greenhouse\.io\/([\w-]+)\/jobs\/(\d+)/i;
-const LEVER = /^https:\/\/jobs(?:\.eu)?\.lever\.co\/([\w-]+)\/([0-9a-f-]{36})/i;
-const ASHBY = /^https:\/\/jobs\.ashbyhq\.com\/([\w.%-]+)\/([0-9a-f-]{36})/i;
+const LEVER = /^https:\/\/jobs(\.eu)?\.lever\.co\/([\w-]+)\/([0-9a-f-]{36})/i;
+const ASHBY = /^https:\/\/jobs\.ashbyhq\.com\/([\w-]+)\/([0-9a-f-]{36})/i;
 
 const unescapeHtml = (s: string) =>
 	s
@@ -61,7 +61,9 @@ async function fromJobBoard(url: string): Promise<string | null> {
 
 	const lever = LEVER.exec(url);
 	if (lever) {
-		const job = (await getJson(`https://api.lever.co/v0/postings/${lever[1]}/${lever[2]}`)) as {
+		const job = (await getJson(
+			`https://api${lever[1] ? '.eu' : ''}.lever.co/v0/postings/${lever[2]}/${lever[3]}`
+		)) as {
 			text?: string;
 			descriptionPlain?: string;
 			additionalPlain?: string;
