@@ -1,0 +1,13 @@
+# Visitor context
+
+The signals each chat turn carries about the visitor, and the rules for using them. Read this before changing `src/lib/visitorContext.ts`, `src/lib/server/visitor-context.ts`, `src/lib/server/ip-org.ts` or the "Visitor hints" prompt rules.
+
+
+Each chat turn carries a few signals about the visitor so replies can adjust emphasis, length and date math. The model only ever sees short derived labels in a `## Visitor hints (internal)` block inside `## Live details` (so the static prompt prefix stays cacheable); it never sees the IP, user agent or raw URLs, and the context is deliberately kept out of retrieval and the first-turn context cache key.
+
+- **Arrival**: the landing referrer (off-site only; `$referrer` on `$pageview` is overwritten by in-site navigation, so it's kept separately as `landing_referrer`) and a `?via=<slug>` / `?utm_source=` link tag, bucketed into `campaign:<slug>` / `linkedin` / `search` / `social` / `referral:<domain>` / `direct`. Most visits are `direct` (LinkedIn, Slack, iMessage and email strip the referrer), so tag the links Hunter sends with `?via=`. The tag is stripped from the address bar after it's read.
+- **Pages read** this visit (last 10, with rough dwell time, current page excluded), **device** (phone vs desktop), **returning** visitor, and the visitor's **timezone** (so "yesterday" uses their date; calendar results stay in Hunter's timezone).
+- **Server-derived**: browser language from `Accept-Language` (only when not English), country from `x-vercel-ip-country`, and the **network owner** from an IPinfo Lite lookup (800ms timeout, 1h in-memory cache, runs in parallel with retrieval). The lookup is classified `isp` / `mobile` / `hosting` / `org`; only `org` reaches the prompt, since "Comcast" isn't a company visiting.
+- **Never-mention rule**: the static prompt tells the model to use hints only for emphasis, length and date math, never to name the visitor's origin, company, location, device or language unprompted, and to answer "what do you know about me?" honestly and generally. After each turn `replyMentionsOrg` checks whether the reply named the network when the visitor hadn't, recorded as `visitor_org_mentioned` on `chat_message` and a `[HuntBot visitor]` warning line (no message text).
+- **Global Privacy Control** (`Sec-GPC: 1` or `navigator.globalPrivacyControl`): no IP lookup, no `$ip` / `$raw_user_agent` on any event, `$geoip_disable: true`, and only `gpc: true` is recorded instead of the `visitor_*` properties. In-prompt hints (device, timezone, pages, language) still work for the reply itself.
+- All client values are re-validated server-side (slug and domain patterns, `Intl` timezone check, known site routes only). Kill switch: `VISITOR_CONTEXT=0`.
