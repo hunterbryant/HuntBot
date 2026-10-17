@@ -26,6 +26,8 @@
 		fetchScrollSuggestions,
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
+		triggerRoleOpener,
+		roleOpenerChip,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
@@ -122,12 +124,14 @@
 	// Pre-conversation: hover > scroll > default.
 	// Once a conversation is underway, post-response suggestions ($sugg) take
 	// priority so they aren't displaced by stale hover/scroll context fetches.
-	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll';
+	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll' | 'role_opener';
 	type ActiveSuggestions = { items: string[]; type: SuggestionType | null };
 	const activeSuggestions = derived(
-		[messages, hoverSuggestions, scrollSuggestions, suggestions],
-		([$msgs, $hover, $scroll, $sugg]): ActiveSuggestions => {
+		[messages, hoverSuggestions, scrollSuggestions, suggestions, roleOpenerChip],
+		([$msgs, $hover, $scroll, $sugg, $roleChip]): ActiveSuggestions => {
 			const hasUser = $msgs.some((m) => m.role === 'user');
+			// The open-role question comes with its own one-tap answer, ahead of everything else.
+			if ($roleChip && !hasUser) return { items: [$roleChip], type: 'role_opener' };
 			if (!readyForSuggestions && !hasUser) return { items: [], type: null };
 			if (hasUser) {
 				if ($sugg.length > 0) return { items: $sugg, type: 'post_message' };
@@ -173,6 +177,12 @@
 	// Clear suggestions when user starts typing
 	$: if ($input && $input.trim() !== '') {
 		suggestions.set([]);
+	}
+
+	// Open-role opener: the first time the chat opens with no conversation, the server may ask
+	// whether the visitor is hiring for a role at their company (see triggerRoleOpener).
+	$: if (!$minimized && !$messages.some((m) => m.role === 'user')) {
+		triggerRoleOpener();
 	}
 
 	// Proactive page-aware opener: fire when user navigates to a project/case study
@@ -505,6 +515,7 @@
 		suggestions.set([]);
 		scrollSuggestions.set([]);
 		hoverSuggestions.set([]);
+		roleOpenerChip.set(null);
 		minimized.set(false);
 		// Server derives currentPage from the Referer header automatically
 		await append({ role: 'user', content: suggestion });

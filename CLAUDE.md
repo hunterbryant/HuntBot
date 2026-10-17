@@ -115,7 +115,7 @@ COMPANY_ROLES_WEB=0        # skip the background web search for a visitor compan
 - **intervals.icu:** rides synced from Strava come back as empty stubs; weekly totals still count them.
 - **Chat client:** `handleSubmit` ignores submits while a reply streams; two concurrent streams lose the first reply.
 - **Voice:** HuntBot is not Hunter. It talks about him in the third person, in his voice; "I" is only ever the bot. Replies are 1–3 sentences of plain text. Persona comes entirely from the system prompt (voice rules, contrastive few-shot examples, banned AI-isms). For hiring questions, pitch in text first, then `capture_lead_intent` adds the contact card (`ActionMessage.svelte`).
-- **Visitor hints:** use them only for emphasis, length and date math; never name the visitor's origin, location, device or language unprompted. The one exception: when the hints list open design roles at their company, HuntBot may ask once, as a question, whether they're hiring for one. [visitor-context.md](docs/visitor-context.md)
+- **Visitor hints:** use them only for emphasis, length and date math; never name the visitor's origin, location, device or language unprompted. The one exception: when the hints list open design roles at their company, HuntBot asks once, proactively (a chat-open opener from `/api/chat/role-opener`, or the end of its first reply), as a question, whether they're hiring for one. [visitor-context.md](docs/visitor-context.md)
 - **Prismic:** never edit `src/prismicio-types.d.ts`; regenerate with `pnpm check` after schema changes.
 
 ## CMS: Prismic + Slice Machine

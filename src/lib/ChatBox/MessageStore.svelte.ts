@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
-import { getVisitorContext } from '$lib/visitorContext';
+import { getVisitorContext, hasGpc } from '$lib/visitorContext';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
@@ -46,6 +46,8 @@ export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
 export const hoverSuggestions = writable<string[]>([]);
 export const loadingContextSuggestions = writable(false);
+/** One-tap reply to the open-role opener; shown as the only starter chip until the visitor sends something. */
+export const roleOpenerChip = writable<string | null>(null);
 
 // Shared debounce + abort for hover/scroll context fetches so back-to-back
 // triggers coalesce into a single request rather than racing each other.
@@ -95,6 +97,49 @@ export async function triggerProactiveOpener(
 		// Silently fail — proactive opener is best-effort
 	}
 }
+
+const ROLE_OPENER_KEY = 'huntbot_role_opener_v1';
+
+/**
+ * Once per browser session, the first time the chat opens with no conversation: if the visitor's
+ * network is a company with open design roles, HuntBot asks whether they're hiring for one. The
+ * server returns nothing under Global Privacy Control or for non-company networks.
+ */
+export async function triggerRoleOpener(): Promise<void> {
+	try {
+		if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
+		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+	} catch {
+		// storage blocked: ask at most once per page load instead
+		if (roleOpenerAsked) return;
+	}
+	roleOpenerAsked = true;
+	try {
+		const response = await fetch('/api/chat/role-opener', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ visitor: { gpc: hasGpc() } })
+		});
+		if (!response.ok) return;
+		const data = await response.json();
+		if (!data.message || !chatInstance) return;
+		// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
+		if (chatInstance.messages.some((m) => m.role === 'user')) return;
+		chatInstance.messages = [
+			...chatInstance.messages,
+			{
+				id: 'role-opener-' + Date.now(),
+				role: 'assistant' as const,
+				parts: [{ type: 'text' as const, text: data.message }]
+			}
+		];
+		roleOpenerChip.set(data.chip ?? null);
+		captureEvent('role_opener_shown', SESSION_ID, { session_id: SESSION_ID });
+	} catch {
+		// best-effort, like the page opener
+	}
+}
+let roleOpenerAsked = false;
 
 export function fetchScrollSuggestions(
 	currentPage: string,
@@ -197,7 +242,7 @@ export async function fetchSuggestions(messages: UIMessage[], currentPage: strin
 }
 
 const greetingResponse: string =
-	"Yeah, another chatbot — I know. But I'm wired into Hunter's site, so I can actually talk about the work. Ask me anything.\nNot interested? Minimize me up top ↗";
+	"Yeah, another chatbot — I know. But I'm wired into Hunter's site, so I can actually talk about the work. Ask me anything.";
 
 const initMessage: UIMessage = {
 	id: 'initialmessage',
@@ -283,6 +328,7 @@ export function resetChat(trigger: 'command' | 'tool') {
 	suggestions.set([]);
 	scrollSuggestions.set([]);
 	hoverSuggestions.set([]);
+	roleOpenerChip.set(null);
 	clearSavedChat();
 	restoredMessageIds.clear();
 	chatInstance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
