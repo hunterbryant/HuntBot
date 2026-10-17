@@ -19,6 +19,11 @@ export type PythonRunResult =
 			/** Sandbox startup, and write-files plus the script itself. */
 			createMs: number;
 			runMs: number;
+			/**
+			 * Set when the requested network policy was refused and the run fell back to no
+			 * network, so the script only had its preloaded files. Holds the refusal.
+			 */
+			networkFallback?: string;
 	  }
 	| {
 			ok: false;
@@ -63,15 +68,29 @@ export async function runPython(
 
 	let sandbox: Sandbox | null = null;
 	let phase: 'create' | 'run' = 'create';
+	let networkFallback: string | undefined;
 	const t0 = performance.now();
-	try {
-		sandbox = await Sandbox.create({
+	const create = (policy: NetworkPolicy) =>
+		Sandbox.create({
 			image: 'vercel/sandbox/python:3.14',
-			networkPolicy,
+			networkPolicy: policy,
 			resources: { vcpus: 1 },
 			timeout: SANDBOX_TIMEOUT_MS,
 			signal: AbortSignal.timeout(20_000)
 		});
+	try {
+		try {
+			sandbox = await create(networkPolicy);
+		} catch (error) {
+			// A policy the API refuses (a bad match rule) shouldn't cost the whole answer: the
+			// preloaded files cover most questions, so run again with no network at all.
+			const message = error instanceof Error ? error.message : String(error);
+			if (networkPolicy === 'deny-all' || !/rule|policy|regular expression/i.test(message)) {
+				throw error;
+			}
+			networkFallback = message.slice(0, 300);
+			sandbox = await create('deny-all');
+		}
 		const createMs = Math.round(performance.now() - t0);
 		phase = 'run';
 		await sandbox.writeFiles([...files, { path: 'analysis.py', content: code }]);
@@ -84,7 +103,8 @@ export async function runPython(
 			exitCode: result.exitCode,
 			stdoutBytes: Buffer.byteLength(stdout),
 			createMs,
-			runMs: Math.round(performance.now() - t0) - createMs
+			runMs: Math.round(performance.now() - t0) - createMs,
+			networkFallback
 		};
 	} catch (error) {
 		// Logged with the turn's run_id by the caller ([HuntBot training] line).

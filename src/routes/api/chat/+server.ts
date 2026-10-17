@@ -962,10 +962,14 @@ Only what the script prints to stdout is returned, so print the final numbers yo
 								sandboxRunMs: run.runMs,
 								exitCode: run.exitCode,
 								stdoutBytes: run.stdoutBytes,
-								stderrHead: run.stderr ? run.stderr.slice(0, 300) : undefined
+								stderrHead: run.stderr ? run.stderr.slice(0, 300) : undefined,
+								networkFallback: run.networkFallback
 							});
 							return [
 								note,
+								run.networkFallback
+									? 'Live intervals.icu API access was unavailable for this run; only the preloaded files could be read.'
+									: null,
 								`Exit code: ${run.exitCode}`,
 								run.stdout
 									? `Output:\n${run.stdout}`
