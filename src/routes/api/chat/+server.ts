@@ -12,6 +12,7 @@ import {
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
 import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
 import { matchJobDescription } from '$lib/server/job-match';
+import { allowLookup } from '$lib/server/lookup-limit';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { queryNotion } from '$lib/server/notion';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
@@ -461,11 +462,11 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				// Reverse-IP network lookup (IPinfo Lite) also overlaps classification + retrieval; it
 				// has an 800ms cap, never throws, and is skipped under GPC or without a token.
 				// `/simulate <Company>` in the chat stands in for the lookup (see simulatedOrg).
-				// Admin login or the eval header only: the name picks who gets looked up.
-				const simulated =
-					visitorEnabled && isAdmin
-						? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
-						: null;
+				// Anyone can simulate (it only changes their own chat); the lookup is rate limited.
+				const requestedOrg = visitorEnabled
+					? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
+					: null;
+				const simulated = requestedOrg && allowLookup(clientIp) ? requestedOrg : null;
 				turn.simulatedOrg = Boolean(simulated);
 				const orgPromise: Promise<IpOrg | null> = simulated
 					? Promise.resolve(simulated)

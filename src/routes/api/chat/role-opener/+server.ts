@@ -4,11 +4,10 @@ import {
 	rankRolesForHunter,
 	scoreRoleForHunter
 } from '$lib/server/company-roles';
-import { isEvalRequest } from '$lib/server/eval-auth';
 import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
+import { allowLookup } from '$lib/server/lookup-limit';
 import { logToolCall } from '$lib/server/tool-log';
 import { visitorContextEnabled } from '$lib/server/visitor-context';
-import { UserRole } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 // The proactive "are you hiring for the <role> role?" opener. When the visitor's network belongs
@@ -20,22 +19,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 // The web agent behind a company with no job board can take ~20s; the chat opener waits for it.
 export const config = { maxDuration: 60 };
 
-// Each lookup can start a paid web-search agent, so cap how often one address can trigger it
-// (per warm instance; a determined script can still spread across instances, but not unboundedly).
-const WINDOW_MS = 10 * 60_000;
-const MAX_PER_WINDOW = 8;
-const hits = new Map<string, number[]>();
-function allowed(ip: string): boolean {
-	const now = Date.now();
-	const recent = (hits.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
-	if (recent.length >= MAX_PER_WINDOW) return false;
-	recent.push(now);
-	hits.set(ip, recent);
-	if (hits.size > 2000) hits.delete(hits.keys().next().value as string);
-	return true;
-}
-
-export const POST: RequestHandler = async ({ request, locals, getClientAddress }) => {
+export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const none = json({ message: null });
 	let body: { visitor?: { gpc?: unknown }; simulateOrg?: unknown } = {};
 	try {
@@ -48,18 +32,16 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 	if (!visitorContextEnabled()) return none;
 	// `/simulate <Company>` names a company on purpose, so it isn't a network lookup and GPC
 	// doesn't apply; it only ever affects that visitor's own chat.
-	// Only an admin login or the eval header may simulate: it picks the company that gets looked
-	// up (an LLM + web search), so it can't be open to anyone who can POST here.
-	const canSimulate = locals.user?.role === UserRole.ADMIN || isEvalRequest(request);
-	if (body.simulateOrg && !canSimulate) return json({ message: null, reason: 'not_allowed' });
-	const simulated = canSimulate ? simulatedOrg(body.simulateOrg) : null;
+	// Anyone can simulate (it only changes their own chat); the rate limit below bounds the cost.
+	const simulated = simulatedOrg(body.simulateOrg);
 	let ip: string | null = null;
 	try {
 		ip = getClientAddress();
 	} catch {
 		// not available in every runtime
 	}
-	if (!allowed(ip ?? 'unknown')) return none;
+	if (!allowLookup(ip))
+		return json({ message: null, ...(simulated && { reason: 'rate_limited' }) });
 	if (!simulated && (request.headers.get('sec-gpc') === '1' || body.visitor?.gpc === true)) {
 		return none;
 	}

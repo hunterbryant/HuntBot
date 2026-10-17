@@ -128,7 +128,6 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 		const data = await response.json();
 		if (!chatInstance) return;
 		if (!data.message) {
-			if (simulate && data.reason === 'not_allowed') setSimulatedOrg(null);
 			if (simulate) {
 				chatInstance.messages = [
 					...chatInstance.messages,
@@ -139,8 +138,8 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 							{
 								type: 'text' as const,
 								text:
-									data.reason === 'not_allowed'
-										? 'Simulating a company needs an admin login (/login).'
+									data.reason === 'rate_limited'
+										? 'Too many simulations from here, try again in a few minutes.'
 										: `Simulating ${simulate}, but I couldn't find open design roles there.`
 							}
 						]
