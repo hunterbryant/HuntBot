@@ -75,7 +75,7 @@ export function scoreRoleForHunter(title: string): number {
 	if (/\b(senior|sr\.?|staff|lead|principal)\b/.test(t)) score += 1;
 	if (/\b(intern|internship|junior|associate|apprentice)\b/.test(t)) score -= 3;
 	if (
-		/\b(motion|brand|graphic|character|creative|visual|content|writer|writing|illustrat|3d|environment|game|packaging|marketing)\b/.test(
+		/\b(motion|brand|graphic|character|creative|visual|content|writer|writing|illustrat[a-z]*|3d|environment|game|packaging|marketing)\b/.test(
 			t
 		)
 	)

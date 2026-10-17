@@ -210,7 +210,7 @@
 			></p>
 			{#if options.length > 0}
 				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
-					{#each options as option (option.label)}
+					{#each options as option, i (i)}
 						<button
 							type="button"
 							on:click={() => onOption(option)}

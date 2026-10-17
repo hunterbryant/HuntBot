@@ -58,7 +58,17 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		results: found.roles.length,
 		source: found.source
 	});
-	const ranked = rankRolesForHunter(found.roles);
+	// Titles come from a careers page or a web search, then become chip text and a message the model
+	// reads as the visitor's: strip control characters and line breaks, and cap the length.
+	const clean = (t: string) =>
+		t
+			.replace(/[\u0000-\u001f\u007f]+/g, ' ')
+			.replace(/\s+/g, ' ')
+			.trim()
+			.slice(0, 80);
+	const ranked = rankRolesForHunter(
+		found.roles.map((r) => ({ ...r, title: clean(r.title) })).filter((r) => r.title)
+	);
 	const top = ranked[0];
 	if (!top) return miss('no_roles');
 	const company = displayName(found.company);

@@ -753,7 +753,6 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 											)
 									})
 								)
-								.max(5)
 								.optional()
 								.describe('Tappable answers, shown under the question.')
 						})

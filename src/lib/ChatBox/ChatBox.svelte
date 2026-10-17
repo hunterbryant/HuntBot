@@ -127,12 +127,13 @@
 	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll';
 	type ActiveSuggestions = { items: string[]; type: SuggestionType | null };
 	const activeSuggestions = derived(
-		[messages, hoverSuggestions, scrollSuggestions, suggestions],
-		([$msgs, $hover, $scroll, $sugg]): ActiveSuggestions => {
+		[messages, hoverSuggestions, scrollSuggestions, suggestions, isLoading],
+		([$msgs, $hover, $scroll, $sugg, $loading]): ActiveSuggestions => {
 			const hasUser = $msgs.some((m) => m.role === 'user');
 			// A question with its own tappable answers is on screen: no other chips beside it.
 			const last = $msgs[$msgs.length - 1];
-			if (last && getMessageOptions(last).length > 0) return { items: [], type: null };
+			// (Only once the reply has finished, which is when the options render.)
+			if (last && !$loading && getMessageOptions(last).length > 0) return { items: [], type: null };
 			if (!readyForSuggestions && !hasUser) return { items: [], type: null };
 			if (hasUser) {
 				if ($sugg.length > 0) return { items: $sugg, type: 'post_message' };

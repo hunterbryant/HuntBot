@@ -87,7 +87,7 @@ At the time of writing, HuntBot's chat endpoint gives the LLM five tools to call
 }
 ```
 
-Three more tools round things out: `ask_clarifying_question` (asks one focused follow-up when a query is too vague to answer well), `capture_lead_intent` (fires when a visitor signals they want to hire or collaborate with Hunter, and surfaces contact options), and `search_knowledge_base` (lets the model run an extra targeted vector search mid-conversation if the pre-run context wasn't enough).
+Three more tools round things out: `ask_visitor` (asks one question when it needs something to answer well, optionally with tappable answers), `capture_lead_intent` (fires when a visitor signals they want to hire or collaborate with Hunter, and surfaces contact options), and `search_knowledge_base` (lets the model run an extra targeted vector search mid-conversation if the pre-run context wasn't enough).
 
 Currently, the enum values that `route_to_page` can return come from a live Prismic API call (`getAvailableRoutes()` in `src/lib/server/site-nav-routes.ts`), so new case studies and projects show up automatically without a code change. Static routes are still hardcoded in the `SupportedRoutes` enum — you can find it and the rest of the shared types [here](src/lib/types.ts).
 

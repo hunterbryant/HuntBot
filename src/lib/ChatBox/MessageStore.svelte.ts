@@ -404,6 +404,16 @@ export function getMessageSources(message: UIMessage): { url: string; title?: st
 /** A tappable answer under a bot question: chip text, and what is sent when it's tapped. */
 export type ChatOption = { label: string; reply: string };
 
+/** True when the reply text already asks the question (reworded copies count: the model writes both). */
+function alreadyAsked(text: string, question: string): boolean {
+	const norm = (s: string) =>
+		s
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim();
+	return norm(text).includes(norm(question)) || /\?["')\]]*\s*$/.test(text.trim());
+}
+
 function cleanOptions(raw: unknown): ChatOption[] {
 	if (!Array.isArray(raw)) return [];
 	const out: ChatOption[] = [];
@@ -412,6 +422,7 @@ function cleanOptions(raw: unknown): ChatOption[] {
 		if (!label) continue;
 		const reply =
 			typeof o.reply === 'string' && o.reply.trim() ? o.reply.trim().slice(0, 300) : label;
+		if (out.some((x) => x.label === label)) continue;
 		out.push({ label, reply });
 		if (out.length === 5) break;
 	}
@@ -684,7 +695,7 @@ function handleToolCall(toolCall: {
 		const question = args.question?.trim();
 		// Keep what the model already wrote; add the question only when it says something new.
 		const text =
-			streamedText && question && !streamedText.includes(question)
+			streamedText && question && !alreadyAsked(streamedText, question)
 				? `${streamedText}\n\n${question}`
 				: streamedText || question || "Could you tell me a bit more about what you're looking for?";
 		chatInstance.messages = [
