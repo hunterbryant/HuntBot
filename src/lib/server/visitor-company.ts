@@ -1,4 +1,4 @@
-import { coreOrgName, lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
+import { coreOrgName, lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
 import { lookupIpCompany } from '$lib/server/ipapi-is';
 import { companyFromReferrer } from '$lib/server/referrer-company';
 import { getRecord } from '$lib/server/visitor-id-store';
@@ -54,29 +54,47 @@ const UP: Record<Confidence, Confidence> = {
 
 const TOKEN = /^[a-z0-9]{12,32}$/;
 const DOMAIN = /^[a-z0-9.-]{3,80}$/;
-const PIXEL_POLL_MS = 750;
+const PIXEL_POLL_MS = 500;
 
 type Candidate = { name: string; domain: string | null; source: CompanySource };
 
-const normName = (s: string) =>
+const FILLER = new Set([
+	'the',
+	'inc',
+	'llc',
+	'ltd',
+	'corp',
+	'co',
+	'company',
+	'technologies',
+	'technology',
+	'platforms',
+	'labs',
+	'holdings',
+	'group'
+]);
+const tokens = (s: string) =>
 	coreOrgName(s)
 		.toLowerCase()
-		.replace(/\b(the|technologies|technology|platforms|labs|holdings|group|company)\b/g, '')
-		.replace(/[^a-z0-9]/g, '');
+		.split(' ')
+		.filter((w) => w && !FILLER.has(w));
 const domainLabel = (d: string | null) =>
 	d ? (parse(d).domainWithoutSuffix ?? '').toLowerCase().replace(/[^a-z0-9]/g, '') : '';
 
-/** Whether two layers name the same company (normalized name or the same domain label). */
+/**
+ * Whether two layers name the same company: the same domain label, or the same words (one name may
+ * have extra trailing words, "Meta" / "Meta Platforms", but never extra letters, "Meta" / "Metabase").
+ */
 export function sameCompany(a: Candidate, b: Candidate): boolean {
 	const da = domainLabel(a.domain);
 	const db = domainLabel(b.domain);
 	if (da && db && da === db) return true;
-	const na = normName(a.name);
-	const nb = normName(b.name);
-	if (!na || !nb) return false;
-	if (na === nb) return true;
-	const [short, long] = na.length <= nb.length ? [na, nb] : [nb, na];
-	return short.length >= 4 && long.startsWith(short);
+	const ta = tokens(a.name);
+	const tb = tokens(b.name);
+	if (!ta.length || !tb.length) return false;
+	const [short, long] = ta.length <= tb.length ? [ta, tb] : [tb, ta];
+	if (short.join('').length < 3) return false;
+	return short.every((w, i) => long[i] === w);
 }
 
 const RANK: Record<Confidence, number> = { low: 0, medium: 1, high: 2, certain: 3 };
@@ -131,6 +149,10 @@ export async function resolveVisitorCompany(options: {
 	gpc: boolean;
 	/** `/simulate`, already validated and rate-limited by the caller. */
 	simulated: IpOrg | null;
+	/** The company the visitor said they work at, already validated and rate-limited by the caller. */
+	stated?: IpOrg | null;
+	/** Whether a referrer host not seen before may be classified (a rate limit); see referrer-company.ts. */
+	canClassifyReferrer?: () => boolean;
 	/** How long to wait for the pixel's report to land (the chat-open opener waits; turns don't). */
 	waitForPixelMs?: number;
 }): Promise<CompanyResolution> {
@@ -154,8 +176,9 @@ export async function resolveVisitorCompany(options: {
 			])
 		);
 	}
-	const stated = simulatedOrg(raw.statedCompany);
-	if (stated) return done(pick([{ name: stated.name, domain: null, source: 'stated' }]));
+	if (options.stated) {
+		return done(pick([{ name: options.stated.name, domain: null, source: 'stated' }]));
+	}
 
 	const token =
 		typeof raw.pixelToken === 'string' && TOKEN.test(raw.pixelToken) ? raw.pixelToken : null;
@@ -166,7 +189,11 @@ export async function resolveVisitorCompany(options: {
 
 	const [pixel, ref, ipCompany, ipOrg] = await Promise.all([
 		pixelCompany(token, options.waitForPixelMs ?? 0).catch(() => null),
-		companyFromReferrer(referrer).catch(() => null),
+		companyFromReferrer(referrer, {
+			// The opener can wait for a first-time host; a chat turn classifies it in the background.
+			wait: (options.waitForPixelMs ?? 0) > 0,
+			canClassify: options.canClassifyReferrer
+		}).catch(() => null),
 		options.gpc ? Promise.resolve(null) : lookupIpCompany(options.clientIp),
 		options.gpc ? Promise.resolve(null) : lookupIpOrg(options.clientIp)
 	]);
@@ -190,7 +217,8 @@ export async function resolveVisitorCompany(options: {
 /** The resolved company in the IpOrg shape the visitor hints and role lookup already use. */
 export function companyAsOrg(resolution: CompanyResolution): IpOrg | null {
 	const c = resolution.company;
-	if (!c) return resolution.ipOrg;
+	// A VPN / datacenter flag from ipapi.is means no IP-derived company at all, not the raw ASN owner.
+	if (!c) return resolution.anonymized ? null : resolution.ipOrg;
 	return {
 		name: c.name,
 		domain: c.domain,

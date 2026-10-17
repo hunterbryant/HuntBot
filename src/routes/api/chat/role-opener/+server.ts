@@ -64,8 +64,11 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		payload: body.visitor,
 		gpc,
 		simulated,
+		// A made-up name is limited like /simulate; the opener's own limit above already caps calls.
+		stated: simulatedOrg((body.visitor as { statedCompany?: unknown } | undefined)?.statedCompany),
+		canClassifyReferrer: () => true,
 		// The pixel reports on page load, usually just before the chat opens: give it a moment.
-		waitForPixelMs: 3000
+		waitForPixelMs: 2000
 	});
 	logResolution(crypto.randomUUID(), 'opener', resolution);
 	const org = companyAsOrg(resolution);

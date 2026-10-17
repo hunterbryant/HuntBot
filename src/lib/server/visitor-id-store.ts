@@ -20,11 +20,18 @@ function ensureCollection(): Promise<boolean> {
 	const name = collection();
 	if (!name || !env.QDRANT_URL) return Promise.resolve(false);
 	ready ??= (async () => {
-		const client = getQdrantClient();
 		try {
+			const client = getQdrantClient();
 			const { exists } = await client.collectionExists(name);
 			if (!exists) {
-				await client.createCollection(name, { vectors: { size: 1, distance: 'Dot' } });
+				try {
+					await client.createCollection(name, { vectors: { size: 1, distance: 'Dot' } });
+				} catch (error) {
+					// Another instance created it first: that's fine.
+					if (!/already exists|409/i.test(error instanceof Error ? error.message : String(error))) {
+						throw error;
+					}
+				}
 			}
 			return true;
 		} catch (error) {
@@ -44,18 +51,32 @@ function pointId(kind: StoreKind, key: string): string {
 	return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
+const STORE_TIMEOUT_MS = 1500;
+
+/** Gives up on a slow store call, so a cold Qdrant cluster can't hold up a reply. */
+function within<T>(work: Promise<T>): Promise<T> {
+	return Promise.race([
+		work,
+		new Promise<never>((_, reject) =>
+			setTimeout(() => reject(new Error('store timed out')), STORE_TIMEOUT_MS)
+		)
+	]);
+}
+
 export async function putRecord(
 	kind: StoreKind,
 	key: string,
 	value: Record<string, unknown>
 ): Promise<void> {
-	if (!(await ensureCollection())) return;
+	if (!(await within(ensureCollection()).catch(() => false))) return;
 	try {
-		await getQdrantClient().upsert(collection()!, {
-			points: [
-				{ id: pointId(kind, key), vector: [1], payload: { kind, key, at: Date.now(), ...value } }
-			]
-		});
+		await within(
+			getQdrantClient().upsert(collection()!, {
+				points: [
+					{ id: pointId(kind, key), vector: [1], payload: { kind, key, at: Date.now(), ...value } }
+				]
+			})
+		);
 		// Occasional cleanup of expired records of this kind, so the collection stays small.
 		if (Math.random() < 0.05) {
 			await getQdrantClient()
@@ -82,13 +103,15 @@ export async function getRecord(
 	kind: StoreKind,
 	key: string
 ): Promise<Record<string, unknown> | null> {
-	if (!(await ensureCollection())) return null;
+	if (!(await within(ensureCollection()).catch(() => false))) return null;
 	try {
-		const [point] = await getQdrantClient().retrieve(collection()!, {
-			ids: [pointId(kind, key)],
-			with_payload: true,
-			with_vector: false
-		});
+		const [point] = await within(
+			getQdrantClient().retrieve(collection()!, {
+				ids: [pointId(kind, key)],
+				with_payload: true,
+				with_vector: false
+			})
+		);
 		const payload = point?.payload as Record<string, unknown> | undefined;
 		if (!payload || typeof payload.at !== 'number' || Date.now() - payload.at > TTL_MS[kind]) {
 			return null;

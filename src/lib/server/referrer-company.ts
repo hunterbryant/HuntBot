@@ -2,6 +2,7 @@ import { env } from '$env/dynamic/private';
 import { describeError } from '$lib/server/tool-log';
 import { getRecord, putRecord } from '$lib/server/visitor-id-store';
 import { createOpenAI } from '@ai-sdk/openai';
+import { waitUntil } from '@vercel/functions';
 import { generateText, Output, zodSchema } from 'ai';
 import { parse } from 'tldts';
 import { z } from 'zod';
@@ -15,7 +16,15 @@ import { z } from 'zod';
 export type ReferrerCompany = { name: string; domain: string | null };
 
 const TIMEOUT_MS = 3000;
+const MEMORY_MAX = 500;
 const memory = new Map<string, ReferrerCompany | null>();
+// A failed classification is remembered briefly so a broken call isn't repeated every turn.
+const failedUntil = new Map<string, number>();
+const FAILURE_TTL_MS = 5 * 60_000;
+const remember = (host: string, value: ReferrerCompany | null) => {
+	if (memory.size >= MEMORY_MAX) memory.delete(memory.keys().next().value as string);
+	memory.set(host, value);
+};
 
 const schema = z.object({
 	company: z
@@ -73,12 +82,27 @@ async function classify(host: string): Promise<ReferrerCompany | null> {
 	return namesHostItself(host, answer) ? null : answer;
 }
 
-/** The employer a referrer host reveals, or null. Cached per host (memory + shared store). Never throws. */
-export async function companyFromReferrer(host: string | null): Promise<ReferrerCompany | null> {
+export type ReferrerOptions = {
+	/** Wait for a model call on a host not seen before. Otherwise it runs in the background and this turn goes without. */
+	wait?: boolean;
+	/** Asked before a new host is classified (a rate limit); false skips the call. */
+	canClassify?: () => boolean;
+};
+
+/**
+ * The employer a referrer host reveals, or null. Cached per host (memory + shared store). A host
+ * that has to be classified for the first time is done in the background unless `wait` is set, so
+ * a chat turn never waits on a model call for it. Never throws.
+ */
+export async function companyFromReferrer(
+	host: string | null,
+	{ wait = false, canClassify = () => true }: ReferrerOptions = {}
+): Promise<ReferrerCompany | null> {
 	if (!host) return null;
 	host = host.toLowerCase();
 	if (cannotNameEmployer(host)) return null;
 	if (memory.has(host)) return memory.get(host) ?? null;
+	if ((failedUntil.get(host) ?? 0) > Date.now()) return null;
 
 	const stored = await getRecord('referrer', host);
 	if (stored) {
@@ -86,19 +110,27 @@ export async function companyFromReferrer(host: string | null): Promise<Referrer
 			typeof stored.name === 'string'
 				? { name: stored.name, domain: typeof stored.domain === 'string' ? stored.domain : null }
 				: null;
-		memory.set(host, value);
+		remember(host, value);
 		return value;
 	}
-	if (!env.OPENAI_API_KEY) return null;
-	try {
-		const value = await classify(host);
-		memory.set(host, value);
-		await putRecord('referrer', host, value ? { name: value.name, domain: value.domain } : {});
-		return value;
-	} catch (error) {
-		console.warn('[HuntBot visitor-id] referrer classification failed', {
-			error: describeError(error)
-		});
-		return null;
-	}
+	if (!env.OPENAI_API_KEY || !canClassify()) return null;
+	const work = (async () => {
+		try {
+			const value = await classify(host);
+			remember(host, value);
+			await putRecord('referrer', host, value ? { name: value.name, domain: value.domain } : {});
+			return value;
+		} catch (error) {
+			failedUntil.set(host, Date.now() + FAILURE_TTL_MS);
+			if (failedUntil.size > MEMORY_MAX)
+				failedUntil.delete(failedUntil.keys().next().value as string);
+			console.warn('[HuntBot visitor-id] referrer classification failed', {
+				error: describeError(error)
+			});
+			return null;
+		}
+	})();
+	if (wait) return work;
+	waitUntil(work);
+	return null;
 }

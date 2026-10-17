@@ -17,6 +17,7 @@ export type IpCompany = {
 const TIMEOUT_MS = 800;
 const CACHE_TTL_MS = 60 * 60_000;
 const CACHE_MAX = 500;
+const FAILURE_TTL_MS = 30_000;
 const cache = new Map<string, { at: number; value: IpCompany | null }>();
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -46,16 +47,22 @@ export async function lookupIpCompany(ip: string | null): Promise<IpCompany | nu
 	if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
 
 	let value: IpCompany | null = null;
+	let ok = false;
 	try {
 		const res = await fetch(
 			`https://api.ipapi.is/?q=${encodeURIComponent(ip)}&key=${encodeURIComponent(key)}`,
 			{ signal: AbortSignal.timeout(TIMEOUT_MS) }
 		);
-		if (res.ok) value = parseIpapiIs(await res.json());
+		if (res.ok) {
+			value = parseIpapiIs(await res.json());
+			ok = true;
+		}
 	} catch {
 		// timeout or network error: the layer just stays quiet
 	}
 	if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
-	cache.set(ip, { at: Date.now(), value });
+	// A failure (timeout, 429 after the daily quota, 5xx) is only remembered briefly: for an hour it
+	// would leave the VPN flag off for that address.
+	cache.set(ip, { at: ok ? Date.now() : Date.now() - CACHE_TTL_MS + FAILURE_TTL_MS, value });
 	return value;
 }

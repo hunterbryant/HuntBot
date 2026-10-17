@@ -137,7 +137,9 @@ export function buildVisitorContext(options: {
 	}
 
 	const country = request.headers.get('x-vercel-ip-country');
-	const keepUnderGpc = ['simulated', 'stated', 'pixel'].includes(options.company?.source ?? '');
+	const keepUnderGpc = ['simulated', 'stated', 'pixel', 'referrer'].includes(
+		options.company?.source ?? ''
+	);
 
 	return {
 		arrivedVia,

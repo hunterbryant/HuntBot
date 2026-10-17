@@ -12,7 +12,7 @@ import {
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
 import { simulatedOrg, type IpOrg } from '$lib/server/ip-org';
 import { matchJobDescription } from '$lib/server/job-match';
-import { allowLookup } from '$lib/server/lookup-limit';
+import { allowCompany, allowLookup } from '$lib/server/lookup-limit';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { queryNotion } from '$lib/server/notion';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
@@ -119,6 +119,8 @@ const MAX_STEPS = 3;
 const MAX_ANALYSIS_STEPS = 6;
 // query_notion chains describe -> query -> (titles scan) -> read, so it gets a longer budget.
 const MAX_NOTION_STEPS = 8;
+// How long a turn waits for the company-identification stack before going without it.
+const COMPANY_CAP_MS = 1500;
 
 /** How many steps this turn may use, given the tools it has called so far. */
 function stepLimit(steps: Array<{ toolCalls: Array<{ toolName: string }> }>): number {
@@ -479,26 +481,38 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				const requestedOrg = visitorEnabled
 					? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
 					: null;
-				const simulated = requestedOrg && allowLookup(clientIp) ? requestedOrg : null;
+				const simulated =
+					requestedOrg && allowCompany(clientIp, requestedOrg.name) ? requestedOrg : null;
+				// What they said about where they work counts as "certain", so a made-up name is rate
+				// limited like /simulate (each new name; repeating one is free).
+				const statedRaw = visitorEnabled
+					? simulatedOrg((body.visitor as { statedCompany?: unknown } | undefined)?.statedCompany)
+					: null;
+				const stated = statedRaw && allowCompany(clientIp, statedRaw.name) ? statedRaw : null;
 				turn.simulatedOrg = Boolean(simulated);
 				// Which company they work at, from the identification stack (stated, pixel, referrer, two
-				// reverse-IP providers; see visitor-company.ts). Each layer is capped well under retrieval.
+				// reverse-IP providers; see visitor-company.ts). Raced against a short cap, since it gates
+				// the reply: a slow layer is dropped for this turn (its result is cached for the next).
 				const orgPromise: Promise<IpOrg | null> = visitorEnabled
-					? timer
-							.time('visitor_company', () =>
-								resolveVisitorCompany({
-									clientIp,
-									payload: body.visitor,
-									gpc: gpcRequested,
-									simulated
-								})
-							)
-							.then((resolution) => {
-								turn.company = resolution;
-								logResolution(runID, 'chat', resolution);
-								return companyAsOrg(resolution);
-							})
-							.catch(() => null)
+					? Promise.race([
+							timer
+								.time('visitor_company', () =>
+									resolveVisitorCompany({
+										clientIp,
+										payload: body.visitor,
+										gpc: gpcRequested,
+										simulated,
+										stated,
+										canClassifyReferrer: () => allowLookup(clientIp)
+									})
+								)
+								.then((resolution) => {
+									turn.company = resolution;
+									logResolution(runID, 'chat', resolution);
+									return companyAsOrg(resolution);
+								}),
+							new Promise<null>((resolve) => setTimeout(() => resolve(null), COMPANY_CAP_MS))
+						]).catch(() => null)
 					: Promise.resolve(null);
 				// Open design roles at the visitor's company, when the network is an org. Bounded (~2.8s,
 				// cached 12h) and race-limited below to the length of retrieval: a slow lookup never
@@ -1727,7 +1741,7 @@ ${contextForModel}`;
 					retrieval_failed: turn.retrievalError ? true : undefined,
 					model_failure: turn.modelFailure ?? undefined,
 					excluded_by_audit: turn.excludedByAudit || undefined,
-					ip_org_class: turn.visitor?.org?.orgClass,
+					ip_org_class: turn.company?.ipOrg?.orgClass ?? turn.visitor?.org?.orgClass,
 					...timer.timings
 				})
 			);
