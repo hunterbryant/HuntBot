@@ -50,6 +50,8 @@ src/lib/server/               server-only helpers:
   visitor-context.ts, ip-org.ts   visitor hints and the IPinfo network lookup
   github-repo.ts, calendar.ts  live GitHub and Google Calendar tools
   training.ts, python-sandbox.ts   intervals.icu data and the Vercel Sandbox Python runner
+  notion.ts, self-docs.ts, job-match.ts   live Notion search, "how do you work" answers from our docs, job-posting matching
+  company-roles.ts, safe-fetch.ts, tool-log.ts   open roles at a visitor's company, guarded fetch for visitor URLs, tool log lines
   timing.ts, posthog.ts, rag-debug.ts, warn-once.ts, model-errors.ts   timing, analytics capture, logging, failure classification
   imessage-config.ts, site-nav-routes.ts   iMessage toggle (cached in Qdrant), Prismic route catalog
 src/lib/slices/                Prismic slices; index.ts registers them
@@ -79,7 +81,7 @@ GOOGLE_CALENDAR_CLIENT_ID=  GOOGLE_CALENDAR_CLIENT_SECRET=  GOOGLE_CALENDAR_REFR
 GOOGLE_CALENDAR_ID=        # optional (default "primary")
 GOOGLE_CALENDAR_TIMEZONE=  # optional IANA zone (default America/Los_Angeles)
 INTERVALS_API_KEY=  INTERVALS_ATHLETE_ID=   # intervals.icu training tools; unset means "not connected"
-IPINFO_TOKEN=              # optional: IPinfo Lite for the visitor network lookup
+IPINFO_TOKEN=              # optional: IPinfo Lite for the visitor network lookup (also drives the open-roles hint)
 POSTHOG_PROJECT_ID=  POSTHOG_PERSONAL_API_KEY=   # admin conversation views (read); PUBLIC_POSTHOG_API_KEY sends events
 CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-calls (16+ chars)
 CHUNK_AUDIT_ORIGIN=        # optional: origin for the audit's follow-up calls (default https://huntbot.vercel.app)
@@ -95,6 +97,7 @@ RERANK_ENABLED=0           # skip reranking
 SELF_CRITIQUE=0            # skip the context sufficiency check and fallback search
 QUERY_LANES=0              # send every message down the standard pipeline
 VISITOR_CONTEXT=0          # turn off visitor hints entirely
+COMPANY_ROLES_WEB=0        # skip the background web search for a visitor company's open roles (job-board lookup stays)
 ```
 
 ## Rules that prevent real bugs
@@ -106,12 +109,13 @@ VISITOR_CONTEXT=0          # turn off visitor hints entirely
 - **Stream errors:** never forward the model's `error` chunk to the client (the AI SDK client treats it as fatal and the visitor sees nothing). A turn always ends with text or a client tool; see "Never a silent turn".
 - **Analytics:** server PostHog events go through `captureServerEvent` (`src/lib/server/posthog.ts`), post-reply work through `runInBackground`. Message text goes to PostHog only, never into always-on log lines. [observability.md](docs/observability.md)
 - **Admin APIs:** new admin-only routes go under `/api/admin/` so `hooks.server.ts` guards them.
-- **Visitor URLs and data:** tool output reaches anonymous visitors. Return only what is safe to show (the calendar tool returns titles and times only). [tools.md](docs/tools.md)
+- **Visitor URLs and data:** tool output reaches anonymous visitors. Return only what is safe to show (the calendar tool returns titles and times only). Fetch any URL a visitor supplies with `safeFetchText` (`src/lib/server/safe-fetch.ts`), never bare `fetch`. [tools.md](docs/tools.md)
+- **Slow lookups:** anything that can slow a reply (the open-roles lookup) races retrieval and is dropped for that turn if it loses; its result is cached for the next one.
 - **Sandbox network policy regexes:** plain syntax only (no inline flags like `(?i)`); Vercel validates them with a JavaScript-compatible parser even though matching is RE2. [tools.md](docs/tools.md)
 - **intervals.icu:** rides synced from Strava come back as empty stubs; weekly totals still count them.
 - **Chat client:** `handleSubmit` ignores submits while a reply streams; two concurrent streams lose the first reply.
 - **Voice:** HuntBot is not Hunter. It talks about him in the third person, in his voice; "I" is only ever the bot. Replies are 1–3 sentences of plain text. Persona comes entirely from the system prompt (voice rules, contrastive few-shot examples, banned AI-isms). For hiring questions, pitch in text first, then `capture_lead_intent` adds the contact card (`ActionMessage.svelte`).
-- **Visitor hints:** use them only for emphasis, length and date math; never name the visitor's origin, company, location, device or language unprompted. [visitor-context.md](docs/visitor-context.md)
+- **Visitor hints:** use them only for emphasis, length and date math; never name the visitor's origin, location, device or language unprompted. The one exception: when the hints list open design roles at their company, HuntBot may ask once, as a question, whether they're hiring for one. [visitor-context.md](docs/visitor-context.md)
 - **Prismic:** never edit `src/prismicio-types.d.ts`; regenerate with `pnpm check` after schema changes.
 
 ## CMS: Prismic + Slice Machine

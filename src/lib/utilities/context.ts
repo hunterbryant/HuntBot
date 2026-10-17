@@ -647,4 +647,44 @@ export async function bestMatchScores(queries: string[]): Promise<number[]> {
 	);
 }
 
+export type PublicEvidence = {
+	/** Page URL for site content, or the notes source name. */
+	source: string;
+	title: string;
+	snippet: string;
+	score: number;
+};
+
+/**
+ * For each embedding, the best few public chunks (site pages and notes, never iMessage), best
+ * first, with their vector scores. Chunks the chunk audit flagged are skipped like everywhere else.
+ * Used to line a job posting's requirements up against what Hunter has actually written.
+ */
+export async function searchPublicEvidence(
+	embeddings: number[][],
+	perQuery = 2
+): Promise<PublicEvidence[][]> {
+	return Promise.all(
+		embeddings.map(async (embedding) => {
+			const results = await searchByEmbedding(embedding, perQuery * 3, PUBLIC_SOURCES_FILTER);
+			const out: PublicEvidence[] = [];
+			const seen = new Set<string>();
+			for (const [doc, score] of results.sort((a, b) => b[1] - a[1])) {
+				const source = String(doc.metadata?.source ?? 'notes');
+				// One chunk per page per requirement, so a long page can't be the only evidence.
+				if (seen.has(source)) continue;
+				seen.add(source);
+				out.push({
+					source,
+					title: String(doc.metadata?.title ?? ''),
+					snippet: doc.pageContent.replace(/\s+/g, ' ').trim().slice(0, 300),
+					score
+				});
+				if (out.length >= perQuery) break;
+			}
+			return out;
+		})
+	);
+}
+
 export { MIN_VECTOR_SCORE };
