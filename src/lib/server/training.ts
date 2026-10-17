@@ -69,6 +69,8 @@ export type WeeklySummary = {
 
 export type ActivityList = {
 	activities: TrainingActivity[];
+	/** IDs of Hunter's own activities in the range, which the sandbox may read in full. */
+	ids: string[];
 	/**
 	 * Activities that came in through Strava. intervals.icu's API only returns an empty
 	 * stub for those (Strava's terms), so they're counted in the weekly totals but missing
@@ -77,7 +79,22 @@ export type ActivityList = {
 	hidden: number;
 };
 
+const MAX_CACHE_ENTRIES = 200;
 const cache = new Map<string, { value: unknown; expiresAt: number }>();
+
+/** Stores a response, dropping expired entries and then the oldest ones past the cap. */
+function cacheSet(url: string, value: unknown): void {
+	const now = Date.now();
+	for (const [key, entry] of cache) if (entry.expiresAt <= now) cache.delete(key);
+	cache.delete(url);
+	cache.set(url, { value, expiresAt: now + CACHE_TTL_MS });
+	while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value as string);
+}
+
+/** Basic auth header for the intervals.icu API (user "API_KEY", password the key). */
+function icuAuthHeader(): string {
+	return `Basic ${btoa(`API_KEY:${env.INTERVALS_API_KEY}`)}`;
+}
 
 /**
  * GET `path` under the API root. Responses are cached per warm instance unless
@@ -96,7 +113,7 @@ async function icuGet<T>(
 
 	try {
 		const res = await fetch(url, {
-			headers: { Authorization: `Basic ${btoa(`API_KEY:${env.INTERVALS_API_KEY}`)}` },
+			headers: { Authorization: icuAuthHeader() },
 			signal: AbortSignal.timeout(6000)
 		});
 		if (!res.ok) {
@@ -104,7 +121,7 @@ async function icuGet<T>(
 			return null;
 		}
 		const value = (await res.json()) as T;
-		if (cacheResponse) cache.set(url, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+		if (cacheResponse) cacheSet(url, value);
 		return value;
 	} catch (error) {
 		console.warn('[HuntBot training] intervals.icu request failed', {
@@ -113,6 +130,17 @@ async function icuGet<T>(
 		});
 		return null;
 	}
+}
+
+/** Null if `start`..`end` is a usable YYYY-MM-DD range, otherwise a message for the model. */
+export function checkDateRange(start: string, end: string): string | null {
+	const valid = (d: string) =>
+		/^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d);
+	if (!valid(start) || !valid(end)) {
+		return 'Dates must be real calendar dates in YYYY-MM-DD form, e.g. 2026-01-31.';
+	}
+	if (start > end) return 'start_date is after end_date.';
+	return null;
 }
 
 function addDays(date: string, days: number): string {
@@ -329,7 +357,8 @@ export async function getActivities(
 		};
 	});
 	activities.reverse();
-	return { activities, hidden: rows.length - visible.length };
+	const ids = visible.flatMap((r) => (r.id && /^[A-Za-z0-9]+$/.test(r.id) ? [r.id] : []));
+	return { activities, ids, hidden: rows.length - visible.length };
 }
 
 /** Sums weekly rows into one line per sport, biggest distance first, for the totals tool. */
@@ -400,17 +429,31 @@ export async function getWellness(
 	});
 }
 
+const MAX_ALLOWED_ACTIVITY_IDS = 300;
+
 /**
- * Sandbox network policy that lets analysis code read all of Hunter's own intervals.icu
- * data: GET requests to his athlete endpoints, individual activities and the API spec.
- * The API key is added by Vercel's proxy, so it never enters the sandbox. Other people's
- * data is refused (his chats, athlete-summary, which includes athletes he follows,
- * folder sharing lists, other athlete IDs), as are writes, deletes and other hosts,
- * since visitors write the prompts.
+ * Sandbox network policy that lets analysis code read Hunter's own intervals.icu data:
+ * GET requests to his athlete endpoints, the API spec, and `/activity/{id}/...` for the
+ * activity IDs in `ownActivityIds` only. A bare activity ID doesn't prove who owns it
+ * (athletes he follows or who shared with him have activities his key can open), so the
+ * per-activity endpoints are limited to IDs that came from his own activity list. The API
+ * key is added by Vercel's proxy, so it never enters the sandbox. Everything else —
+ * other people's data (his chats, athlete-summary, which includes athletes he follows,
+ * sharing lists, other athlete IDs), encoded or traversal paths, writes, deletes and
+ * other hosts — is refused, since visitors write the prompts.
  */
-export function intervalsNetworkPolicy(): NetworkPolicy {
+export function intervalsNetworkPolicy(ownActivityIds: string[] = []): NetworkPolicy {
 	const athleteId = env.INTERVALS_ATHLETE_ID ?? '';
 	if (!env.INTERVALS_API_KEY || !/^[A-Za-z0-9]+$/.test(athleteId)) return 'deny-all';
+
+	const activityIds = [...new Set(ownActivityIds)]
+		.filter((id) => /^[A-Za-z0-9]+$/.test(id))
+		.slice(0, MAX_ALLOWED_ACTIVITY_IDS);
+	const readable = [
+		'docs',
+		`athlete/${athleteId}([/.].*)?`,
+		...(activityIds.length ? [`activity/(${activityIds.join('|')})([/.].*)?`] : [])
+	].join('|');
 
 	const refuse = (body: string) => ({
 		response: { statusCode: 403, body, contentType: 'text/plain' }
@@ -419,30 +462,21 @@ export function intervalsNetworkPolicy(): NetworkPolicy {
 		allow: {
 			'intervals.icu': [
 				{
+					// Case-insensitive, and any percent-encoding at all is refused, so an encoded
+					// letter can't slip past the names below and still match the allow rule.
 					match: {
 						path: {
-							regex: `(\\.\\.|%2[eE]|//|^/api/v1/athlete/${athleteId}/(chats|athlete-summary)|/shared-with)`
+							regex: `(?i)(\\.\\.|%|//|;|^/api/v1/athlete/${athleteId}/(chats|athlete-summary)|/shared-with)`
 						}
 					},
 					...refuse("Not available to HuntBot: it holds other people's data.")
 				},
 				{
-					match: {
-						method: ['GET'],
-						path: {
-							regex: `^/api/v1/(docs|athlete/${athleteId}([/.].*)?|activity/[A-Za-z0-9]+([/.].*)?)$`
-						}
-					},
-					transform: [
-						{
-							headers: {
-								authorization: `Basic ${btoa(`API_KEY:${env.INTERVALS_API_KEY}`)}`
-							}
-						}
-					]
+					match: { method: ['GET'], path: { regex: `^/api/v1/(${readable})$` } },
+					transform: [{ headers: { authorization: icuAuthHeader() } }]
 				},
 				refuse(
-					`Read-only access to Hunter's own data: GET /api/v1/athlete/${athleteId}/..., /api/v1/activity/{id}/... and /api/v1/docs.`
+					`Read-only access to Hunter's own data: GET /api/v1/athlete/${athleteId}/..., /api/v1/docs, and /api/v1/activity/{id}/... for activities in the loaded date range.`
 				)
 			]
 		}

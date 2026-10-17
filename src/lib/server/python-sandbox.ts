@@ -1,7 +1,11 @@
 import { env } from '$env/dynamic/private';
+import { waitUntil } from '@vercel/functions';
 import { Sandbox, type NetworkPolicy } from '@vercel/sandbox';
 
 const MAX_OUTPUT_CHARS = 4000;
+// The sandbox's own lifetime. If a create call is abandoned after the VM has started we
+// never get a handle to stop it, so this is also the longest such a leak can run.
+const SANDBOX_TIMEOUT_MS = 50_000;
 
 export type PythonRunResult =
 	| { ok: true; stdout: string; stderr: string; exitCode: number }
@@ -37,8 +41,8 @@ export async function runPython(
 			image: 'vercel/sandbox/python:3.14',
 			networkPolicy,
 			resources: { vcpus: 1 },
-			timeout: 60_000,
-			signal: AbortSignal.timeout(15_000)
+			timeout: SANDBOX_TIMEOUT_MS,
+			signal: AbortSignal.timeout(20_000)
 		});
 		await sandbox.writeFiles([...files, { path: 'analysis.py', content: code }]);
 		const result = await sandbox.runCommand('python3', ['analysis.py'], { timeoutMs: 30_000 });
@@ -49,6 +53,8 @@ export async function runPython(
 		console.warn('[HuntBot sandbox] Python run failed', { error: message });
 		return { ok: false, error: message };
 	} finally {
-		sandbox?.stop().catch(() => {});
+		// Not awaited, so the visitor isn't kept waiting on teardown, but registered with
+		// waitUntil so a frozen function can't drop it and leave the sandbox billing.
+		if (sandbox) waitUntil(sandbox.stop().catch(() => {}));
 	}
 }

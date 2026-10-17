@@ -19,6 +19,7 @@ import { planSupplementalSearches } from '$lib/server/rag-router';
 import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
 import {
+	checkDateRange,
 	formatTrainingTotals,
 	getActivities,
 	getWeeklySummary,
@@ -98,6 +99,10 @@ const LANE_MODEL_CONFIG: Record<
 // or follow up with a second query before answering.
 const MAX_STEPS = 3;
 const MAX_ANALYSIS_STEPS = 6;
+// The route's maxDuration is 300s. Past this point into a turn no new analysis starts
+// (one run can take ~50s with sandbox startup), and the step loop stops, so the model
+// answers with what it has instead of the function being killed mid-stream.
+const ANALYSIS_DEADLINE_MS = 200_000;
 
 // Tools with no server `execute` — the client renders their input as the reply/action.
 const CLIENT_TOOL_NAMES = new Set([
@@ -254,6 +259,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 			}
 
 			const timer = createStageTimer();
+			const requestStartedAt = Date.now();
 
 			// What actually happened this turn, filled in as the pipeline runs and sent to PostHog
 			// once at the end (including when the pipeline throws), so a turn can be diagnosed
@@ -809,6 +815,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						execute: async ({ start_date, end_date }) => {
 							reportStatus('Checking his training log…');
 							logRag('tool get_training_totals', { start_date, end_date });
+							const rangeError = checkDateRange(start_date, end_date);
+							if (rangeError) return rangeError;
 							const summary = await getWeeklySummary(start_date, end_date);
 							if (!summary) return 'Training data is not connected.';
 							return formatTrainingTotals(summary);
@@ -820,8 +828,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 - fitness.csv: weekStart, fitness (CTL), fatigue (ATL), form (TSB), weightLb at the end of each week.
 - activities.csv: date, startTime (HH:MM local), name, sport, distanceMi, movingHours, elevationFt, avgWatts, trainingLoad, avgHr, maxHr, weightLb, device, startLat, startLng, endLat, endLng, centerLat, centerLng. Empty cells are missing values. The location columns are only filled when include_location is true, for the most recent 50 outdoor activities: where the ride started and ended, and the middle of its bounding box, to about 10 m. Only activities recorded straight to intervals.icu. Ones synced from Strava are missing here (the result says how many), so per-activity answers can be incomplete; totals should come from weekly.csv.
 - wellness.csv: one row per day, every field intervals.icu has, in its units. id is the date (YYYY-MM-DD). Includes sleepScore, sleepSecs (seconds), sleepQuality (1–4, 1 best), avgSleepingHR, hrv, restingHR, readiness, steps, weight (kg), vo2max, mood, stress, soreness, fatigue, ctl, atl. Columns are missing when he never logged that field.
-For anything else in his intervals.icu account, the script can call the API directly with urllib (GET https://intervals.icu/api/v1/athlete/{id}/..., /api/v1/activity/{activityId}/... and /api/v1/docs; send no auth header, it's added for you). His athlete ID is ${env.INTERVALS_ATHLETE_ID || '(not set)'}. Useful endpoints: /athlete/{id} (profile), /athlete/{id}/activities?oldest=…&newest=… (full activity objects), /athlete/{id}/wellness?oldest=…&newest=…, /athlete/{id}/power-curves.json?type=Ride&curves=1y, /athlete/{id}/pace-curves.json, /athlete/{id}/hr-curves.json, /athlete/{id}/gear.json, /athlete/{id}/events?oldest=…&newest=… (planned workouts, races, notes), /athlete/{id}/activities/search?q=…, /activity/{activityId} plus /intervals, /best-efforts, /streams.json, /map. If you're unsure of an endpoint or field name, the full OpenAPI spec is at https://intervals.icu/api/v1/docs (large JSON; search it in code rather than printing it). Only GET works, no other host is reachable, and endpoints holding other people's data (his chats, athlete-summary, sharing lists) return 403. Strava-synced activities are empty stubs everywhere in the API.
-Only print() output is returned, so print the final numbers you need.`,
+For anything else in his intervals.icu account, the script can call the API directly with urllib (GET https://intervals.icu/api/v1/athlete/{id}/..., /api/v1/docs, and /api/v1/activity/{activityId}/... for activities in the start_date–end_date range you loaded; send no auth header, it's added for you; no percent-encoding in paths). His athlete ID is ${env.INTERVALS_ATHLETE_ID || '(not set)'}. Useful endpoints: /athlete/{id} (profile), /athlete/{id}/activities?oldest=…&newest=… (full activity objects), /athlete/{id}/wellness?oldest=…&newest=…, /athlete/{id}/power-curves.json?type=Ride&curves=1y, /athlete/{id}/pace-curves.json, /athlete/{id}/hr-curves.json, /athlete/{id}/gear.json, /athlete/{id}/events?oldest=…&newest=… (planned workouts, races, notes), /athlete/{id}/activities/search?q=…, /activity/{activityId} plus /intervals, /best-efforts, /streams.json, /map (only for activities in the loaded range; widen start_date/end_date to reach others). If you're unsure of an endpoint or field name, the full OpenAPI spec is at https://intervals.icu/api/v1/docs (large JSON; search it in code rather than printing it). Only GET works, no other host is reachable, and endpoints holding other people's data (his chats, athlete-summary, sharing lists) return 403. Strava-synced activities are empty stubs everywhere in the API.
+Only what the script prints to stdout is returned, so print the final numbers you need.`,
 						inputSchema: z.object({
 							start_date: z.string().describe('Start date of the data to load, YYYY-MM-DD.'),
 							end_date: z.string().describe('End date of the data to load, YYYY-MM-DD, inclusive.'),
@@ -844,9 +852,11 @@ Only print() output is returned, so print the final numbers you need.`,
 								include_location,
 								code: code.slice(0, 500)
 							});
+							const rangeError = checkDateRange(start_date, end_date);
+							if (rangeError) return rangeError;
 							if (!isSandboxAvailable()) return 'Code execution is not available right now.';
-							if (!/\bprint\s*\(/.test(code)) {
-								return 'The script has no print() call, so it would produce no output. Print the results.';
+							if (Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
+								return 'Out of time for more analysis this turn. Answer with what you already have, and say if it is incomplete.';
 							}
 							reportStatus('Checking his training log…');
 							const [summary, activities, wellness] = await Promise.all([
@@ -858,13 +868,15 @@ Only print() output is returned, so print the final numbers you need.`,
 							const { files, note } = trainingDataFiles(summary, activities, wellness);
 							reportStatus('Crunching the numbers…');
 							const run = await runPython(code, files, {
-								networkPolicy: intervalsNetworkPolicy()
+								networkPolicy: intervalsNetworkPolicy(activities?.ids)
 							});
 							if (!run.ok) return `The analysis could not run: ${run.error}`;
 							return [
 								note,
 								`Exit code: ${run.exitCode}`,
-								run.stdout ? `Output:\n${run.stdout}` : 'Output: (none)',
+								run.stdout
+									? `Output:\n${run.stdout}`
+									: 'Output: (none). Only what the script writes to stdout comes back, so print the results.',
 								run.stderr ? `Errors:\n${run.stderr}` : null
 							]
 								.filter(Boolean)
@@ -1087,13 +1099,13 @@ ${contextForModel}`;
 					instructions: systemPrompt,
 					messages: modelMessages,
 					tools,
-					stopWhen: ({ steps }) =>
-						steps.length >=
-						(steps.some((step) =>
+					stopWhen: ({ steps }) => {
+						const analyzing = steps.some((step) =>
 							step.toolCalls.some((call) => call.toolName === 'analyze_training_data')
-						)
-							? MAX_ANALYSIS_STEPS
-							: MAX_STEPS),
+						);
+						if (analyzing && Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) return true;
+						return steps.length >= (analyzing ? MAX_ANALYSIS_STEPS : MAX_STEPS);
+					},
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
