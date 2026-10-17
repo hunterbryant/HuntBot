@@ -86,7 +86,7 @@ GOOGLE_CALENDAR_TIMEZONE=  # optional IANA zone (default America/Los_Angeles)
 INTERVALS_API_KEY=  INTERVALS_ATHLETE_ID=   # intervals.icu training tools; unset means "not connected"
 IPINFO_TOKEN=              # optional: IPinfo Lite, the ASN layer of company identification
 IPAPI_IS_KEY=              # optional: ipapi.is (free 1,000/day), the IP-block-owner layer with VPN flags
-PUBLIC_RB2B_SCRIPT_URL=    # optional: the src URL from RB2B's install snippet; loads the identity pixel
+PUBLIC_RB2B_KEY=           # optional: RB2B pixel key (default: Hunter's, in +layout.svelte); "off" disables the pixel
 RB2B_WEBHOOK_SECRET=       # optional: secret path segment of the RB2B webhook URL (/api/visitor-id/rb2b/<secret>)
 POSTHOG_PROJECT_ID=  POSTHOG_PERSONAL_API_KEY=   # admin conversation views (read); PUBLIC_POSTHOG_API_KEY sends events
 CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-calls (16+ chars); also the `x-huntbot-eval` header for `pnpm eval`

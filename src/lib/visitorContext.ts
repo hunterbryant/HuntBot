@@ -107,10 +107,12 @@ export function getPixelToken(): string | null {
  * token is removed from the address bar once the pixel has had time to record the page view, so a
  * copied link doesn't carry it (and anyone opening one gets their own token first anyway).
  */
-export function loadIdentityPixel(scriptUrl: string) {
-	if (typeof window === 'undefined' || !/^https:\/\//.test(scriptUrl)) return;
-	if ((window as { __huntbotPixel?: boolean }).__huntbotPixel) return;
-	(window as { __huntbotPixel?: boolean }).__huntbotPixel = true;
+export function loadIdentityPixel(key: string) {
+	if (typeof window === 'undefined' || !/^[A-Z0-9]{6,32}$/.test(key)) return;
+	// Same guard as RB2B's own install snippet, so it never loads twice.
+	const w = window as { reb2b?: { loaded: boolean } };
+	if (w.reb2b) return;
+	w.reb2b = { loaded: true };
 	const token = getPixelToken();
 	const setParam = (value: string | null) => {
 		try {
@@ -125,7 +127,7 @@ export function loadIdentityPixel(scriptUrl: string) {
 	if (token) setParam(token);
 	const script = document.createElement('script');
 	script.async = true;
-	script.src = scriptUrl;
+	script.src = `https://ddwl4m2hdecbv.cloudfront.net/b/${key}/${key}.js.gz`;
 	document.head.appendChild(script);
 	if (token) setTimeout(() => setParam(null), 20_000);
 }
