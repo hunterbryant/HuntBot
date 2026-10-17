@@ -4,6 +4,10 @@ const API_ORIGIN = 'https://intervals.icu/api/v1';
 const CACHE_TTL_MS = 15 * 60 * 1000;
 const METERS_PER_MILE = 1609.344;
 const FEET_PER_METER = 3.28084;
+const POUNDS_PER_KG = 2.20462;
+// Each area lookup is one request per activity, so only the most recent ones get one.
+const MAX_AREA_LOOKUPS = 100;
+const AREA_LOOKUP_CONCURRENCY = 10;
 
 /** One sport's totals for one Monday–Sunday week. */
 export type WeeklySportTotals = {
@@ -22,20 +26,30 @@ export type WeeklyFitness = {
 	fitness: number;
 	fatigue: number;
 	form: number;
+	weightLb: number | null;
 };
 
 /**
- * One activity, stripped to what's safe to show anonymous visitors: no names, GPS,
- * start times, heart rate, weight or device details — a date and the effort only.
+ * One activity. Location is never exact: only when asked for, and then as the center
+ * of the ride's bounding box (not its start, which is usually home) rounded to 0.1°,
+ * roughly 10 km.
  */
 export type TrainingActivity = {
 	date: string; // YYYY-MM-DD, local
+	startTime: string; // HH:MM, local
+	name: string;
 	sport: string;
 	distanceMi: number;
 	movingHours: number;
 	elevationFt: number;
 	avgWatts: number | null;
 	trainingLoad: number | null;
+	avgHr: number | null;
+	maxHr: number | null;
+	weightLb: number | null;
+	device: string | null;
+	areaLat: number | null;
+	areaLng: number | null;
 };
 
 export type WeeklySummary = {
@@ -58,11 +72,11 @@ export type ActivityList = {
 
 const cache = new Map<string, { value: unknown; expiresAt: number }>();
 
+/** GET `path` under the API root. Responses are cached per warm instance. */
 async function icuGet<T>(path: string, params: Record<string, string>): Promise<T | null> {
-	const athleteId = env.INTERVALS_ATHLETE_ID;
-	if (!athleteId || !env.INTERVALS_API_KEY) return null;
+	if (!env.INTERVALS_ATHLETE_ID || !env.INTERVALS_API_KEY) return null;
 
-	const url = `${API_ORIGIN}/athlete/${encodeURIComponent(athleteId)}${path}?${new URLSearchParams(params)}`;
+	const url = `${API_ORIGIN}${path}?${new URLSearchParams(params)}`;
 	const cached = cache.get(url);
 	if (cached && cached.expiresAt > Date.now()) return cached.value as T;
 
@@ -95,6 +109,9 @@ function addDays(date: string, days: number): string {
 
 const round = (n: number, places = 1) => Math.round(n * 10 ** places) / 10 ** places;
 
+const athletePath = (path: string) =>
+	`/athlete/${encodeURIComponent(env.INTERVALS_ATHLETE_ID ?? '')}${path}`;
+
 /**
  * Weekly totals by sport for every week overlapping [start, end] (YYYY-MM-DD, inclusive).
  * These come from intervals.icu's own weekly buckets, which count every activity —
@@ -109,6 +126,7 @@ export async function getWeeklySummary(start: string, end: string): Promise<Week
 		fitness?: number;
 		fatigue?: number;
 		form?: number;
+		weight?: number;
 		byCategory?: Array<{
 			category: string;
 			count: number;
@@ -121,7 +139,7 @@ export async function getWeeklySummary(start: string, end: string): Promise<Week
 
 	// Buckets are anchored on Mondays, so reach back 6 days to include the week `start` falls in.
 	const earliestAnchor = addDays(start, -6);
-	const rows = await icuGet<SummaryRow[]>('/athlete-summary.json', {
+	const rows = await icuGet<SummaryRow[]>(athletePath('/athlete-summary.json'), {
 		start: earliestAnchor,
 		end
 	});
@@ -140,7 +158,8 @@ export async function getWeeklySummary(start: string, end: string): Promise<Week
 			weekStart: row.date,
 			fitness: round(row.fitness ?? 0),
 			fatigue: round(row.fatigue ?? 0),
-			form: round(row.form ?? 0)
+			form: round(row.form ?? 0),
+			weightLb: row.weight ? round(row.weight * POUNDS_PER_KG) : null
 		});
 		for (const c of row.byCategory ?? []) {
 			weeks.push({
@@ -164,12 +183,35 @@ export async function getWeeklySummary(start: string, end: string): Promise<Week
 }
 
 /**
+ * Rough area of one activity: the center of its map bounds rounded to 0.1°, or null
+ * for indoor rides and failed lookups. Bounds never change, so these cache well.
+ */
+async function getActivityArea(id: string): Promise<{ lat: number; lng: number } | null> {
+	const map = await icuGet<{ bounds?: number[][] }>(`/activity/${encodeURIComponent(id)}/map`, {
+		boundsOnly: 'true'
+	});
+	const [a, b] = map?.bounds ?? [];
+	if (a?.length !== 2 || b?.length !== 2) return null;
+	const lat = (a[0] + b[0]) / 2;
+	const lng = (a[1] + b[1]) / 2;
+	if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90) return null;
+	return { lat: round(lat), lng: round(lng) };
+}
+
+/**
  * Per-activity rows for [start, end]. Strava-synced activities come back as empty stubs
  * and are only counted (`hidden`), so per-activity answers ("longest ride") can be
- * incomplete; weekly totals cover everything.
+ * incomplete; weekly totals cover everything. `withArea` adds a rough area for the
+ * most recent MAX_AREA_LOOKUPS activities, at one extra request each.
  */
-export async function getActivities(start: string, end: string): Promise<ActivityList | null> {
+export async function getActivities(
+	start: string,
+	end: string,
+	{ withArea = false } = {}
+): Promise<ActivityList | null> {
 	type ActivityRow = {
+		id?: string;
+		name?: string;
 		type?: string;
 		start_date_local?: string;
 		distance?: number;
@@ -177,42 +219,75 @@ export async function getActivities(start: string, end: string): Promise<Activit
 		total_elevation_gain?: number;
 		icu_average_watts?: number;
 		icu_training_load?: number;
+		average_heartrate?: number;
+		max_heartrate?: number;
+		icu_weight?: number;
+		device_name?: string;
+		trainer?: boolean;
 	};
 
-	const rows = await icuGet<ActivityRow[]>('/activities', {
+	const rows = await icuGet<ActivityRow[]>(athletePath('/activities'), {
 		oldest: start,
 		newest: `${end}T23:59:59`,
 		fields: [
+			'id',
+			'name',
 			'type',
 			'start_date_local',
 			'distance',
 			'moving_time',
 			'total_elevation_gain',
 			'icu_average_watts',
-			'icu_training_load'
+			'icu_training_load',
+			'average_heartrate',
+			'max_heartrate',
+			'icu_weight',
+			'device_name',
+			'trainer'
 		].join(',')
 	});
 	if (!rows) return null;
 
-	const activities: TrainingActivity[] = [];
-	let hidden = 0;
-	for (const r of rows) {
-		if (!r.type || !r.start_date_local) {
-			hidden++;
-			continue;
-		}
-		activities.push({
-			date: r.start_date_local.slice(0, 10),
-			sport: r.type,
+	const visible = rows.filter((r) => r.type && r.start_date_local);
+	visible.sort((a, b) => (b.start_date_local ?? '').localeCompare(a.start_date_local ?? ''));
+
+	const areas = new Map<string, { lat: number; lng: number } | null>();
+	if (withArea) {
+		const queue = visible
+			.filter((r) => r.id && !r.trainer && !r.type?.startsWith('Virtual'))
+			.slice(0, MAX_AREA_LOOKUPS)
+			.map((r) => r.id as string);
+		await Promise.all(
+			Array.from({ length: AREA_LOOKUP_CONCURRENCY }, async () => {
+				for (let id = queue.shift(); id; id = queue.shift()) {
+					areas.set(id, await getActivityArea(id));
+				}
+			})
+		);
+	}
+
+	const activities: TrainingActivity[] = visible.map((r) => {
+		const area = r.id ? areas.get(r.id) : null;
+		return {
+			date: (r.start_date_local as string).slice(0, 10),
+			startTime: (r.start_date_local as string).slice(11, 16),
+			name: r.name?.trim() ?? '',
+			sport: r.type as string,
 			distanceMi: round((r.distance ?? 0) / METERS_PER_MILE),
 			movingHours: round((r.moving_time ?? 0) / 3600, 2),
 			elevationFt: Math.round((r.total_elevation_gain ?? 0) * FEET_PER_METER),
 			avgWatts: r.icu_average_watts ? Math.round(r.icu_average_watts) : null,
-			trainingLoad: r.icu_training_load ?? null
-		});
-	}
-	activities.sort((a, b) => a.date.localeCompare(b.date));
-	return { activities, hidden };
+			trainingLoad: r.icu_training_load ?? null,
+			avgHr: r.average_heartrate || null,
+			maxHr: r.max_heartrate || null,
+			weightLb: r.icu_weight ? round(r.icu_weight * POUNDS_PER_KG) : null,
+			device: r.device_name?.trim() || null,
+			areaLat: area?.lat ?? null,
+			areaLng: area?.lng ?? null
+		};
+	});
+	activities.reverse();
+	return { activities, hidden: rows.length - visible.length };
 }
 
 /** Sums weekly rows into one line per sport, biggest distance first, for the totals tool. */
@@ -259,8 +334,14 @@ export function formatTrainingTotals(summary: WeeklySummary): string {
 		.join('\n');
 }
 
+/** Quotes a CSV cell when it holds a comma, quote or newline (activity names can). */
+function csvCell(value: string | number | null): string {
+	const s = value === null ? '' : String(value);
+	return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
 function toCsv<T extends Record<string, string | number | null>>(rows: T[], columns: (keyof T)[]) {
-	return [columns.join(','), ...rows.map((r) => columns.map((c) => r[c] ?? '').join(','))].join(
+	return [columns.join(','), ...rows.map((r) => columns.map((c) => csvCell(r[c])).join(','))].join(
 		'\n'
 	);
 }
@@ -285,7 +366,7 @@ export function trainingDataFiles(
 		},
 		{
 			path: 'fitness.csv',
-			content: toCsv(summary.fitness, ['weekStart', 'fitness', 'fatigue', 'form'])
+			content: toCsv(summary.fitness, ['weekStart', 'fitness', 'fatigue', 'form', 'weightLb'])
 		}
 	];
 	if (activities) {
@@ -293,12 +374,20 @@ export function trainingDataFiles(
 			path: 'activities.csv',
 			content: toCsv(activities.activities, [
 				'date',
+				'startTime',
+				'name',
 				'sport',
 				'distanceMi',
 				'movingHours',
 				'elevationFt',
 				'avgWatts',
-				'trainingLoad'
+				'trainingLoad',
+				'avgHr',
+				'maxHr',
+				'weightLb',
+				'device',
+				'areaLat',
+				'areaLng'
 			])
 		});
 	}
