@@ -308,11 +308,24 @@ const MAX_AGENT_STEPS = 6;
 const DEAD_POSTING =
 	/(no longer (available|accepting)|position (has been|is) (filled|closed)|job (not found|has expired|is closed)|page not found|this (job|position) (is|has been) (closed|removed|filled))/i;
 
-/** Keeps a role only if its link opens and the page doesn't say the posting is gone. */
+/** Text a visitor would see: scripts, styles and tags removed (big career sites inline megabytes of JS). */
+const visibleText = (html: string) =>
+	html
+		.replace(/<(script|style|noscript)[\s\S]*?<\/\1>/gi, ' ')
+		.replace(/<[^>]+>/g, ' ')
+		.slice(0, 60000);
+
+/**
+ * Drops a role only on positive evidence that it's gone (the link 404s/410s or the page says the
+ * posting is closed). A page that can't be read (too big, JavaScript-only, a bot wall) keeps the
+ * role: the link is already on the company's own domain or a known board, and dropping every
+ * role we can't verify made big career sites like Google's always come back empty.
+ */
 async function stillOpen(role: CompanyRole): Promise<boolean> {
-	const page = await safeFetchText(role.url).catch(() => null);
-	if (!page || !page.ok) return false;
-	return !DEAD_POSTING.test(page.text.slice(0, 20000).replace(/<[^>]+>/g, ' '));
+	const page = await safeFetchText(role.url, { truncate: true }).catch(() => null);
+	if (!page) return true;
+	if (!page.ok) return page.status !== 404 && page.status !== 410;
+	return !DEAD_POSTING.test(visibleText(page.text));
 }
 
 /**
@@ -334,7 +347,7 @@ async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 						"Open a public https page and read its text, with links shown as 'text [url]'. Use it to read a careers page or job listing, and to follow links (a Design team page, a job search with a design filter) that a search result points to.",
 					inputSchema: z.object({ url: z.string().describe('The full https URL.') }),
 					execute: async ({ url }) => {
-						const page = await safeFetchText(url);
+						const page = await safeFetchText(url, { truncate: true });
 						if (!page.ok) return `Could not open that page: ${page.reason}`;
 						const text = /html/i.test(page.contentType) ? htmlToText(page.text) : page.text;
 						return text.slice(0, MAX_PAGE_CHARS) || 'The page had no readable text.';
@@ -352,7 +365,14 @@ async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 			(r) => isDesignRole(r.title) && isTrustedRoleUrl(r.url, org)
 		);
 		const open = await Promise.all(candidates.map(stillOpen));
-		return candidates.filter((_, i) => open[i]);
+		const kept = candidates.filter((_, i) => open[i]);
+		// Counts only: tells an empty answer from the model apart from links the checks dropped.
+		console.log('[HuntBot tools] company roles web', {
+			returned: output.roles.length,
+			design_and_trusted: candidates.length,
+			still_open: kept.length
+		});
+		return kept;
 	} catch (error) {
 		console.warn('[HuntBot tools] company roles web search failed', {
 			error: describeError(error)

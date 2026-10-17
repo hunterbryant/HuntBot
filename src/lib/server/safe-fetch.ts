@@ -59,7 +59,7 @@ export function isPrivateAddress(address: string): boolean {
 
 export type SafeFetchResult =
 	| { ok: true; text: string; contentType: string; finalUrl: string }
-	| { ok: false; reason: string };
+	| { ok: false; reason: string; status?: number };
 
 /** Checks a URL's shape and resolves its host to one public address, or says why not. */
 export async function resolvePublicHost(
@@ -97,7 +97,8 @@ export async function resolvePublicHost(
 function once(
 	url: URL,
 	address: string,
-	family: 4 | 6
+	family: 4 | 6,
+	truncate: boolean
 ): Promise<{ status: number; location: string | null; contentType: string; body: Buffer | null }> {
 	return new Promise((resolve, reject) => {
 		const req = httpsRequest(
@@ -146,10 +147,20 @@ function once(
 								: res;
 				const chunks: Buffer[] = [];
 				let size = 0;
+				let truncated = false;
 				stream.on('data', (chunk: Buffer) => {
 					size += chunk.length;
 					// Counted after decompression, so a zip bomb stops at the same cap.
 					if (size > MAX_BYTES) {
+						if (truncate) {
+							// Pages with big inline scripts: keep the first MAX_BYTES, stop reading.
+							if (!truncated) {
+								truncated = true;
+								resolve({ status, location: null, contentType, body: Buffer.concat(chunks) });
+								req.destroy();
+							}
+							return;
+						}
 						req.destroy(new Error('response too large'));
 						return;
 					}
@@ -158,7 +169,7 @@ function once(
 				stream.on('end', () =>
 					resolve({ status, location: null, contentType, body: Buffer.concat(chunks) })
 				);
-				stream.on('error', reject);
+				stream.on('error', (error) => (truncated ? undefined : reject(error)));
 			}
 		);
 		req.on('timeout', () => req.destroy(new Error('timed out')));
@@ -168,13 +179,16 @@ function once(
 }
 
 /** Fetches a visitor-supplied URL as text, safely. Never throws. */
-export async function safeFetchText(rawUrl: string): Promise<SafeFetchResult> {
+export async function safeFetchText(
+	rawUrl: string,
+	{ truncate = false }: { truncate?: boolean } = {}
+): Promise<SafeFetchResult> {
 	let current = rawUrl;
 	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
 		const target = await resolvePublicHost(current);
 		if ('reason' in target) return { ok: false, reason: target.reason };
 		try {
-			const res = await once(target.url, target.address, target.family);
+			const res = await once(target.url, target.address, target.family, truncate);
 			if (res.status >= 300 && res.status < 400 && res.location) {
 				// Each hop goes back through the same checks.
 				current = new URL(res.location, target.url).toString();
@@ -186,7 +200,8 @@ export async function safeFetchText(rawUrl: string): Promise<SafeFetchResult> {
 					reason:
 						res.status >= 200 && res.status < 300
 							? 'that link is not a web page or text'
-							: `the page returned ${res.status || 'an error'}`
+							: `the page returned ${res.status || 'an error'}`,
+					status: res.status || undefined
 				};
 			}
 			return {
