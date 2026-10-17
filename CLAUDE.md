@@ -72,6 +72,8 @@ HuntBot/
 │   │   │   ├── rag-debug.ts          # RAG logging helpers
 │   │   │   ├── qdrant-search.ts      # Low-level Qdrant client + vector search
 │   │   │   ├── imessage-config.ts    # iMessage feature toggle (cached in Qdrant)
+│   │   │   ├── training.ts           # intervals.icu weekly totals + activities, stripped for visitors
+│   │   │   ├── python-sandbox.ts     # Runs model-written Python in a no-network Vercel Sandbox
 │   │   │   └── site-nav-routes.ts    # Prismic route catalog with caching
 │   │   ├── slices/                   # Prismic Slice Machine components
 │   │   │   ├── index.ts              # Slice registry (maps slice names → components)
@@ -178,6 +180,8 @@ GOOGLE_CALENDAR_CLIENT_SECRET= # OAuth 2.0 client secret, same client as above
 GOOGLE_CALENDAR_REFRESH_TOKEN= # Long-lived refresh token for Hunter's Google account, obtained once via an OAuth consent flow (e.g. OAuth 2.0 Playground) with the https://www.googleapis.com/auth/calendar.readonly scope
 GOOGLE_CALENDAR_ID=            # Optional: calendar ID to query (default: "primary")
 GOOGLE_CALENDAR_TIMEZONE=      # Optional: IANA timezone for resolving "today"/relative dates and displaying event times (default: "America/Los_Angeles")
+INTERVALS_API_KEY=       # intervals.icu API key (Settings → Developer Settings) for the training tools
+INTERVALS_ATHLETE_ID=    # intervals.icu athlete ID, e.g. i105986 (shown in Settings). Both unset → training tools say "not connected"
 RAG_DEBUG=               # Set to 1 to log RAG / agent tool steps in production (dev logs them by default)
 RAG_REFLECTION=          # Set to 1 to run a structured PostHog audit (`rag_reflection` event: thinking, citations, confidence)
 RAG_GROUNDING=           # Set to 0 to skip the per-turn grounding score (`rag_grounding` PostHog event, one OpenAI Decisions call after the reply streams; default = on)
@@ -250,6 +254,13 @@ All valid route destinations are defined in `src/lib/types.ts` as the `Supported
 Beyond the two client-visible actions above, the model also has server-executed tools it can call mid-turn (not surfaced in the UI as actions): `search_knowledge_base` (additional Qdrant lookups) and four GitHub self-awareness tools backed by `src/lib/server/github-repo.ts` — `read_github_file` reads a file live from the `hunterbryant/huntbot` repo via unauthenticated `raw.githubusercontent.com` (defaulting to `CLAUDE.md`); `get_recent_commits` fetches the latest commits (message/author/date); `get_repo_info` fetches repo age/size/stars/language breakdown; and `search_repo_code` searches file paths/contents for a keyword to find the right file before reading it. The commit/info/search tools go through GitHub's unauthenticated REST API (`api.github.com`, ~60 req/hr limit; code search is a tighter ~10 req/min). Together they let HuntBot answer technical questions about its own architecture and recent changes without a separate embedding/re-indexing step. Each tool's `execute` reports a specific `data-status` label (e.g. "Searching my code…", "Reading CLAUDE.md…") so the chat loading indicator reflects exactly what it's doing instead of a generic "thinking" phrase.
 
 A fifth server-executed tool, `get_calendar_events` (`src/lib/server/calendar.ts`), answers "what was Hunter up to on [date]" style questions by querying Hunter's Google Calendar live via OAuth2 (refresh-token flow, no user login involved — see `GOOGLE_CALENDAR_*` env vars). It intentionally returns only event titles and times, never attendees, locations, or descriptions, since results are exposed to anonymous site visitors. Requires a one-time OAuth consent flow to mint `GOOGLE_CALENDAR_REFRESH_TOKEN`; without it configured, the tool degrades gracefully ("Calendar is not connected.") rather than erroring.
+
+Two more server-executed tools answer questions about Hunter's training, from intervals.icu (`src/lib/server/training.ts`, `INTERVALS_*` env vars). `get_training_totals` covers "how much did he bike this year": totals by sport (count, miles, moving hours, feet climbed) from intervals.icu's weekly buckets, plus current fitness (CTL). `analyze_training_data` is for questions that need computing (biggest week, year-over-year, longest ride). The model writes a stdlib-only Python script, and `runPython` (`src/lib/server/python-sandbox.ts`) runs it in a throwaway Vercel Sandbox (`vercel/sandbox/python:3.14`, `networkPolicy: 'deny-all'`, 1 vCPU, 20s command timeout, stopped right after) with `weekly.csv`, `fitness.csv` and `activities.csv` preloaded. Only stdout/stderr come back, capped at 4k chars.
+
+- **Strava-synced activities are invisible per activity.** intervals.icu's API returns an empty stub for anything that came in through Strava (Strava's API terms). Weekly totals still count them, so totals are complete, but `activities.csv` only has activities recorded straight to intervals.icu (e.g. a Karoo or Garmin connection), and the tool result says how many are hidden. To fill them in, connect the device to intervals.icu directly and use "Download old data" on its Connections page.
+- **Privacy:** only dates, sport, distance, time, elevation, average power and training load reach the model. Never activity names, GPS or start locations, times of day, heart rate, weight or devices.
+- **Auth:** the sandbox authenticates with the Vercel function's OIDC token (on by default for the project; check Settings → Security → Secure backend access with OIDC federation if runs fail with an auth error). Locally it needs `VERCEL_OIDC_TOKEN` from `vercel env pull`; without it the tool is skipped rather than starting the SDK's interactive login.
+- Weekly buckets run Monday–Sunday, so a range's edges can include a few days outside it; the tool output says which whole weeks it covered.
 
 ### Client-side chat state (`MessageStore.svelte.ts`)
 

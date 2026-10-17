@@ -8,14 +8,22 @@ import {
 	searchRepoCode
 } from '$lib/server/github-repo';
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
+import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
+import { isSandboxAvailable, runPython } from '$lib/server/python-sandbox';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
 import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
-import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
+import { createStageTimer } from '$lib/server/timing';
+import {
+	formatTrainingTotals,
+	getActivities,
+	getWeeklySummary,
+	trainingDataFiles
+} from '$lib/server/training';
 import {
 	buildVisitorContext,
 	formatVisitorContextForPrompt,
@@ -24,7 +32,6 @@ import {
 	visitorContextEnabled,
 	type VisitorContext
 } from '$lib/server/visitor-context';
-import { createStageTimer } from '$lib/server/timing';
 import { UserRole } from '$lib/types';
 import {
 	embedQueryText,
@@ -45,8 +52,8 @@ import {
 	isStepCount,
 	smoothStream,
 	streamText,
-	toUIMessageStream,
 	tool,
+	toUIMessageStream,
 	type UIMessage
 } from 'ai';
 import OpenAI from 'openai';
@@ -286,7 +293,10 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					);
 					if (turn.orgMentioned) {
 						// Counts only: the prompt says never to name the visitor's network
-						console.warn('[HuntBot visitor]', JSON.stringify({ run_id: runID, org_mentioned: true }));
+						console.warn(
+							'[HuntBot visitor]',
+							JSON.stringify({ run_id: runID, org_mentioned: true })
+						);
 					}
 				}
 				void captureServerEvent('chat_message', sessionId ?? runID, {
@@ -776,6 +786,66 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 								)
 								.join('\n');
 						}
+					}),
+					get_training_totals: tool({
+						description:
+							'Get Hunter\'s training totals by sport (rides, runs, etc.) for a date range from intervals.icu: activity count, miles, moving hours, feet climbed, plus his current fitness score. Use for "how much did he bike this year", "how many miles has he run this month", "is he riding a lot lately". Resolve relative ranges ("this year", "last month") to exact dates yourself using today\'s date from the live details.',
+						inputSchema: z.object({
+							start_date: z.string().describe('Start date, YYYY-MM-DD.'),
+							end_date: z.string().describe('End date, YYYY-MM-DD, inclusive.')
+						}),
+						execute: async ({ start_date, end_date }) => {
+							reportStatus('Checking his training log…');
+							logRag('tool get_training_totals', { start_date, end_date });
+							const summary = await getWeeklySummary(start_date, end_date);
+							if (!summary) return 'Training data is not connected.';
+							return formatTrainingTotals(summary);
+						}
+					}),
+					analyze_training_data: tool({
+						description: `Run Python 3 (standard library only, no pandas, no network) over Hunter's training data for a date range, for questions get_training_totals can't answer directly: biggest week or month, trends, comparisons between periods, averages, streaks, longest ride. The working directory has:
+- weekly.csv: weekStart (Monday, YYYY-MM-DD), sport, count, distanceMi, movingHours, elevationFt, trainingLoad. One row per sport per week. Counts every activity.
+- fitness.csv: weekStart, fitness (CTL), fatigue (ATL), form (TSB) at the end of each week.
+- activities.csv: date, sport, distanceMi, movingHours, elevationFt, avgWatts, trainingLoad. Only activities recorded straight to intervals.icu. Ones synced from Strava are missing here (the result says how many), so per-activity answers can be incomplete; totals should come from weekly.csv.
+Only print() output is returned, so print the final numbers you need.`,
+						inputSchema: z.object({
+							start_date: z.string().describe('Start date of the data to load, YYYY-MM-DD.'),
+							end_date: z.string().describe('End date of the data to load, YYYY-MM-DD, inclusive.'),
+							code: z
+								.string()
+								.describe(
+									'Python 3 script that reads the CSVs with the csv module and print()s its results.'
+								)
+						}),
+						execute: async ({ start_date, end_date, code }) => {
+							logRag('tool analyze_training_data', {
+								start_date,
+								end_date,
+								code: code.slice(0, 500)
+							});
+							if (!isSandboxAvailable()) return 'Code execution is not available right now.';
+							if (!/\bprint\s*\(/.test(code)) {
+								return 'The script has no print() call, so it would produce no output. Print the results.';
+							}
+							reportStatus('Checking his training log…');
+							const [summary, activities] = await Promise.all([
+								getWeeklySummary(start_date, end_date),
+								getActivities(start_date, end_date)
+							]);
+							if (!summary) return 'Training data is not connected.';
+							const { files, note } = trainingDataFiles(summary, activities);
+							reportStatus('Crunching the numbers…');
+							const run = await runPython(code, files);
+							if (!run.ok) return `The analysis could not run: ${run.error}`;
+							return [
+								note,
+								`Exit code: ${run.exitCode}`,
+								run.stdout ? `Output:\n${run.stdout}` : 'Output: (none)',
+								run.stderr ? `Errors:\n${run.stderr}` : null
+							]
+								.filter(Boolean)
+								.join('\n');
+						}
 					})
 				};
 
@@ -932,6 +1002,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
+- Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data only when the answer needs computing: biggest week, month-by-month trend, this year vs last, averages, longest ride. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Never guess at where he rode, what time of day, or anything about his health.
 
 ## Navigation
 Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
@@ -1108,8 +1179,7 @@ ${contextForModel}`;
 								// content. Meta questions ("what do you know about me?") and topicless
 								// follow-ups ("show me those details") aren't, and used to get an unrelated
 								// page. The same gate covers the pages CONTEXT happened to hold.
-								const embedding =
-									laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+								const embedding = laneDecision.embedding ?? (await embedQueryText(lastMessageText));
 								const found = await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2);
 								turn.relatedTopScore = found.topScore;
 								if (found.topScore >= RELATED_MIN_SCORE) {
