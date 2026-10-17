@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { oneLine } from '$lib/server/clean-text';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
 import { safeFetchText } from '$lib/server/safe-fetch';
 import { describeError } from '$lib/server/tool-log';
@@ -58,14 +59,6 @@ type Stored = {
 	/** The web agent already ran for this company (and found nothing), so waiting for it again is pointless. */
 	webTried?: boolean;
 };
-
-const oneLine = (t: string, max: number) =>
-	t
-		// eslint-disable-next-line no-control-regex -- stripping control characters is the point
-		.replace(/[\u0000-\u001f\u007f]+/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim()
-		.slice(0, max);
 
 /**
  * Role text comes from third-party job boards and a web agent, and ends up in the system prompt and

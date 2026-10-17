@@ -1,7 +1,8 @@
 // Parsing for RB2B webhook records (see routes/api/visitor-id/rb2b). Only the company-level fields
 // and the `hb` token from the page URL are read; person-level fields are never touched.
 
-const TOKEN = /^[a-z0-9]{12,32}$/;
+import { isPixelToken } from '$lib/pixel-token';
+import { oneLine } from '$lib/server/clean-text';
 
 const field = (record: Record<string, unknown>, ...names: string[]) => {
 	for (const n of names) {
@@ -26,7 +27,7 @@ export function parseRb2bRecord(
 	} catch {
 		return null;
 	}
-	if (!token || !TOKEN.test(token)) return null;
+	if (!token || !isPixelToken(token)) return null;
 	const website = field(r, 'Website', 'website', 'Company Website');
 	let domain: string | null = null;
 	if (website) {
@@ -39,5 +40,5 @@ export function parseRb2bRecord(
 		}
 	}
 	// eslint-disable-next-line no-control-regex -- stripping control characters is the point
-	return { token, name: name.replace(/[\u0000-\u001f\u007f]+/g, ' ').slice(0, 80), domain };
+	return { token, name: oneLine(name, 80), domain };
 }

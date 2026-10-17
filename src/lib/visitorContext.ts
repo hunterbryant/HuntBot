@@ -5,6 +5,8 @@
 // Everything is kept in sessionStorage (per tab, gone when the tab closes), and every storage
 // access is try/catch since it can be blocked.
 
+import { PIXEL_TOKEN_LENGTH } from '$lib/pixel-token';
+
 const KEY = 'huntbot_visitor_v1';
 const MAX_PAGES = 10;
 const SLUG = /^[a-z0-9-]{1,40}$/;
@@ -90,8 +92,9 @@ export function getPixelToken(): string | null {
 	try {
 		pixelTokenValue = sessionStorage.getItem(PIXEL_KEY);
 		if (!pixelTokenValue) {
-			pixelTokenValue = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) =>
-				(b % 36).toString(36)
+			pixelTokenValue = Array.from(
+				crypto.getRandomValues(new Uint8Array(PIXEL_TOKEN_LENGTH)),
+				(b) => (b % 36).toString(36)
 			).join('');
 			sessionStorage.setItem(PIXEL_KEY, pixelTokenValue);
 		}

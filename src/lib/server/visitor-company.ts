@@ -1,3 +1,4 @@
+import { isPixelToken } from '$lib/pixel-token';
 import { coreOrgName, lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
 import { lookupIpCompany } from '$lib/server/ipapi-is';
 import { companyFromReferrer } from '$lib/server/referrer-company';
@@ -52,7 +53,6 @@ const UP: Record<Confidence, Confidence> = {
 	certain: 'certain'
 };
 
-const TOKEN = /^[a-z0-9]{12,32}$/;
 const DOMAIN = /^[a-z0-9.-]{3,80}$/;
 const PIXEL_POLL_MS = 500;
 
@@ -180,8 +180,7 @@ export async function resolveVisitorCompany(options: {
 		return done(pick([{ name: options.stated.name, domain: null, source: 'stated' }]));
 	}
 
-	const token =
-		typeof raw.pixelToken === 'string' && TOKEN.test(raw.pixelToken) ? raw.pixelToken : null;
+	const token = isPixelToken(raw.pixelToken) ? raw.pixelToken : null;
 	const referrer =
 		typeof raw.landingReferrer === 'string' && DOMAIN.test(raw.landingReferrer)
 			? raw.landingReferrer

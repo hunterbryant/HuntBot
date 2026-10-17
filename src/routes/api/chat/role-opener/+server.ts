@@ -1,3 +1,4 @@
+import { oneLine } from '$lib/server/clean-text';
 import {
 	displayName,
 	lookupCompanyRoles,
@@ -86,13 +87,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	});
 	// Titles come from a careers page or a web search, then become chip text and a message the model
 	// reads as the visitor's: strip control characters and line breaks, and cap the length.
-	const clean = (t: string) =>
-		t
-			// eslint-disable-next-line no-control-regex -- stripping control characters is the point
-			.replace(/[\u0000-\u001f\u007f]+/g, ' ')
-			.replace(/\s+/g, ' ')
-			.trim()
-			.slice(0, 80);
+	const clean = (t: string) => oneLine(t, 80);
 	const ranked = rankRolesForHunter(
 		found.roles.map((r) => ({ ...r, title: clean(r.title) })).filter((r) => r.title)
 	);
