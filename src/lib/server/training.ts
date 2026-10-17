@@ -5,9 +5,10 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 const METERS_PER_MILE = 1609.344;
 const FEET_PER_METER = 3.28084;
 const POUNDS_PER_KG = 2.20462;
-// Each area lookup is one request per activity, so only the most recent ones get one.
-const MAX_AREA_LOOKUPS = 100;
-const AREA_LOOKUP_CONCURRENCY = 10;
+// Each location lookup downloads the activity's full GPS track, so only the most recent
+// ones get one.
+const MAX_LOCATION_LOOKUPS = 50;
+const LOCATION_LOOKUP_CONCURRENCY = 10;
 
 /** One sport's totals for one Monday–Sunday week. */
 export type WeeklySportTotals = {
@@ -29,11 +30,7 @@ export type WeeklyFitness = {
 	weightLb: number | null;
 };
 
-/**
- * One activity. Location is never exact: only when asked for, and then as the center
- * of the ride's bounding box (not its start, which is usually home) rounded to 0.1°,
- * roughly 10 km.
- */
+/** One activity. Location columns are only filled when asked for (see getActivities). */
 export type TrainingActivity = {
 	date: string; // YYYY-MM-DD, local
 	startTime: string; // HH:MM, local
@@ -48,9 +45,18 @@ export type TrainingActivity = {
 	maxHr: number | null;
 	weightLb: number | null;
 	device: string | null;
-	areaLat: number | null;
-	areaLng: number | null;
+	startLat: number | null;
+	startLng: number | null;
+	endLat: number | null;
+	endLng: number | null;
+	centerLat: number | null;
+	centerLng: number | null;
 };
+
+type ActivityLocation = Pick<
+	TrainingActivity,
+	'startLat' | 'startLng' | 'endLat' | 'endLng' | 'centerLat' | 'centerLng'
+>;
 
 export type WeeklySummary = {
 	weeks: WeeklySportTotals[];
@@ -72,8 +78,15 @@ export type ActivityList = {
 
 const cache = new Map<string, { value: unknown; expiresAt: number }>();
 
-/** GET `path` under the API root. Responses are cached per warm instance. */
-async function icuGet<T>(path: string, params: Record<string, string>): Promise<T | null> {
+/**
+ * GET `path` under the API root. Responses are cached per warm instance unless
+ * `cacheResponse` is false (GPS tracks, which are big; callers cache what they keep).
+ */
+async function icuGet<T>(
+	path: string,
+	params: Record<string, string>,
+	{ cacheResponse = true } = {}
+): Promise<T | null> {
 	if (!env.INTERVALS_ATHLETE_ID || !env.INTERVALS_API_KEY) return null;
 
 	const url = `${API_ORIGIN}${path}?${new URLSearchParams(params)}`;
@@ -90,7 +103,7 @@ async function icuGet<T>(path: string, params: Record<string, string>): Promise<
 			return null;
 		}
 		const value = (await res.json()) as T;
-		cache.set(url, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+		if (cacheResponse) cache.set(url, { value, expiresAt: Date.now() + CACHE_TTL_MS });
 		return value;
 	} catch (error) {
 		console.warn('[HuntBot training] intervals.icu request failed', {
@@ -182,32 +195,56 @@ export async function getWeeklySummary(start: string, end: string): Promise<Week
 	};
 }
 
+// A finished activity's track never changes, so its location is kept for the instance's life.
+const locationCache = new Map<string, ActivityLocation | null>();
+
+const isLatLng = (p: number[] | undefined): p is [number, number] =>
+	p?.length === 2 && Number.isFinite(p[0]) && Number.isFinite(p[1]) && Math.abs(p[0]) <= 90;
+
 /**
- * Rough area of one activity: the center of its map bounds rounded to 0.1°, or null
- * for indoor rides and failed lookups. Bounds never change, so these cache well.
+ * Start, end and center (middle of the bounding box) of one activity's GPS track, to
+ * 4 decimal places (about 10 m). Null for indoor activities and failed lookups.
  */
-async function getActivityArea(id: string): Promise<{ lat: number; lng: number } | null> {
-	const map = await icuGet<{ bounds?: number[][] }>(`/activity/${encodeURIComponent(id)}/map`, {
-		boundsOnly: 'true'
-	});
-	const [a, b] = map?.bounds ?? [];
-	if (a?.length !== 2 || b?.length !== 2) return null;
-	const lat = (a[0] + b[0]) / 2;
-	const lng = (a[1] + b[1]) / 2;
-	if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90) return null;
-	return { lat: round(lat), lng: round(lng) };
+async function getActivityLocation(id: string): Promise<ActivityLocation | null> {
+	if (locationCache.has(id)) return locationCache.get(id) ?? null;
+
+	const map = await icuGet<{ bounds?: number[][]; latlngs?: number[][] }>(
+		`/activity/${encodeURIComponent(id)}/map`,
+		{},
+		{ cacheResponse: false }
+	);
+	if (!map) return null; // Failed request: don't cache, so it's retried next time.
+
+	const track = (map.latlngs ?? []).filter(isLatLng);
+	const [a, b] = map.bounds ?? [];
+	const first = track[0];
+	const last = track[track.length - 1];
+	const location: ActivityLocation | null =
+		first && last
+			? {
+					startLat: round(first[0], 4),
+					startLng: round(first[1], 4),
+					endLat: round(last[0], 4),
+					endLng: round(last[1], 4),
+					centerLat: isLatLng(a) && isLatLng(b) ? round((a[0] + b[0]) / 2, 4) : null,
+					centerLng: isLatLng(a) && isLatLng(b) ? round((a[1] + b[1]) / 2, 4) : null
+				}
+			: null;
+	locationCache.set(id, location);
+	return location;
 }
 
 /**
  * Per-activity rows for [start, end]. Strava-synced activities come back as empty stubs
  * and are only counted (`hidden`), so per-activity answers ("longest ride") can be
- * incomplete; weekly totals cover everything. `withArea` adds a rough area for the
- * most recent MAX_AREA_LOOKUPS activities, at one extra request each.
+ * incomplete; weekly totals cover everything. `withLocation` adds start, end and center
+ * coordinates for the most recent MAX_LOCATION_LOOKUPS outdoor activities, at one
+ * track download each.
  */
 export async function getActivities(
 	start: string,
 	end: string,
-	{ withArea = false } = {}
+	{ withLocation = false } = {}
 ): Promise<ActivityList | null> {
 	type ActivityRow = {
 		id?: string;
@@ -251,23 +288,23 @@ export async function getActivities(
 	const visible = rows.filter((r) => r.type && r.start_date_local);
 	visible.sort((a, b) => (b.start_date_local ?? '').localeCompare(a.start_date_local ?? ''));
 
-	const areas = new Map<string, { lat: number; lng: number } | null>();
-	if (withArea) {
+	const locations = new Map<string, ActivityLocation | null>();
+	if (withLocation) {
 		const queue = visible
 			.filter((r) => r.id && !r.trainer && !r.type?.startsWith('Virtual'))
-			.slice(0, MAX_AREA_LOOKUPS)
+			.slice(0, MAX_LOCATION_LOOKUPS)
 			.map((r) => r.id as string);
 		await Promise.all(
-			Array.from({ length: AREA_LOOKUP_CONCURRENCY }, async () => {
+			Array.from({ length: LOCATION_LOOKUP_CONCURRENCY }, async () => {
 				for (let id = queue.shift(); id; id = queue.shift()) {
-					areas.set(id, await getActivityArea(id));
+					locations.set(id, await getActivityLocation(id));
 				}
 			})
 		);
 	}
 
 	const activities: TrainingActivity[] = visible.map((r) => {
-		const area = r.id ? areas.get(r.id) : null;
+		const location = r.id ? locations.get(r.id) : null;
 		return {
 			date: (r.start_date_local as string).slice(0, 10),
 			startTime: (r.start_date_local as string).slice(11, 16),
@@ -282,8 +319,12 @@ export async function getActivities(
 			maxHr: r.max_heartrate || null,
 			weightLb: r.icu_weight ? round(r.icu_weight * POUNDS_PER_KG) : null,
 			device: r.device_name?.trim() || null,
-			areaLat: area?.lat ?? null,
-			areaLng: area?.lng ?? null
+			startLat: location?.startLat ?? null,
+			startLng: location?.startLng ?? null,
+			endLat: location?.endLat ?? null,
+			endLng: location?.endLng ?? null,
+			centerLat: location?.centerLat ?? null,
+			centerLng: location?.centerLng ?? null
 		};
 	});
 	activities.reverse();
@@ -386,8 +427,12 @@ export function trainingDataFiles(
 				'maxHr',
 				'weightLb',
 				'device',
-				'areaLat',
-				'areaLng'
+				'startLat',
+				'startLng',
+				'endLat',
+				'endLng',
+				'centerLat',
+				'centerLng'
 			])
 		});
 	}

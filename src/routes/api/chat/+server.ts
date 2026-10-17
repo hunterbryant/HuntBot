@@ -806,7 +806,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						description: `Run Python 3 (standard library only, no pandas, no network) over Hunter's training data for a date range, for questions get_training_totals can't answer directly: biggest week or month, trends, comparisons between periods, averages, streaks, longest ride, heart rate, weight, morning vs evening rides, what bike computer he uses, where he tends to ride. The working directory has:
 - weekly.csv: weekStart (Monday, YYYY-MM-DD), sport, count, distanceMi, movingHours, elevationFt, trainingLoad. One row per sport per week. Counts every activity.
 - fitness.csv: weekStart, fitness (CTL), fatigue (ATL), form (TSB), weightLb at the end of each week.
-- activities.csv: date, startTime (HH:MM local), name, sport, distanceMi, movingHours, elevationFt, avgWatts, trainingLoad, avgHr, maxHr, weightLb, device, areaLat, areaLng. Empty cells are missing values. areaLat/areaLng are only filled when include_area is true: the rough center of the ride rounded to 0.1° (about 10 km), for the most recent 100 outdoor activities. Only activities recorded straight to intervals.icu. Ones synced from Strava are missing here (the result says how many), so per-activity answers can be incomplete; totals should come from weekly.csv.
+- activities.csv: date, startTime (HH:MM local), name, sport, distanceMi, movingHours, elevationFt, avgWatts, trainingLoad, avgHr, maxHr, weightLb, device, startLat, startLng, endLat, endLng, centerLat, centerLng. Empty cells are missing values. The location columns are only filled when include_location is true, for the most recent 50 outdoor activities: where the ride started and ended, and the middle of its bounding box, to about 10 m. Only activities recorded straight to intervals.icu. Ones synced from Strava are missing here (the result says how many), so per-activity answers can be incomplete; totals should come from weekly.csv.
 Only print() output is returned, so print the final numbers you need.`,
 						inputSchema: z.object({
 							start_date: z.string().describe('Start date of the data to load, YYYY-MM-DD.'),
@@ -816,18 +816,18 @@ Only print() output is returned, so print the final numbers you need.`,
 								.describe(
 									'Python 3 script that reads the CSVs with the csv module and print()s its results.'
 								),
-							include_area: z
+							include_location: z
 								.boolean()
 								.default(false)
 								.describe(
-									'Fill areaLat/areaLng in activities.csv. Slower (one lookup per activity), so only for questions about where he rides.'
+									'Fill the location columns in activities.csv. Slower (one GPS track download per activity), so only for questions about where he rides.'
 								)
 						}),
-						execute: async ({ start_date, end_date, code, include_area }) => {
+						execute: async ({ start_date, end_date, code, include_location }) => {
 							logRag('tool analyze_training_data', {
 								start_date,
 								end_date,
-								include_area,
+								include_location,
 								code: code.slice(0, 500)
 							});
 							if (!isSandboxAvailable()) return 'Code execution is not available right now.';
@@ -837,7 +837,7 @@ Only print() output is returned, so print the final numbers you need.`,
 							reportStatus('Checking his training log…');
 							const [summary, activities] = await Promise.all([
 								getWeeklySummary(start_date, end_date),
-								getActivities(start_date, end_date, { withArea: include_area })
+								getActivities(start_date, end_date, { withLocation: include_location })
 							]);
 							if (!summary) return 'Training data is not connected.';
 							const { files, note } = trainingDataFiles(summary, activities);
@@ -1009,7 +1009,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
-- Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data only when the answer needs computing: biggest week, month-by-month trend, this year vs last, averages, longest ride. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight and devices are fine to share as plain numbers and facts, without reading anything medical into them. Location is only ever a general area: name the region or town an areaLat/areaLng falls in ("mostly around Marin"), never coordinates, a street, a route or a start point, and never guess where he lives.
+- Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data only when the answer needs computing: biggest week, month-by-month trend, this year vs last, averages, longest ride. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight and devices are fine to share as plain numbers and facts, without reading anything medical into them. For location, name the places the coordinates fall in (a town, a climb, a park, a road) rather than pasting raw numbers.
 
 ## Navigation
 Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
