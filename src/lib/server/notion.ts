@@ -196,6 +196,8 @@ const SEARCH_PAGES = 5;
 const READ_PAGES = 3;
 const QUERY_MAX_LIMIT = 10;
 const QUERY_DEFAULT_LIMIT = 8;
+const TITLES_MAX_LIMIT = 100;
+const READ_MAX_IDS = 8;
 const CONTENT_PAGES = 8;
 const CONTENT_CONCURRENCY = 3;
 const MAX_CHARS_PER_PAGE = 2000;
@@ -231,8 +233,14 @@ export type NotionRequest = {
 	limit?: number;
 	/** query: also read each matching page's body. */
 	include_content?: boolean;
+	/** query: list only titles and dates (up to 100 rows) so the model can scan them. */
+	titles_only?: boolean;
+	/** query: continue a titles_only listing from a previous result's cursor. */
+	cursor?: string;
 	/** read: the page to open. */
 	page_id?: string;
+	/** read: several pages at once (up to 8). */
+	page_ids?: string[];
 };
 
 export type NotionResult =
@@ -264,6 +272,11 @@ function remember<T>(
 function fresh<T>(map: Map<string, { expires: number; value: T }>, key: string): T | undefined {
 	const hit = map.get(key);
 	return hit && hit.expires > Date.now() ? hit.value : undefined;
+}
+
+function titleKey(page: Record<string, unknown>): string {
+	const properties = (page.properties ?? {}) as Record<string, Record<string, unknown>>;
+	return Object.keys(properties).find((k) => properties[k].type === 'title') ?? 'Name';
 }
 
 function pageTitle(page: Record<string, unknown>): string {
@@ -640,9 +653,10 @@ async function runQuery(
 	const sort = buildSort(schema, req.sort_by, req.sort_dir ?? 'ascending');
 	if ('error' in sort) return bad(sort.error as string);
 
+	const maxLimit = req.titles_only ? TITLES_MAX_LIMIT : QUERY_MAX_LIMIT;
 	const limit = Math.min(
-		Math.max(Math.trunc(req.limit ?? QUERY_DEFAULT_LIMIT), 1),
-		QUERY_MAX_LIMIT
+		Math.max(Math.trunc(req.limit ?? (req.titles_only ? maxLimit : QUERY_DEFAULT_LIMIT)), 1),
+		maxLimit
 	);
 	const response = await withRetry(
 		() =>
@@ -650,13 +664,43 @@ async function runQuery(
 				database_id: schema.id,
 				filter: filter.filter as never,
 				sorts: sort.sorts as never,
+				start_cursor: req.cursor || undefined,
 				page_size: limit
 			}),
 		1
 	);
 	const pages = response.results as unknown as Record<string, unknown>[];
 	if (pages.length === 0) {
-		return { ok: true, action: 'query', text: `No rows in "${schema.title}" matched.`, results: 0 };
+		const hint = req.filters?.length
+			? ' If its dates are written in the titles rather than a date property, drop the filters and use titles_only to scan the titles instead.'
+			: '';
+		return {
+			ok: true,
+			action: 'query',
+			text: `No rows in "${schema.title}" matched.${hint}`,
+			results: 0
+		};
+	}
+
+	if (req.titles_only) {
+		// One compact line per row so ~100 titles fit in a step; the model picks which to read.
+		const lines = pages.map((page) => {
+			const key = titleKey(page);
+			const props = extractPageProperties(page)
+				.split('\n')
+				.filter((l) => !l.startsWith(`${key}:`))
+				.join('; ');
+			return `${pageTitle(page)} | created ${String(page.created_time ?? '').slice(0, 10)} | id ${page.id}${props ? ` | ${props}` : ''}`;
+		});
+		const next = response.has_more
+			? `\n\n(More rows. Pass cursor "${response.next_cursor}" to continue.)`
+			: '';
+		return {
+			ok: true,
+			action: 'query',
+			text: `"${schema.title}", ${pages.length} titles:\n${lines.join('\n')}${next}`,
+			results: pages.length
+		};
 	}
 
 	const readCount = req.include_content ? Math.min(pages.length, CONTENT_PAGES) : 0;
@@ -689,21 +733,26 @@ async function runRead(
 	req: NotionRequest,
 	deadline: number
 ): Promise<NotionResult> {
-	const id = req.page_id?.trim();
-	if (!id || !UUID.test(id))
-		return bad('read needs a page_id from an earlier search or query result.');
-	const page = (await withRetry(
-		() => notion.pages.retrieve({ page_id: id }),
-		1
-	)) as unknown as Record<string, unknown>;
-	const body = await readPage(notion, page, MAX_CHARS_TOTAL, deadline);
-	const props = extractPageProperties(page);
-	return {
-		ok: true,
-		action: 'read',
-		text: [`[${pageTitle(page)}] edited ${edited(page)}`, props, body].filter(Boolean).join('\n\n'),
-		results: 1
-	};
+	const ids = [...(req.page_ids ?? []), ...(req.page_id ? [req.page_id] : [])]
+		.map((i) => i.trim())
+		.slice(0, READ_MAX_IDS);
+	if (ids.length === 0 || ids.some((i) => !UUID.test(i))) {
+		return bad(
+			'read needs page_id or page_ids (up to 8) taken from an earlier search or query result.'
+		);
+	}
+	const perPage = Math.floor(MAX_CHARS_TOTAL / ids.length);
+	const texts = await mapLimit(ids, CONTENT_CONCURRENCY, async (id) => {
+		const page = (await withRetry(
+			() => notion.pages.retrieve({ page_id: id }),
+			1
+		)) as unknown as Record<string, unknown>;
+		const body = await readPage(notion, page, perPage, deadline);
+		return [`[${pageTitle(page)}] edited ${edited(page)}`, extractPageProperties(page), body]
+			.filter(Boolean)
+			.join('\n\n');
+	});
+	return { ok: true, action: 'read', text: texts.join('\n\n---\n\n'), results: ids.length };
 }
 
 /**
