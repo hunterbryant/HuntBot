@@ -17,6 +17,7 @@ of a few words. Explanations belong in the post, not the image.
 | `step-1-lanes` … `step-5-check` | Carousel slides, one small concept per pipeline step |
 | `hyde` | Searching with the question vs. with a HyDE draft |
 | `tool-loop` | How a tool call works |
+| `analysis` | How a training question runs as Python in the sandbox |
 | `timeline` | Commits per month, with each era marked |
 
 Slides are 3:2 so the page's carousel shows them whole on desktop; mobile trims the top
@@ -25,7 +26,7 @@ and bottom a little, so keep slide content between y=60 and y=540.
 ## Updating
 
 1. Edit `build.py`. For the timeline, update `COMMITS` (the command to get the
-   counts is in the file).
+   counts is in the file; unshallow the clone first).
 2. Run `./render.sh` (pass a Chromium path if `chromium` isn't on your PATH). It
    renders every `.html` file at 2x into a PNG next to it, sized from its `<svg>`. Needs Python with Pillow.
 3. Upload the new PNG to Prismic and swap it into the page's image slice, then

@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
-import { getVisitorContext } from '$lib/visitorContext';
 import { FunctionState, type FunctionMessage } from '$lib/types';
+import { getVisitorContext } from '$lib/visitorContext';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
@@ -432,6 +432,11 @@ export const chat = () => {
 
 	function handleSubmit(event?: { preventDefault?: () => void }) {
 		event?.preventDefault?.();
+		// The send button is disabled mid-reply, but Enter (or a phone keyboard's Go key) still
+		// submits the form. Sending then starts a second stream alongside the first, and the
+		// Chat class isn't built for that: the in-flight reply was lost when a visitor asked
+		// "Hello?" during a slow turn. Leave the text in the box to send once the reply lands.
+		if (instance.status === 'streaming' || instance.status === 'submitted') return;
 		let value = '';
 		input.update((v) => {
 			value = v;

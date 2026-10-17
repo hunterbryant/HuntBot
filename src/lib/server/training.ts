@@ -499,11 +499,14 @@ export function intervalsNetworkPolicy(ownActivityIds: string[] = []): NetworkPo
 		allow: {
 			'intervals.icu': [
 				{
-					// Case-insensitive, and any percent-encoding at all is refused, so an encoded
-					// letter can't slip past the names below and still match the allow rule.
+					// Any percent-encoding at all is refused: intervals.icu decodes paths, so an
+					// encoded letter (`%63hats`) would otherwise slip past the names below and still
+					// match the allow rule. Paths there are case-sensitive, so no case variants.
+					// Plain syntax only: Vercel validates these with a JavaScript-compatible parser
+					// and rejects inline flags like (?i), which failed every sandbox creation.
 					match: {
 						path: {
-							regex: `(?i)(\\.\\.|%|//|;|^/api/v1/athlete/${athleteId}/(chats|athlete-summary)|/shared-with)`
+							regex: `(\\.\\.|%|//|;|^/api/v1/athlete/${athleteId}/(chats|athlete-summary)|/shared-with)`
 						}
 					},
 					...refuse("Not available to HuntBot: it holds other people's data.")
@@ -558,6 +561,8 @@ export type TrainingCallRecord = {
 	stderrHead?: string;
 	/** Why the sandbox couldn't start or run, and which of the two it was. */
 	sandboxError?: string;
+	/** The network policy was refused and the run went ahead without network access. */
+	networkFallback?: string;
 	sandboxPhase?: 'create' | 'run';
 };
 
@@ -588,9 +593,10 @@ export function logTrainingCall(runId: string, r: TrainingCallRecord): void {
 		stdout_bytes: r.stdoutBytes,
 		stderr_head: r.stderrHead,
 		sandbox_error: r.sandboxError,
+		network_fallback: r.networkFallback,
 		sandbox_phase: r.sandboxPhase
 	});
-	if (r.outcome === 'ok') console.log('[HuntBot training]', line);
+	if (r.outcome === 'ok' && !r.networkFallback) console.log('[HuntBot training]', line);
 	else console.warn('[HuntBot training]', line);
 }
 
@@ -616,7 +622,10 @@ export function trainingAnalyticsProps(
 		training_hidden_strava: Math.max(0, ...calls.map((c) => c.hiddenStrava ?? 0)),
 		training_fetch_failures: calls.reduce((n, c) => n + (c.fetchFailures ?? 0), 0),
 		training_cache_hits: calls.reduce((n, c) => n + (c.cacheHits ?? 0), 0),
-		sandbox_error: failed.find((c) => c.sandboxError)?.sandboxError ?? null,
+		sandbox_error:
+			failed.find((c) => c.sandboxError)?.sandboxError ??
+			calls.find((c) => c.networkFallback)?.networkFallback ??
+			null,
 		analysis_stderr: failed.find((c) => c.stderrHead)?.stderrHead ?? null
 	};
 }
