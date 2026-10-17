@@ -226,7 +226,11 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 		// not available in every adapter/runtime
 	}
 	const userAgent = request.headers.get('user-agent');
-	const isAdmin = locals.user?.role === UserRole.ADMIN;
+	// Eval runs (scripts/eval) authenticate with CRON_SECRET so their turns count as admin traffic
+	// and stay out of the PostHog chat analytics, without needing a login cookie.
+	const evalKey = request.headers.get('x-huntbot-eval');
+	const isEvalRun = Boolean(env.CRON_SECRET) && evalKey === env.CRON_SECRET;
+	const isAdmin = locals.user?.role === UserRole.ADMIN || isEvalRun;
 	// Global Privacy Control, from the header or the browser flag the client sends along. Known
 	// before the pipeline runs, so even a turn that throws early honors it.
 	const gpcRequested =

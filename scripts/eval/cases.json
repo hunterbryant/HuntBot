@@ -1,0 +1,125 @@
+[
+	{
+		"id": "notion-last-week-sept",
+		"group": "notion",
+		"turns": ["What was Hunter up to the last week of September?"],
+		"calls": [{ "tool": "query_notion" }],
+		"replyExcludes": ["not connected", "couldn.t find a record", "different year"]
+	},
+	{
+		"id": "notion-specific-day",
+		"group": "notion",
+		"turns": ["What did Hunter do on September 23rd?"],
+		"calls": [{ "tool": "query_notion" }],
+		"replyExcludes": ["not connected", "no entries", "did you mean a different year"]
+	},
+	{
+		"id": "notion-explicit-year",
+		"group": "notion",
+		"turns": ["What was on his agenda on September 23, 2025?"],
+		"calls": [{ "tool": "query_notion" }],
+		"replyIncludes": ["2025|sept"],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "notion-this-week",
+		"group": "notion",
+		"turns": ["What's he got going on this week?"],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "notion-topic",
+		"group": "notion",
+		"turns": ["Has he written anything in his notes about Norway?"],
+		"calls": [{ "tool": "query_notion" }],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "notion-missing-topic",
+		"group": "notion",
+		"turns": ["What do his notes say about underwater basket weaving?"],
+		"calls": [{ "tool": "query_notion" }],
+		"replyIncludesAny": ["nothing", "don.t|didn.t|couldn.t|no "]
+	},
+	{
+		"id": "notion-followup",
+		"group": "notion",
+		"turns": ["What was Hunter up to the last week of September?", "And the week before that?"],
+		"calls": [{ "tool": "query_notion" }],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "portfolio-no-notion",
+		"group": "routing",
+		"turns": ["What did Hunter work on at Wahoo?"],
+		"forbidCalls": ["query_notion", "analyze_training_data"]
+	},
+	{
+		"id": "calendar-today",
+		"group": "calendar",
+		"turns": ["What's on Hunter's calendar today?"],
+		"calls": [{ "tool": "get_calendar_events" }],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "calendar-relative",
+		"group": "calendar",
+		"turns": ["Was Hunter busy last Friday?"],
+		"calls": [{ "tool": "get_calendar_events" }],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "training-year-total",
+		"group": "training",
+		"turns": ["How much did Hunter bike this year?"],
+		"calls": [{ "tool": "get_training_totals" }],
+		"replyIncludes": ["miles"],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "training-biggest-week",
+		"group": "training",
+		"turns": ["What was his biggest week of riding this year?"],
+		"calls": [{ "tool": "analyze_training_data" }],
+		"replyExcludes": ["not connected", "don.t have"]
+	},
+	{
+		"id": "training-sleep",
+		"group": "training",
+		"turns": ["How's his sleep been lately?"],
+		"calls": [{ "tool": "analyze_training_data" }],
+		"replyExcludes": ["not connected", "don.t have"]
+	},
+	{
+		"id": "training-followup-night",
+		"group": "training",
+		"turns": ["How's his sleep been lately?", "What about the previous night?"],
+		"replyExcludes": ["not connected"]
+	},
+	{
+		"id": "self-how-it-works",
+		"group": "self",
+		"turns": ["How do you work?"],
+		"calls": [{ "tool": "explain_huntbot" }]
+	},
+	{
+		"id": "self-recent-commits",
+		"group": "self",
+		"turns": ["What's the latest thing Hunter changed in you?"],
+		"calls": [{ "tool": "get_recent_commits" }]
+	},
+	{
+		"id": "jobs-pasted-posting",
+		"group": "jobs",
+		"turns": [
+			"Would he fit this role? Senior Product Designer. You will own end-to-end design for a consumer mobile app, run user research, partner with engineers on a design system, and prototype interactions. 6+ years experience, strong portfolio, Figma, experience with fitness or hardware products a plus."
+		],
+		"calls": [{ "tool": "match_job_description" }]
+	},
+	{
+		"id": "jobs-open-roles",
+		"group": "jobs",
+		"turns": ["Is Stripe hiring any designers right now?"],
+		"calls": [{ "tool": "find_open_roles" }]
+	}
+]

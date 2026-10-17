@@ -83,7 +83,7 @@ GOOGLE_CALENDAR_TIMEZONE=  # optional IANA zone (default America/Los_Angeles)
 INTERVALS_API_KEY=  INTERVALS_ATHLETE_ID=   # intervals.icu training tools; unset means "not connected"
 IPINFO_TOKEN=              # optional: IPinfo Lite for the visitor network lookup (also drives the open-roles hint)
 POSTHOG_PROJECT_ID=  POSTHOG_PERSONAL_API_KEY=   # admin conversation views (read); PUBLIC_POSTHOG_API_KEY sends events
-CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-calls (16+ chars)
+CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-calls (16+ chars); also the `x-huntbot-eval` header for `pnpm eval`
 CHUNK_AUDIT_ORIGIN=        # optional: origin for the audit's follow-up calls (default https://huntbot.vercel.app)
 CHUNK_AUDIT_USD_PER_M_INPUT=  # optional: gpt-6-luna input price for the audit cost estimate (default 0.10)
 VITE_PRISMIC_ENVIRONMENT=  # optional: override the Prismic repository name
@@ -145,4 +145,5 @@ Tailwind utilities everywhere (no CSS files beyond `app.css`, which loads the fo
 - [docs/visitor-context.md](docs/visitor-context.md): visitor hints and privacy rules (GPC, never-mention).
 - [docs/knowledge-base.md](docs/knowledge-base.md): embedding sources, the chunk audit, the Qdrant keepalive.
 - [docs/observability.md](docs/observability.md): log lines and PostHog events; read before adding either.
+- [docs/evals.md](docs/evals.md): the tool eval harness (`pnpm eval`) and how to add cases. Run it on a preview after changing a tool or the prompt.
 - [docs/site-story/README.md](docs/site-story/README.md): how the Building HuntBot page's figures are built and published.
