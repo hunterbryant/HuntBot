@@ -22,6 +22,10 @@ export type VisitorPayload = {
 	gpc: boolean;
 	/** Company named with `/simulate <Company>`; the server treats it as the visitor's network. */
 	simulatedOrg: string | null;
+	/** Where the visitor said they work, earlier in this chat (from find_open_roles). */
+	statedCompany: string | null;
+	/** Token this tab put in its first page URL, so the identity pixel's report can be matched. */
+	pixelToken: string | null;
 };
 
 type Stored = {
@@ -59,6 +63,72 @@ function save() {
 }
 
 const SIM_KEY = 'huntbot_simulated_org';
+const STATED_KEY = 'huntbot_stated_company';
+const PIXEL_KEY = 'huntbot_hb';
+
+export function getStatedCompany(): string | null {
+	try {
+		return sessionStorage.getItem(STATED_KEY);
+	} catch {
+		return null;
+	}
+}
+
+export function setStatedCompany(name: string) {
+	try {
+		sessionStorage.setItem(STATED_KEY, name.slice(0, 80));
+	} catch {
+		// storage blocked: the chat route still sees it on the turn they said it
+	}
+}
+
+let pixelTokenValue: string | null = null;
+
+/** This tab's pixel token: random, made once per browser session. */
+export function getPixelToken(): string | null {
+	if (pixelTokenValue) return pixelTokenValue;
+	try {
+		pixelTokenValue = sessionStorage.getItem(PIXEL_KEY);
+		if (!pixelTokenValue) {
+			pixelTokenValue = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) =>
+				(b % 36).toString(36)
+			).join('');
+			sessionStorage.setItem(PIXEL_KEY, pixelTokenValue);
+		}
+	} catch {
+		// storage blocked: the pixel layer just can't be matched to this chat
+	}
+	return pixelTokenValue;
+}
+
+/**
+ * Loads the identity pixel (RB2B). It reports each identified page view, with the page URL, to our
+ * webhook; putting this tab's token in the URL first (`?hb=`) is how a report finds its chat. The
+ * token is removed from the address bar once the pixel has had time to record the page view, so a
+ * copied link doesn't carry it (and anyone opening one gets their own token first anyway).
+ */
+export function loadIdentityPixel(scriptUrl: string) {
+	if (typeof window === 'undefined' || !/^https:\/\//.test(scriptUrl)) return;
+	if ((window as { __huntbotPixel?: boolean }).__huntbotPixel) return;
+	(window as { __huntbotPixel?: boolean }).__huntbotPixel = true;
+	const token = getPixelToken();
+	const setParam = (value: string | null) => {
+		try {
+			const url = new URL(window.location.href);
+			if (value) url.searchParams.set('hb', value);
+			else url.searchParams.delete('hb');
+			history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+		} catch {
+			// replaceState can throw in sandboxed frames
+		}
+	};
+	if (token) setParam(token);
+	const script = document.createElement('script');
+	script.async = true;
+	script.src = scriptUrl;
+	document.head.appendChild(script);
+	if (token) setTimeout(() => setParam(null), 20_000);
+}
 
 export function getSimulatedOrg(): string | null {
 	try {
@@ -79,7 +149,10 @@ export function setSimulatedOrg(name: string | null) {
 
 /** Whether the visitor asked not to be tracked (Global Privacy Control). */
 export function hasGpc(): boolean {
-	return typeof navigator !== 'undefined' && (navigator as { globalPrivacyControl?: boolean }).globalPrivacyControl === true;
+	return (
+		typeof navigator !== 'undefined' &&
+		(navigator as { globalPrivacyControl?: boolean }).globalPrivacyControl === true
+	);
 }
 
 /**
@@ -148,7 +221,12 @@ export function recordPageView(path: string) {
 }
 
 export function getVisitorContext(): VisitorPayload {
-	const base: Stored = state ?? { via: null, utmSource: null, landingReferrer: null, pagesSeen: [] };
+	const base: Stored = state ?? {
+		via: null,
+		utmSource: null,
+		landingReferrer: null,
+		pagesSeen: []
+	};
 	let timezone: string | null = null;
 	try {
 		timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
@@ -157,7 +235,8 @@ export function getVisitorContext(): VisitorPayload {
 	}
 	const mobile =
 		typeof window !== 'undefined' &&
-		(window.matchMedia('(max-width: 639px)').matches || window.matchMedia('(pointer: coarse)').matches);
+		(window.matchMedia('(max-width: 639px)').matches ||
+			window.matchMedia('(pointer: coarse)').matches);
 
 	// The page they're on right now counts as seen too, with its dwell time so far
 	const pagesSeen = current
@@ -176,6 +255,8 @@ export function getVisitorContext(): VisitorPayload {
 		device: mobile ? 'mobile' : 'desktop',
 		returning,
 		gpc: hasGpc(),
-		simulatedOrg: getSimulatedOrg()
+		simulatedOrg: getSimulatedOrg(),
+		statedCompany: getStatedCompany(),
+		pixelToken: getPixelToken()
 	};
 }

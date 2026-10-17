@@ -1,7 +1,12 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
-import { getSimulatedOrg, getVisitorContext, hasGpc, setSimulatedOrg } from '$lib/visitorContext';
+import {
+	getSimulatedOrg,
+	getVisitorContext,
+	setSimulatedOrg,
+	setStatedCompany
+} from '$lib/visitorContext';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
@@ -125,7 +130,7 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				visitor: { gpc: hasGpc() },
+				visitor: getVisitorContext(),
 				simulateOrg: simulate ?? getSimulatedOrg() ?? undefined
 			})
 		});
@@ -522,6 +527,13 @@ export const chat = () => {
 			// A function, so each turn carries the visitor's latest pages and dwell times
 			body: () => ({ sessionId: SESSION_ID, visitor: getVisitorContext() })
 		}),
+		// find_open_roles sends `data-company` (transient) when the visitor says where they work;
+		// keep it so later turns and the opener know it (the "stated" company layer).
+		onData: (part) => {
+			if (part.type !== 'data-company') return;
+			const name = (part.data as { name?: unknown } | undefined)?.name;
+			if (typeof name === 'string' && name.trim()) setStatedCompany(name.trim());
+		},
 		onToolCall: async ({ toolCall }) => {
 			// In v6, tool call has toolName + input (not args)
 			const tc = toolCall as unknown as {

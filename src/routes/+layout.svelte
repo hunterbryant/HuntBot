@@ -17,7 +17,8 @@
 		SESSION_RETURNING
 	} from '$lib/ChatBox/MessageStore.svelte';
 	import { captureEvent } from '$lib/analytics';
-	import { initVisitorContext, recordPageView } from '$lib/visitorContext';
+	import { initVisitorContext, loadIdentityPixel, recordPageView } from '$lib/visitorContext';
+	import { env as publicEnv } from '$env/dynamic/public';
 
 	import { send, receive } from '$lib/utilities/transition';
 	import { fly, slide } from 'svelte/transition';
@@ -107,6 +108,9 @@
 		// open HuntBot (and where they were when they did) can be measured.
 		// Read the landing referrer / ?via= slug before anything else navigates away from them
 		initVisitorContext(SESSION_RETURNING);
+		// Company identification pixel (RB2B): loads for everyone, GPC included (Hunter's call for
+		// this proof of concept). See docs/visitor-context.md.
+		if (publicEnv.PUBLIC_RB2B_SCRIPT_URL) loadIdentityPixel(publicEnv.PUBLIC_RB2B_SCRIPT_URL);
 		recordPageView(navData.to?.url.pathname ?? window.location.pathname);
 		captureEvent('$pageview', SESSION_ID, {
 			session_id: SESSION_ID,

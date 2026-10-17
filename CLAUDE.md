@@ -47,7 +47,8 @@ src/lib/server/               server-only helpers:
   chunk-audit.ts               quality + privacy tags on Qdrant chunks
   suggestion-check.ts          drops suggestion chips the conversation already answered
   qdrant-search.ts             low-level Qdrant client (named-vector aware)
-  visitor-context.ts, ip-org.ts   visitor hints and the IPinfo network lookup
+  visitor-context.ts, visitor-company.ts   visitor hints; which company they work at (stated, pixel, referrer, two IP layers)
+  ip-org.ts, ipapi-is.ts, referrer-company.ts, rb2b.ts, visitor-id-store.ts   the identification layers and their shared Qdrant store
   github-repo.ts, calendar.ts  live GitHub and Google Calendar tools
   training.ts, python-sandbox.ts   intervals.icu data and the Vercel Sandbox Python runner
   notion.ts, self-docs.ts, job-match.ts   live Notion search, "how do you work" answers from our docs, job-posting matching
@@ -58,6 +59,7 @@ src/lib/slices/                Prismic slices; index.ts registers them
 src/routes/api/chat/           POST /api/chat (RAG + streaming) and its /suggestions, /proactive helpers
 src/routes/api/embed/          indexing jobs (urls, notion-url, notion-file, texts), admin-only
 src/routes/api/admin/          admin-only APIs (chunk audit, conversations)
+src/routes/api/visitor-id/rb2b/  RB2B identity-pixel webhook (secret path), feeds the company-identification store
 src/routes/api/cron/qdrant-keepalive/   daily read that keeps the free Qdrant cluster alive
 src/routes/{admin,login,case-studies,projects,information,slice-simulator}/
 customtypes/                   Prismic custom type schemas
@@ -82,7 +84,10 @@ GOOGLE_CALENDAR_CLIENT_ID=  GOOGLE_CALENDAR_CLIENT_SECRET=  GOOGLE_CALENDAR_REFR
 GOOGLE_CALENDAR_ID=        # optional (default "primary")
 GOOGLE_CALENDAR_TIMEZONE=  # optional IANA zone (default America/Los_Angeles)
 INTERVALS_API_KEY=  INTERVALS_ATHLETE_ID=   # intervals.icu training tools; unset means "not connected"
-IPINFO_TOKEN=              # optional: IPinfo Lite for the visitor network lookup (also drives the open-roles hint)
+IPINFO_TOKEN=              # optional: IPinfo Lite, the ASN layer of company identification
+IPAPI_IS_KEY=              # optional: ipapi.is (free 1,000/day), the IP-block-owner layer with VPN flags
+PUBLIC_RB2B_SCRIPT_URL=    # optional: the src URL from RB2B's install snippet; loads the identity pixel
+RB2B_WEBHOOK_SECRET=       # optional: secret path segment of the RB2B webhook URL (/api/visitor-id/rb2b/<secret>)
 POSTHOG_PROJECT_ID=  POSTHOG_PERSONAL_API_KEY=   # admin conversation views (read); PUBLIC_POSTHOG_API_KEY sends events
 CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-calls (16+ chars); also the `x-huntbot-eval` header for `pnpm eval`
 CHUNK_AUDIT_ORIGIN=        # optional: origin for the audit's follow-up calls (default https://huntbot.vercel.app)
@@ -116,7 +121,7 @@ COMPANY_ROLES_WEB=0        # skip the background web search for a visitor compan
 - **intervals.icu:** rides synced from Strava come back as empty stubs; weekly totals still count them.
 - **Chat client:** `handleSubmit` ignores submits while a reply streams; two concurrent streams lose the first reply.
 - **Voice:** HuntBot is not Hunter. It talks about him in the third person, in his voice; "I" is only ever the bot. Replies are 1–3 sentences of plain text. Persona comes entirely from the system prompt (voice rules, contrastive few-shot examples, banned AI-isms). For hiring questions, pitch in text first, then `capture_lead_intent` adds the contact card (`ActionMessage.svelte`).
-- **Visitor hints:** use them only for emphasis, length and date math; never name the visitor's origin, location, device or language unprompted. The one exception: when the hints list open design roles at their company, HuntBot asks once, proactively (a chat-open opener from `/api/chat/role-opener`, or the end of its first reply), as a question, whether they're hiring for one. [visitor-context.md](docs/visitor-context.md)
+- **Visitor hints:** use them only for emphasis, length and date math; never name the visitor's origin, location, device or language unprompted. The one exception: when the hints list open design roles at their company, HuntBot asks once, proactively (a chat-open opener from `/api/chat/role-opener`, or the end of its first reply), as a question, whether they're hiring for one. The company comes from a layered identification stack and is a guess unless they said it. The RB2B pixel loads even under GPC (Hunter's choice); the IP layers don't run under GPC. [visitor-context.md](docs/visitor-context.md)
 - **Prismic:** never edit `src/prismicio-types.d.ts`; regenerate with `pnpm check` after schema changes.
 
 ## CMS: Prismic + Slice Machine

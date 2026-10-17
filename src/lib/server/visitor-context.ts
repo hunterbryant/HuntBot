@@ -2,6 +2,7 @@ import { env } from '$env/dynamic/private';
 import type { CompanyRoles } from '$lib/server/company-roles';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
 import type { NavPage } from '$lib/server/site-nav-routes';
+import type { VisitorCompany } from '$lib/server/visitor-company';
 
 // Turns the raw request (headers + the browser's self-reported payload) into a small set of
 // labels for the system prompt. Nothing here is trusted: the client payload is re-validated, and
@@ -22,6 +23,8 @@ export type VisitorContext = {
 	returning: boolean;
 	gpc: boolean;
 	org: IpOrg | null;
+	/** The identified company and how it was found (visitor-company.ts), or null. */
+	company: VisitorCompany | null;
 };
 
 const SLUG = /^[a-z0-9-]{1,40}$/;
@@ -79,6 +82,7 @@ export function buildVisitorContext(options: {
 	pages: NavPage[];
 	currentPage: string;
 	org: IpOrg | null;
+	company?: VisitorCompany | null;
 }): VisitorContext {
 	const { request, pages, currentPage } = options;
 	const raw = (
@@ -133,6 +137,7 @@ export function buildVisitorContext(options: {
 	}
 
 	const country = request.headers.get('x-vercel-ip-country');
+	const keepUnderGpc = ['simulated', 'stated', 'pixel'].includes(options.company?.source ?? '');
 
 	return {
 		arrivedVia,
@@ -146,9 +151,31 @@ export function buildVisitorContext(options: {
 		country: country && /^[A-Z]{2}$/.test(country) ? country : null,
 		returning: raw.returning === true,
 		gpc,
-		// No lookup happens under GPC, but never carry one through either
-		org: gpc ? null : options.org
+		// No IP lookup happens under GPC, so only a company the visitor named or the identity pixel
+		// found (which loads regardless of GPC) can come through.
+		org: gpc && !keepUnderGpc ? null : options.org,
+		company: gpc && !keepUnderGpc ? null : (options.company ?? null)
 	};
+}
+
+const HOW: Record<string, string> = {
+	simulated: 'a guess from their network',
+	pixel: 'a guess from a visitor-identification service that recognised their browser',
+	referrer: "a guess: they arrived from that company's internal tool",
+	ip_company:
+		'a guess from who owns their IP address, which could be a VPN, coworking space or parent company',
+	ip_asn: 'a guess from their network, which could be a VPN, coworking space or parent company'
+};
+
+/** The hint line for the company, saying how it was found so a guess is never stated as fact. */
+function companyLine(name: string, company: VisitorCompany | null): string {
+	if (company?.source === 'stated') return `Works at: ${name} (they said so earlier in this chat)`;
+	const how = HOW[company?.source ?? 'ip_asn'];
+	const sure =
+		company && (company.confidence === 'high' || company.agreedWith.length)
+			? ', fairly confident'
+			: '';
+	return `Probably works at: ${name} (${how}${sure})`;
 }
 
 function dwell(seconds: number): string {
@@ -177,10 +204,11 @@ export function formatVisitorContextForPrompt(
 	else if (ctx.arrivedVia.startsWith('referral:'))
 		lines.push(`Arrived from another site (${ctx.arrivedVia.slice('referral:'.length)})`);
 
-	if (ctx.org && ctx.org.orgClass === 'org') lines.push(`On the network of: ${ctx.org.name}`);
+	if (ctx.org && ctx.org.orgClass === 'org') lines.push(companyLine(ctx.org.name, ctx.company));
 	if (ctx.org && ctx.org.orgClass === 'org' && roles && roles.roles.length) {
+		const guess = ctx.company?.source === 'stated' ? '' : ' (their company is a guess, see above)';
 		lines.push(
-			`Open design roles at ${roles.company}, from their public job board (a guess from the network, which could be a VPN, coworking space or parent company): ${roles.roles
+			`Open design roles at ${roles.company}, from their public job board${guess}: ${roles.roles
 				.map((r) => `${r.title}${r.location ? `, ${r.location}` : ''} <${r.url}>`)
 				.join('; ')}`
 		);
@@ -240,6 +268,9 @@ export function visitorAnalyticsProps(
 		visitor_country: ctx.country,
 		visitor_org: ctx.org?.name ?? null,
 		visitor_org_class: ctx.org?.orgClass ?? null,
+		visitor_company_source: ctx.company?.source ?? null,
+		visitor_company_confidence: ctx.company?.confidence ?? null,
+		visitor_company_agreed: ctx.company?.agreedWith ?? [],
 		visitor_pages_seen: ctx.pagesSeen.map((p) => p.title),
 		visitor_returning: ctx.returning,
 		visitor_org_mentioned: orgMentioned
