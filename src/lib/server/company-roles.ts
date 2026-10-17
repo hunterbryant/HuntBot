@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
+import { describeError } from '$lib/server/tool-log';
 import { createOpenAI } from '@ai-sdk/openai';
 import { waitUntil } from '@vercel/functions';
 import { generateText, Output, zodSchema } from 'ai';
@@ -11,6 +12,9 @@ import { z } from 'zod';
 // look like an org. The lookup tries the public job-board APIs (Greenhouse, Lever, Ashby: keyless,
 // structured, current) and only falls back to a web search when no board is found, in the
 // background, so a slow search never delays a reply.
+
+/** What the lookup needs of an org: a name, and a domain when one is known. */
+export type OrgRef = Pick<IpOrg, 'name' | 'domain'>;
 
 export type CompanyRole = { title: string; location: string | null; url: string };
 
@@ -52,7 +56,7 @@ function remember(key: string, value: Stored) {
 }
 
 /** Board-slug guesses for an org, most likely first: the domain's name, then the company name. */
-export function slugCandidates(org: Pick<IpOrg, 'name' | 'domain'>): string[] {
+export function slugCandidates(org: OrgRef): string[] {
 	const out: string[] = [];
 	const add = (s: string) => {
 		const slug = s.toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -157,7 +161,7 @@ const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
  * Greenhouse boards name their company, so a guessed slug that belongs to someone else
  * ("square" vs a different Square) can be caught. Other boards have no name to compare.
  */
-function plausibleBoard(board: Board, org: IpOrg, slug: string): boolean {
+function plausibleBoard(board: Board, org: OrgRef, slug: string): boolean {
 	if (!board.company) return true;
 	const company = normalize(board.company);
 	const wanted = [slug, normalize(coreOrgName(org.name).split(' ')[0] ?? '')].filter(
@@ -166,7 +170,7 @@ function plausibleBoard(board: Board, org: IpOrg, slug: string): boolean {
 	return wanted.some((w) => company.includes(w) || w.includes(company));
 }
 
-async function fromBoards(org: IpOrg): Promise<{ company: string; roles: CompanyRole[] } | null> {
+async function fromBoards(org: OrgRef): Promise<{ company: string; roles: CompanyRole[] } | null> {
 	const slugs = slugCandidates(org);
 	const attempts = slugs.flatMap((slug) =>
 		[greenhouse, lever, ashby].map(async (lookup) => {
@@ -185,14 +189,31 @@ async function fromBoards(org: IpOrg): Promise<{ company: string; roles: Company
 const ATS_HOSTS =
 	/(^|\.)(greenhouse\.io|lever\.co|ashbyhq\.com|workable\.com|smartrecruiters\.com|myworkdayjobs\.com|bamboohr\.com|jobvite\.com|icims\.com|rippling\.com)$/;
 
-/** A model-supplied role link is only trusted when it's https on the company's own domain or a known job board. */
-export function isTrustedRoleUrl(url: string, org: Pick<IpOrg, 'domain'>): boolean {
+/** The name part of a hostname's registrable domain: careers.uber.com -> uber, shop.acme.co.uk -> acme. */
+export function registrableLabel(hostname: string): string {
+	const labels = hostname.toLowerCase().replace(/\.$/, '').split('.');
+	if (labels.length < 2) return labels[0] ?? '';
+	// Two-part public suffixes like co.uk / com.au
+	const twoPart =
+		labels.length >= 3 &&
+		labels[labels.length - 1].length === 2 &&
+		/^(co|com|org|net|ac|gov|edu)$/.test(labels[labels.length - 2]);
+	return labels[labels.length - (twoPart ? 3 : 2)];
+}
+
+/**
+ * A model-supplied role link is only trusted when it's https on a known job board or the company's
+ * own site: its domain when we know it, otherwise a host with a label that is the company's name
+ * (careers.uber.com for "Uber").
+ */
+export function isTrustedRoleUrl(url: string, org: OrgRef): boolean {
 	try {
 		const u = new URL(url);
 		if (u.protocol !== 'https:') return false;
 		if (ATS_HOSTS.test(u.hostname)) return true;
 		const domain = org.domain?.toLowerCase().replace(/^www\./, '');
-		return !!domain && (u.hostname === domain || u.hostname.endsWith(`.${domain}`));
+		if (domain) return u.hostname === domain || u.hostname.endsWith(`.${domain}`);
+		return slugCandidates(org).includes(registrableLabel(u.hostname));
 	} catch {
 		return false;
 	}
@@ -205,7 +226,7 @@ const webRolesSchema = z.object({
 });
 
 /** Web search for design roles, used only when no job board was found. Never throws. */
-async function fromWebSearch(org: IpOrg): Promise<CompanyRole[]> {
+async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 		const { output } = await generateText({
@@ -220,23 +241,33 @@ async function fromWebSearch(org: IpOrg): Promise<CompanyRole[]> {
 		return output.roles.filter((r) => isDesignRole(r.title) && isTrustedRoleUrl(r.url, org));
 	} catch (error) {
 		console.warn('[HuntBot tools] company roles web search failed', {
-			error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
+			error: describeError(error)
 		});
 		return [];
 	}
 }
 
-const key = (org: IpOrg) => (org.domain ?? coreOrgName(org.name)).toLowerCase();
+const key = (org: OrgRef) => (org.domain ?? coreOrgName(org.name)).toLowerCase();
 
 /**
  * Open design roles at the org's company. Bounded to ~2.8s and never throws; on a first sighting
  * of a company with no job board it answers "none" now and fills the cache from a background web
- * search for later turns. Job boards are public and unauthenticated; nothing about the visitor is sent.
+ * search for later turns, unless `waitForWeb` (a visitor named the company) says to wait for it. Job boards are public and unauthenticated; nothing about the visitor is sent.
  */
-export async function lookupCompanyRoles(org: IpOrg): Promise<CompanyRoles> {
+export async function lookupCompanyRoles(
+	org: OrgRef,
+	{ waitForWeb = false }: { waitForWeb?: boolean } = {}
+): Promise<CompanyRoles> {
 	const k = key(org);
 	const hit = cache.get(k);
-	if (hit && hit.expires > Date.now()) return { ...hit.value, source: 'cache' };
+	// A cached miss is only worth serving when the caller isn't willing to wait for a web search.
+	if (
+		hit &&
+		hit.expires > Date.now() &&
+		(hit.value.roles.length || hit.value.source === 'ats' || !waitForWeb)
+	) {
+		return { ...hit.value, source: 'cache' };
+	}
 
 	const none: Stored = { company: displayName(org.name), roles: [], source: 'none' };
 	try {
@@ -254,12 +285,21 @@ export async function lookupCompanyRoles(org: IpOrg): Promise<CompanyRoles> {
 	}
 
 	remember(k, none);
-	if (env.COMPANY_ROLES_WEB !== '0') {
-		waitUntil(
-			fromWebSearch(org).then((roles) => {
-				if (roles.length) remember(k, { company: none.company, roles, source: 'web' });
-			})
-		);
+	if (env.COMPANY_ROLES_WEB === '0') return none;
+	if (waitForWeb) {
+		// A visitor asked about this company by name, so the web search is worth waiting for.
+		const roles = await fromWebSearch(org);
+		if (roles.length) {
+			const value = { company: none.company, roles, source: 'web' as const };
+			remember(k, value);
+			return value;
+		}
+		return none;
 	}
+	waitUntil(
+		fromWebSearch(org).then((roles) => {
+			if (roles.length) remember(k, { company: none.company, roles, source: 'web' });
+		})
+	);
 	return none;
 }

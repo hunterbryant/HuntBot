@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { describeError } from '$lib/server/tool-log';
 import { Client } from '@notionhq/client';
 import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import { warnOnce } from './warn-once';
@@ -270,7 +271,7 @@ export async function searchNotion(query: string): Promise<NotionSearchResult> {
 		return { ok: true, hits };
 	} catch (error) {
 		console.warn('[HuntBot tools] Notion search failed', {
-			error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
+			error: describeError(error)
 		});
 		return { ok: false, reason: 'failed' };
 	}

@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { safeFetchText } from '$lib/server/safe-fetch';
+import { describeError } from '$lib/server/tool-log';
 import { getEmbeddings, searchPublicEvidence, type PublicEvidence } from '$lib/utilities/context';
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateText, Output, zodSchema } from 'ai';
@@ -162,7 +163,7 @@ ${posting}
 		return output;
 	} catch (error) {
 		console.warn('[HuntBot tools] job requirement extraction failed', {
-			error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
+			error: describeError(error)
 		});
 		return null;
 	}
@@ -247,7 +248,7 @@ export async function matchJobDescription(input: {
 		return { ok: true, text, requirements: extracted.requirements.length, gaps };
 	} catch (error) {
 		console.warn('[HuntBot tools] job evidence search failed', {
-			error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
+			error: describeError(error)
 		});
 		return {
 			ok: false,

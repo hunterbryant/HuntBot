@@ -18,6 +18,15 @@ export type ToolCallLog = {
 	error?: string;
 };
 
+/**
+ * Short, log-safe text for an error. Provider errors can echo part of an API key ("Incorrect API
+ * key provided: sk-abc***xyz"), so anything key-shaped is cut out before it reaches the logs.
+ */
+export function describeError(error: unknown): string {
+	const message = error instanceof Error ? error.message : String(error);
+	return message.replace(/\b(sk|pk|rk|key|token)[-_][A-Za-z0-9*_.-]{4,}/gi, '$1-…').slice(0, 200);
+}
+
 /** Logs one `[HuntBot tools]` line; warnings for anything that isn't `ok`. */
 export function logToolCall(runId: string, call: ToolCallLog): void {
 	const line = JSON.stringify({

@@ -1,4 +1,5 @@
 import { readRepoFile } from '$lib/server/github-repo';
+import { describeError } from '$lib/server/tool-log';
 import { getEmbeddings } from '$lib/utilities/context';
 import { compile } from 'html-to-text';
 
@@ -217,7 +218,7 @@ export async function explainHuntBot(question: string): Promise<RankedSection[] 
 		return rankSections(vector, idx.sections, idx.vectors);
 	} catch (error) {
 		console.warn('[HuntBot tools] explain_huntbot failed', {
-			error: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200)
+			error: describeError(error)
 		});
 		return null;
 	}

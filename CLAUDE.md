@@ -66,7 +66,7 @@ docs/                          detail docs; docs/site-story/ builds the Building
 
 ## Environment variables
 
-Set in `.env` locally or in the Vercel dashboard. Server code reads them via `$env/dynamic/private`.
+Set in `.env` locally or in the Vercel dashboard. Server code reads them via `$env/dynamic/private`. **Preview deployments only get the variables ticked for Preview**: if the Notion, calendar or intervals.icu tools say "not connected" on a preview, that variable isn't enabled for Preview (check the `[HuntBot tools]` / `[HuntBot training]` logs; production is unaffected).
 
 ```bash
 OPENAI_API_KEY=            # chat, embeddings, helper calls
