@@ -429,7 +429,11 @@ export function pageTitle(html: string): string | null {
  * can't reach a visitor. Slower than the job-board APIs (several model steps), so it only runs
  * when those find nothing, and the result is cached. Never throws.
  */
-async function fromWebSearch(org: OrgRef, timeoutMs = WEB_TIMEOUT_MS): Promise<CompanyRole[]> {
+async function fromWebSearch(
+	org: OrgRef,
+	timeoutMs = WEB_TIMEOUT_MS,
+	retry = false
+): Promise<CompanyRole[]> {
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
 		const { output } = await generateText({
@@ -453,7 +457,7 @@ async function fromWebSearch(org: OrgRef, timeoutMs = WEB_TIMEOUT_MS): Promise<C
 			reasoning: 'low',
 			abortSignal: AbortSignal.timeout(timeoutMs),
 			providerOptions: { openai: { reasoningSummary: null } },
-			prompt: `Find up to ${MAX_ROLES} currently open product design, UX, visual or design-systems roles at ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''}. Search for the company's own careers page or job board, open it, and look for design roles (try a design filter, a Design team page, or a job search for "product designer" / "UX designer" if the site has one; many big career sites need JavaScript and show nothing when opened, so also search for its postings directly, e.g. "<company> product designer job", and use the results). Only include roles you saw on a page or in search results, each with the direct link to that posting on the company's careers site or job board (not an aggregator like LinkedIn or Indeed); each link is checked afterwards. If the company has no open design roles or you can't reach its careers page, return an empty list. Never guess or fill in a role from memory.`
+			prompt: `Find up to ${MAX_ROLES} currently open product design, UX, visual or design-systems roles at ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''}. Search for the company's own careers page or job board, open it, and look for design roles (try a design filter, a Design team page, or a job search for "product designer" / "UX designer" if the site has one; many big career sites need JavaScript and show nothing when opened, so also search for its postings directly, e.g. "<company> product designer job", and use the results). Only include roles you saw on a page or in search results, each with the direct link to that posting on the company's careers site or job board (not an aggregator like LinkedIn or Indeed); each link is checked afterwards.${retry ? ' A first attempt found nothing, so do not open career pages: just run web searches for current product designer / UX designer job postings at the company and use what the results show.' : ''} If the company has no open design roles or you can't reach its careers page, return an empty list. Never guess or fill in a role from memory.`
 		});
 		const candidates = output.roles.filter(
 			(r) => isDesignRole(r.title) && isTrustedRoleUrl(r.url, org)
@@ -705,6 +709,10 @@ async function fromWeb(
 	wait: boolean
 ): Promise<{ roles: CompanyRole[]; source: 'ats' | 'web' }> {
 	const t0 = Date.now();
+	const timeout = wait ? WEB_WAIT_TIMEOUT_MS : WEB_TIMEOUT_MS;
+	// Discovery + platform API and the page-reading agent run side by side (a slow discovery used to
+	// eat the agent's time); the platform API's answer wins when it has one.
+	const agent = fromWebSearch(org, timeout).catch(() => [] as CompanyRole[]);
 	const board = await fromDiscoveredBoards(org).catch(() => null);
 	if (board) {
 		console.log('[HuntBot tools] company roles path', {
@@ -715,10 +723,17 @@ async function fromWeb(
 		});
 		return { roles: board.roles, source: 'ats' };
 	}
-	const roles = await fromWebSearch(org, wait ? WEB_WAIT_TIMEOUT_MS : WEB_TIMEOUT_MS);
+	let roles = await agent;
+	let via = 'agent';
+	// The agent sometimes comes back empty on a company it can find on another run: one more go,
+	// search-results only, while there's time.
+	if (!roles.length && Date.now() - t0 < timeout / 2) {
+		roles = await fromWebSearch(org, timeout - (Date.now() - t0), true).catch(() => []);
+		via = 'agent-retry';
+	}
 	console.log('[HuntBot tools] company roles path', {
 		company: displayName(org.name),
-		via: roles.length ? 'agent' : 'none',
+		via: roles.length ? via : 'none',
 		roles: roles.length,
 		ms: Date.now() - t0
 	});
