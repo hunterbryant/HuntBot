@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import type { NetworkPolicy } from '@vercel/sandbox';
 
 const API_ORIGIN = 'https://intervals.icu/api/v1';
 const CACHE_TTL_MS = 15 * 60 * 1000;
@@ -375,9 +376,82 @@ export function formatTrainingTotals(summary: WeeklySummary): string {
 		.join('\n');
 }
 
+/**
+ * Daily wellness rows (sleep, HRV, resting HR, readiness, steps, weight, …) for
+ * [start, end], every scalar field intervals.icu has, in its own units. Null if not
+ * configured or the request fails.
+ */
+export async function getWellness(
+	start: string,
+	end: string
+): Promise<Record<string, string | number | null>[] | null> {
+	const rows = await icuGet<Record<string, unknown>[]>(athletePath('/wellness'), {
+		oldest: start,
+		newest: end
+	});
+	if (!rows) return null;
+	return rows.map((row) => {
+		const out: Record<string, string | number | null> = {};
+		for (const [key, value] of Object.entries(row)) {
+			if (typeof value === 'number' || typeof value === 'string') out[key] = value;
+			else if (typeof value === 'boolean') out[key] = value ? 1 : 0;
+		}
+		return out;
+	});
+}
+
+/**
+ * Sandbox network policy that lets analysis code read Hunter's intervals.icu data:
+ * GET requests to his athlete endpoints and to individual activities only. The API key
+ * is added by Vercel's proxy, so it never enters the sandbox, and everything else —
+ * writes, other hosts, other athletes' data, his private chats and account
+ * connections — is refused.
+ */
+export function intervalsNetworkPolicy(): NetworkPolicy {
+	const athleteId = env.INTERVALS_ATHLETE_ID ?? '';
+	if (!env.INTERVALS_API_KEY || !/^[A-Za-z0-9]+$/.test(athleteId)) return 'deny-all';
+
+	const refuse = (body: string) => ({
+		response: { statusCode: 403, body, contentType: 'text/plain' }
+	});
+	return {
+		allow: {
+			'intervals.icu': [
+				{
+					// Other people's data and private messages: his chats, account links,
+					// athlete-summary (includes athletes he follows), folder sharing lists, and
+					// anything trying to climb out of an allowed path.
+					match: {
+						path: {
+							regex: `(\\.\\.|%2[eE]|//|^/api/v1/athlete/${athleteId}/(chats|connections|athlete-summary)|/shared-with)`
+						}
+					},
+					...refuse('Not available to HuntBot.')
+				},
+				{
+					match: {
+						method: ['GET'],
+						path: {
+							regex: `^/api/v1/(athlete/${athleteId}([/.].*)?|activity/[A-Za-z0-9]+([/.].*)?)$`
+						}
+					},
+					transform: [
+						{
+							headers: {
+								authorization: `Basic ${btoa(`API_KEY:${env.INTERVALS_API_KEY}`)}`
+							}
+						}
+					]
+				},
+				refuse(`Read-only: only GET /api/v1/athlete/${athleteId}/... and /api/v1/activity/{id}/...`)
+			]
+		}
+	};
+}
+
 /** Quotes a CSV cell when it holds a comma, quote or newline (activity names can). */
-function csvCell(value: string | number | null): string {
-	const s = value === null ? '' : String(value);
+function csvCell(value: string | number | null | undefined): string {
+	const s = value == null ? '' : String(value);
 	return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
@@ -390,7 +464,8 @@ function toCsv<T extends Record<string, string | number | null>>(rows: T[], colu
 /** CSV files preloaded into the analysis sandbox, plus a note on what each holds. */
 export function trainingDataFiles(
 	summary: WeeklySummary,
-	activities: ActivityList | null
+	activities: ActivityList | null,
+	wellness: Record<string, string | number | null>[] | null
 ): { files: { path: string; content: string }[]; note: string } {
 	const files = [
 		{
@@ -436,8 +511,19 @@ export function trainingDataFiles(
 			])
 		});
 	}
-	const note = activities
-		? `activities.csv has ${activities.activities.length} activities; ${activities.hidden} more were synced from Strava and are only counted in weekly.csv.`
-		: 'activities.csv is unavailable this turn.';
+	if (wellness) {
+		const columns = [...new Set(wellness.flatMap((row) => Object.keys(row)))];
+		// The day is the row id; put it first so the file reads like the others.
+		columns.sort((a, b) => (a === 'id' ? -1 : b === 'id' ? 1 : a.localeCompare(b)));
+		files.push({ path: 'wellness.csv', content: toCsv(wellness, columns) });
+	}
+	const note = [
+		activities
+			? `activities.csv has ${activities.activities.length} activities; ${activities.hidden} more were synced from Strava and are only counted in weekly.csv.`
+			: 'activities.csv is unavailable this turn.',
+		wellness
+			? `wellness.csv has ${wellness.length} days.`
+			: 'wellness.csv is unavailable this turn.'
+	].join(' ');
 	return { files, note };
 }
