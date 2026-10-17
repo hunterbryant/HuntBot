@@ -8,6 +8,7 @@ The LLM can invoke these client-visible functions:
 | Function | Effect |
 |---|---|
 | `minimize_chat` | Minimizes the chat widget |
+| `ask_visitor` | Asks the visitor one question, optionally with tappable answers (`options`: label + reply, 2 to 5). General: clarifying a vague question, picking a project/period/role, offering a next step. The client keeps the model's streamed text, appends the question when it adds something, and attaches a `data-options` part that `BotMessage` renders as chips (only on the latest reply; tapping sends the option's `reply` as the visitor's message, tracked as `suggestion_clicked` with `suggestion_type: option`). Replaced `ask_clarifying_question` |
 | `route_to_page` | Navigates the browser to a site page via SvelteKit's `goto()`. Meant as an extra after a text answer, not a replacement — the client keeps any text the model streamed before the call, and the visitor's current page is left out of the allowed routes |
 | `reset_conversation` | Clears the conversation and its saved copy (`resetChat`). Only for a clear request ("start over"); typing `clear`, `/clear`, `reset`, `start over` or `new chat` does the same instantly on the client with no model call |
 

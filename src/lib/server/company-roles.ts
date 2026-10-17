@@ -60,6 +60,39 @@ function remember(key: string, value: Stored) {
 	cache.set(key, { expires: Date.now() + ttl, value });
 }
 
+/**
+ * A rough fit score of a design role for Hunter (a product designer, hardware + software, design
+ * systems and research-minded): higher is a better match. Cheap title heuristics, not a judgment
+ * of the posting; the visitor picks, this only orders and decides whether one role stands out.
+ */
+export function scoreRoleForHunter(title: string): number {
+	const t = title.toLowerCase();
+	let score = 0;
+	if (/product design/.test(t)) score += 4;
+	else if (/\b(ux|ui\/ux|user experience|interaction)\b/.test(t)) score += 3;
+	else if (/design system/.test(t)) score += 3;
+	else if (/\bdesigner\b/.test(t)) score += 2;
+	if (/\b(senior|sr\.?|staff|lead|principal)\b/.test(t)) score += 1;
+	if (/\b(intern|internship|junior|associate|apprentice)\b/.test(t)) score -= 3;
+	if (
+		/\b(motion|brand|graphic|character|creative|visual|content|writer|writing|illustrat|3d|environment|game|packaging|marketing)\b/.test(
+			t
+		)
+	)
+		score -= 2;
+	if (/\b(manager|director|head of|vp|program)\b/.test(t)) score -= 2;
+	if (/\b(research|researcher)\b/.test(t)) score -= 1;
+	return score;
+}
+
+/** Roles best-fit first (stable for ties). */
+export function rankRolesForHunter(roles: CompanyRole[]): CompanyRole[] {
+	return roles
+		.map((role, i) => ({ role, i, score: scoreRoleForHunter(role.title) }))
+		.sort((a, b) => b.score - a.score || a.i - b.i)
+		.map((x) => x.role);
+}
+
 /** Board-slug guesses for an org, most likely first: the domain's name, then the company name. */
 export function slugCandidates(org: OrgRef): string[] {
 	const out: string[] = [];

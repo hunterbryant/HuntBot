@@ -46,8 +46,6 @@ export const suggestions = writable<string[]>([]);
 export const scrollSuggestions = writable<string[]>([]);
 export const hoverSuggestions = writable<string[]>([]);
 export const loadingContextSuggestions = writable(false);
-/** One-tap reply to the open-role opener; shown as the only starter chip until the visitor sends something. */
-export const roleOpenerChip = writable<string | null>(null);
 
 // Shared debounce + abort for hover/scroll context fetches so back-to-back
 // triggers coalesce into a single request rather than racing each other.
@@ -154,10 +152,14 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 			{
 				id: 'role-opener-' + Date.now(),
 				role: 'assistant' as const,
-				parts: [{ type: 'text' as const, text: data.message }]
+				parts: [
+					{ type: 'text' as const, text: data.message },
+					...(Array.isArray(data.options) && data.options.length
+						? [{ type: 'data-options' as const, data: { options: data.options } }]
+						: [])
+				] as UIMessage['parts']
 			}
 		];
-		roleOpenerChip.set(data.chip ?? null);
 		captureEvent('role_opener_shown', SESSION_ID, { session_id: SESSION_ID });
 	} catch {
 		// best-effort, like the page opener
@@ -279,7 +281,7 @@ let chatInstance: Chat | null = null;
 /** Ids of messages restored from storage, so the UI doesn't replay their reveal animation. */
 export const restoredMessageIds = new Set<string>();
 
-const SAVED_PART_TYPES = new Set(['text', 'source-url', 'data-related']);
+const SAVED_PART_TYPES = new Set(['text', 'source-url', 'data-related', 'data-options']);
 
 /** Only what's worth showing again: replies, sources, related chips and the contact card. */
 function sanitizeForStorage(messages: UIMessage[]): UIMessage[] {
@@ -367,7 +369,6 @@ export function resetChat(trigger: 'command' | 'tool') {
 	suggestions.set([]);
 	scrollSuggestions.set([]);
 	hoverSuggestions.set([]);
-	roleOpenerChip.set(null);
 	clearSavedChat();
 	restoredMessageIds.clear();
 	chatInstance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
@@ -398,6 +399,33 @@ export function getMessageSources(message: UIMessage): { url: string; title?: st
 		}
 	}
 	return sources;
+}
+
+/** A tappable answer under a bot question: chip text, and what is sent when it's tapped. */
+export type ChatOption = { label: string; reply: string };
+
+function cleanOptions(raw: unknown): ChatOption[] {
+	if (!Array.isArray(raw)) return [];
+	const out: ChatOption[] = [];
+	for (const o of raw as { label?: unknown; reply?: unknown }[]) {
+		const label = typeof o?.label === 'string' ? o.label.trim().slice(0, 80) : '';
+		if (!label) continue;
+		const reply =
+			typeof o.reply === 'string' && o.reply.trim() ? o.reply.trim().slice(0, 300) : label;
+		out.push({ label, reply });
+		if (out.length === 5) break;
+	}
+	return out;
+}
+
+/** Tappable answers attached to a reply (`data-options` part, from `ask_visitor` or the role opener). */
+export function getMessageOptions(message: UIMessage): ChatOption[] {
+	for (const p of message.parts) {
+		if (p.type === 'data-options') {
+			return cleanOptions((p as { data?: { options?: unknown } }).data?.options);
+		}
+	}
+	return [];
 }
 
 /** Closest site pages the server attached to a reply that came up empty (`data-related` part). */
@@ -650,19 +678,24 @@ function handleToolCall(toolCall: {
 		setTimeout(() => {
 			goto(`${args.page}`);
 		}, 400);
-	} else if (toolCall.toolName === 'ask_clarifying_question') {
-		const args = toolCall.args as { question: string };
+	} else if (toolCall.toolName === 'ask_visitor') {
+		const args = toolCall.args as { question?: string; options?: ChatOption[] };
+		const options = cleanOptions(args.options);
+		const question = args.question?.trim();
+		// Keep what the model already wrote; add the question only when it says something new.
+		const text =
+			streamedText && question && !streamedText.includes(question)
+				? `${streamedText}\n\n${question}`
+				: streamedText || question || "Could you tell me a bit more about what you're looking for?";
 		chatInstance.messages = [
 			...baseMessages,
 			{
 				id: generateId(),
 				role: 'assistant',
 				parts: [
-					{
-						type: 'text',
-						text: args.question ?? "Could you tell me a bit more about what you're looking for?"
-					}
-				]
+					{ type: 'text', text },
+					...(options.length ? [{ type: 'data-options', data: { options } }] : [])
+				] as UIMessage['parts']
 			}
 		];
 	} else if (toolCall.toolName === 'capture_lead_intent') {

@@ -13,6 +13,9 @@
 	export let sources: { url: string; title?: string }[] = [];
 	// Closest site pages, attached by the server when the reply couldn't answer the question.
 	export let related: { path: string; title: string }[] = [];
+	// Tappable answers to a question in this reply (only the latest reply gets them).
+	export let options: { label: string; reply: string }[] = [];
+	export let onOption: (option: { label: string; reply: string }) => void = () => {};
 
 	$: updatedVal = value;
 
@@ -205,6 +208,19 @@
 				in:slide|global={{ duration: 400 }}
 				use:streamReveal={value}
 			></p>
+			{#if options.length > 0}
+				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
+					{#each options as option (option.label)}
+						<button
+							type="button"
+							on:click={() => onOption(option)}
+							class="inline-flex items-center rounded-lg border border-stone-200 px-2.5 py-1.5 text-left text-sm text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mud-600 dark:border-stone-700 dark:text-stone-400 dark:hover:border-stone-600 dark:hover:bg-stone-900/40"
+						>
+							{option.label}
+						</button>
+					{/each}
+				</p>
+			{/if}
 			{#if related.length > 0}
 				<!-- Pages the reply names (or the closest ones after a miss) replace the source links. -->
 				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>

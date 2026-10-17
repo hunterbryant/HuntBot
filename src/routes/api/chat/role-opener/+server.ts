@@ -1,4 +1,9 @@
-import { displayName, lookupCompanyRoles } from '$lib/server/company-roles';
+import {
+	displayName,
+	lookupCompanyRoles,
+	rankRolesForHunter,
+	scoreRoleForHunter
+} from '$lib/server/company-roles';
 import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
 import { logToolCall } from '$lib/server/tool-log';
 import { visitorContextEnabled } from '$lib/server/visitor-context';
@@ -53,12 +58,34 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		results: found.roles.length,
 		source: found.source
 	});
-	const role = found.roles[0];
-	if (!role) return miss('no_roles');
+	const ranked = rankRolesForHunter(found.roles);
+	const top = ranked[0];
+	if (!top) return miss('no_roles');
+	const company = displayName(found.company);
+	// One role stands out (or is the only one): ask about it. Otherwise show up to three.
+	const standsOut =
+		ranked.length === 1 || scoreRoleForHunter(top.title) - scoreRoleForHunter(ranked[1].title) >= 2;
+	const decline = "No, I'm not hiring for these roles";
+	const roleOption = (title: string) => ({
+		label: title,
+		reply: `Yes, I'm hiring for the ${title} role. How does Hunter match it?`
+	});
 
+	if (standsOut) {
+		return json({
+			message: `Quick guess from your network: are you hiring for the ${top.title} role at ${company}? If so, I can show how Hunter's work lines up.`,
+			options: [
+				{ label: 'Yes, that one', reply: roleOption(top.title).reply },
+				{ label: "No, I'm not hiring for that", reply: "No, I'm not hiring for that role." }
+			]
+		});
+	}
+	const shown = ranked.slice(0, 3);
 	return json({
-		message: `Quick guess from your network: are you hiring for the ${role.title} role at ${displayName(found.company)}? If so, I can show how Hunter's work lines up.`,
-		chip: `Yes, how does Hunter match the ${role.title} role?`,
-		role: { title: role.title, url: role.url }
+		message: `Quick guess from your network: are you hiring for one of these roles at ${company}? If so, I can show how Hunter's work lines up.`,
+		options: [
+			...shown.map((r) => roleOption(r.title)),
+			{ label: decline, reply: "No, I'm not hiring for these roles." }
+		]
 	});
 };

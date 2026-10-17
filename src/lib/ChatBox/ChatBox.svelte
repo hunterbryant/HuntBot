@@ -27,10 +27,10 @@
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		triggerRoleOpener,
-		roleOpenerChip,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
+		getMessageOptions,
 		streamingAssistantHasText,
 		getStreamingStatus,
 		restoredMessageIds,
@@ -124,14 +124,15 @@
 	// Pre-conversation: hover > scroll > default.
 	// Once a conversation is underway, post-response suggestions ($sugg) take
 	// priority so they aren't displaced by stale hover/scroll context fetches.
-	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll' | 'role_opener';
+	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll';
 	type ActiveSuggestions = { items: string[]; type: SuggestionType | null };
 	const activeSuggestions = derived(
-		[messages, hoverSuggestions, scrollSuggestions, suggestions, roleOpenerChip],
-		([$msgs, $hover, $scroll, $sugg, $roleChip]): ActiveSuggestions => {
+		[messages, hoverSuggestions, scrollSuggestions, suggestions],
+		([$msgs, $hover, $scroll, $sugg]): ActiveSuggestions => {
 			const hasUser = $msgs.some((m) => m.role === 'user');
-			// The open-role question comes with its own one-tap answer, ahead of everything else.
-			if ($roleChip && !hasUser) return { items: [$roleChip], type: 'role_opener' };
+			// A question with its own tappable answers is on screen: no other chips beside it.
+			const last = $msgs[$msgs.length - 1];
+			if (last && getMessageOptions(last).length > 0) return { items: [], type: null };
 			if (!readyForSuggestions && !hasUser) return { items: [], type: null };
 			if (hasUser) {
 				if ($sugg.length > 0) return { items: $sugg, type: 'post_message' };
@@ -515,7 +516,6 @@
 		suggestions.set([]);
 		scrollSuggestions.set([]);
 		hoverSuggestions.set([]);
-		roleOpenerChip.set(null);
 		minimized.set(false);
 		// Server derives currentPage from the Referer header automatically
 		await append({ role: 'user', content: suggestion });
@@ -606,6 +606,8 @@
 							animate={shouldAnimate(message.id)}
 							sources={getMessageSources(message)}
 							related={getMessageRelated(message)}
+							options={i === $messages.length - 1 && !$isLoading ? getMessageOptions(message) : []}
+							onOption={(option) => selectSuggestion(option.reply, 'option')}
 						/>
 					{:else if (message.role as string) === 'data'}
 						<ActionMessage value={message as unknown as FunctionMessage} />
