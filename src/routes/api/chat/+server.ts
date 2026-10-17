@@ -8,14 +8,29 @@ import {
 	searchRepoCode
 } from '$lib/server/github-repo';
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
+import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
+import { isSandboxAvailable, runPython } from '$lib/server/python-sandbox';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
 import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
-import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
+import { createStageTimer } from '$lib/server/timing';
+import {
+	checkDateRange,
+	formatTrainingTotals,
+	getActivities,
+	getWeeklySummary,
+	getWellness,
+	intervalsNetworkPolicy,
+	logTrainingCall,
+	newFetchStats,
+	trainingAnalyticsProps,
+	trainingDataFiles,
+	type TrainingCallRecord
+} from '$lib/server/training';
 import {
 	buildVisitorContext,
 	formatVisitorContextForPrompt,
@@ -24,7 +39,6 @@ import {
 	visitorContextEnabled,
 	type VisitorContext
 } from '$lib/server/visitor-context';
-import { createStageTimer } from '$lib/server/timing';
 import { UserRole } from '$lib/types';
 import {
 	embedQueryText,
@@ -42,15 +56,18 @@ import {
 	convertToModelMessages,
 	createUIMessageStream,
 	createUIMessageStreamResponse,
-	isStepCount,
 	smoothStream,
 	streamText,
-	toUIMessageStream,
 	tool,
+	toUIMessageStream,
 	type UIMessage
 } from 'ai';
 import OpenAI from 'openai';
 import { z } from 'zod';
+
+// Analysis turns can run several sandboxed scripts (each up to ~45s with sandbox startup),
+// so give the function the same ceiling as the chunk audit.
+export const config = { maxDuration: 300 };
 
 // Matches SITE_ORIGIN in src/lib/utilities/context.ts — used to turn a full source URL
 // into a short readable slug for the source-url UI parts.
@@ -71,14 +88,26 @@ function isTrivialMessage(text: string): boolean {
 // the fast model; deep questions get more reasoning. Reasoning tokens count against
 // maxOutputTokens, so every lane leaves headroom beyond the 1–3 sentence reply itself
 // (a 180-token cap let reasoning swallow the whole budget and return an empty reply).
+// The cap is per step and also has to fit a Python script for analyze_training_data,
+// which is why it's well above what a reply needs.
 const LANE_MODEL_CONFIG: Record<
 	QueryLane,
 	{ model: string; reasoningEffort: 'low' | 'medium'; maxOutputTokens: number }
 > = {
-	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 600 },
-	standard: { model: 'gpt-6.1-sol', reasoningEffort: 'low', maxOutputTokens: 600 },
-	deep: { model: 'gpt-6.1-sol', reasoningEffort: 'medium', maxOutputTokens: 1500 }
+	quick: { model: 'gpt-6-luna', reasoningEffort: 'low', maxOutputTokens: 2000 },
+	standard: { model: 'gpt-6.1-sol', reasoningEffort: 'low', maxOutputTokens: 2000 },
+	deep: { model: 'gpt-6.1-sol', reasoningEffort: 'medium', maxOutputTokens: 3000 }
 };
+
+// Steps per turn. Analysis turns get more, so the model can fix a script that errored
+// or follow up with a second query before answering.
+const MAX_STEPS = 3;
+
+const MAX_ANALYSIS_STEPS = 6;
+// The route's maxDuration is 300s. Past this point into a turn no new analysis starts
+// (one run can take ~50s with sandbox startup), and the step loop stops, so the model
+// answers with what it has instead of the function being killed mid-stream.
+const ANALYSIS_DEADLINE_MS = 200_000;
 
 // Tools with no server `execute` — the client renders their input as the reply/action.
 const CLIENT_TOOL_NAMES = new Set([
@@ -235,6 +264,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 			}
 
 			const timer = createStageTimer();
+			const requestStartedAt = Date.now();
 
 			// What actually happened this turn, filled in as the pipeline runs and sent to PostHog
 			// once at the end (including when the pipeline throws), so a turn can be diagnosed
@@ -269,6 +299,10 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				contextForReflection: '',
 				aboutText: null as string | null,
 				serverToolOutputs: [] as { name: string; output: string }[],
+				// One record per get_training_totals / analyze_training_data call, and whether
+				// the turn ran out of time for more analysis (ANALYSIS_DEADLINE_MS).
+				trainingCalls: [] as TrainingCallRecord[],
+				analysisDeadlineHit: false,
 				visitor: null as VisitorContext | null,
 				orgMentioned: false,
 				// Best vector score of the visitor's message against public content, set only on misses
@@ -286,7 +320,10 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					);
 					if (turn.orgMentioned) {
 						// Counts only: the prompt says never to name the visitor's network
-						console.warn('[HuntBot visitor]', JSON.stringify({ run_id: runID, org_mentioned: true }));
+						console.warn(
+							'[HuntBot visitor]',
+							JSON.stringify({ run_id: runID, org_mentioned: true })
+						);
 					}
 				}
 				void captureServerEvent('chat_message', sessionId ?? runID, {
@@ -310,6 +347,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					server_tool_args: turn.serverTools.length
 						? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
 						: null,
+					...trainingAnalyticsProps(turn.trainingCalls, turn.analysisDeadlineHit),
 					context_confidence: turn.contextConfidence,
 					context_answers_question: turn.contextAnswersQuestion,
 					context_excluded_by_audit: turn.excludedByAudit,
@@ -600,6 +638,13 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						? (routableRoutes as [string, ...string[]])
 						: (['/'] as [string, ...string[]]);
 
+				// Logs one [HuntBot training] line and keeps the record for the PostHog event.
+				const recordTraining = (record: TrainingCallRecord) => {
+					turn.trainingCalls.push(record);
+					logTrainingCall(runID, record);
+				};
+				const msSince = (t0: number) => Math.round(performance.now() - t0);
+
 				const tools = {
 					minimize_chat: tool({
 						description:
@@ -776,6 +821,160 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 								)
 								.join('\n');
 						}
+					}),
+					get_training_totals: tool({
+						description:
+							'Get Hunter\'s training totals by sport (rides, runs, etc.) for a date range from intervals.icu: activity count, miles, moving hours, feet climbed, plus his current fitness score. Use for "how much did he bike this year", "how many miles has he run this month", "is he riding a lot lately". Resolve relative ranges ("this year", "last month") to exact dates yourself using today\'s date from the live details.',
+						inputSchema: z.object({
+							start_date: z.string().describe('Start date, YYYY-MM-DD.'),
+							end_date: z.string().describe('End date, YYYY-MM-DD, inclusive.')
+						}),
+						execute: async ({ start_date, end_date }) => {
+							reportStatus('Checking his training log…');
+							logRag('tool get_training_totals', { start_date, end_date });
+							const t0 = performance.now();
+							const base = {
+								tool: 'get_training_totals',
+								startDate: start_date,
+								endDate: end_date
+							} as const;
+							const rangeError = checkDateRange(start_date, end_date);
+							if (rangeError) {
+								recordTraining({ ...base, outcome: 'bad_dates', totalMs: msSince(t0) });
+								return rangeError;
+							}
+							const stats = newFetchStats();
+							const summary = await getWeeklySummary(start_date, end_date, stats);
+							const fetched = {
+								...base,
+								totalMs: msSince(t0),
+								fetchMs: msSince(t0),
+								requests: stats.requests,
+								cacheHits: stats.cacheHits,
+								fetchFailures: stats.failures
+							};
+							if (!summary) {
+								recordTraining({ ...fetched, outcome: 'data_unavailable' });
+								return 'Training data is not connected.';
+							}
+							recordTraining({ ...fetched, outcome: 'ok', weekRows: summary.weeks.length });
+							return formatTrainingTotals(summary);
+						}
+					}),
+					analyze_training_data: tool({
+						description: `Run Python 3 (standard library only, no pandas) over Hunter's intervals.icu data for a date range, for questions get_training_totals can't answer directly: biggest week or month, trends, comparisons between periods, averages, streaks, longest ride, heart rate, weight, sleep, HRV, readiness, morning vs evening rides, what bike computer he uses, where he tends to ride. The working directory has:
+- weekly.csv: weekStart (Monday, YYYY-MM-DD), sport, count, distanceMi, movingHours, elevationFt, trainingLoad. One row per sport per week. Counts every activity.
+- fitness.csv: weekStart, fitness (CTL), fatigue (ATL), form (TSB), weightLb at the end of each week.
+- activities.csv: date, startTime (HH:MM local), name, sport, distanceMi, movingHours, elevationFt, avgWatts, trainingLoad, avgHr, maxHr, weightLb, device, startLat, startLng, endLat, endLng, centerLat, centerLng. Empty cells are missing values. The location columns are only filled when include_location is true, for the most recent 50 outdoor activities: where the ride started and ended, and the middle of its bounding box, to about 10 m. Only activities recorded straight to intervals.icu. Ones synced from Strava are missing here (the result says how many), so per-activity answers can be incomplete; totals should come from weekly.csv.
+- wellness.csv: one row per day, every field intervals.icu has, in its units. id is the date (YYYY-MM-DD). Includes sleepScore, sleepSecs (seconds), sleepQuality (1–4, 1 best), avgSleepingHR, hrv, restingHR, readiness, steps, weight (kg), vo2max, mood, stress, soreness, fatigue, ctl, atl. Columns are missing when he never logged that field.
+For anything else in his intervals.icu account, the script can call the API directly with urllib (GET https://intervals.icu/api/v1/athlete/{id}/..., /api/v1/docs, and /api/v1/activity/{activityId}/... for activities in the start_date–end_date range you loaded; send no auth header, it's added for you; no percent-encoding in paths). His athlete ID is ${env.INTERVALS_ATHLETE_ID || '(not set)'}. Useful endpoints: /athlete/{id} (profile), /athlete/{id}/activities?oldest=…&newest=… (full activity objects), /athlete/{id}/wellness?oldest=…&newest=…, /athlete/{id}/power-curves.json?type=Ride&curves=1y, /athlete/{id}/pace-curves.json, /athlete/{id}/hr-curves.json, /athlete/{id}/gear.json, /athlete/{id}/events?oldest=…&newest=… (planned workouts, races, notes), /athlete/{id}/activities/search?q=…, /activity/{activityId} plus /intervals, /best-efforts, /streams.json, /map (only for activities in the loaded range; widen start_date/end_date to reach others). If you're unsure of an endpoint or field name, the full OpenAPI spec is at https://intervals.icu/api/v1/docs (large JSON; search it in code rather than printing it). Only GET works, no other host is reachable, and endpoints holding other people's data (his chats, athlete-summary, sharing lists) return 403. Strava-synced activities are empty stubs everywhere in the API.
+Only what the script prints to stdout is returned, so print the final numbers you need.`,
+						inputSchema: z.object({
+							start_date: z.string().describe('Start date of the data to load, YYYY-MM-DD.'),
+							end_date: z.string().describe('End date of the data to load, YYYY-MM-DD, inclusive.'),
+							code: z
+								.string()
+								.describe(
+									'Python 3 script that reads the CSVs with the csv module and print()s its results.'
+								),
+							include_location: z
+								.boolean()
+								.default(false)
+								.describe(
+									'Fill the location columns in activities.csv. Slower (one GPS track download per activity), so only for questions about where he rides.'
+								)
+						}),
+						execute: async ({ start_date, end_date, code, include_location }) => {
+							logRag('tool analyze_training_data', {
+								start_date,
+								end_date,
+								include_location,
+								code: code.slice(0, 500)
+							});
+							const t0 = performance.now();
+							const base = {
+								tool: 'analyze_training_data',
+								startDate: start_date,
+								endDate: end_date,
+								includeLocation: include_location
+							} as const;
+							const rangeError = checkDateRange(start_date, end_date);
+							if (rangeError) {
+								recordTraining({ ...base, outcome: 'bad_dates', totalMs: msSince(t0) });
+								return rangeError;
+							}
+							if (!isSandboxAvailable()) {
+								recordTraining({ ...base, outcome: 'sandbox_unavailable', totalMs: msSince(t0) });
+								return 'Code execution is not available right now.';
+							}
+							if (Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
+								turn.analysisDeadlineHit = true;
+								recordTraining({ ...base, outcome: 'deadline', totalMs: msSince(t0) });
+								return 'Out of time for more analysis this turn. Answer with what you already have, and say if it is incomplete.';
+							}
+							reportStatus('Checking his training log…');
+							const stats = newFetchStats();
+							const [summary, activities, wellness] = await Promise.all([
+								getWeeklySummary(start_date, end_date, stats),
+								getActivities(start_date, end_date, { withLocation: include_location, stats }),
+								getWellness(start_date, end_date, stats)
+							]);
+							const fetchMs = msSince(t0);
+							timer.timings.analysis_fetch = (timer.timings.analysis_fetch ?? 0) + fetchMs;
+							const fetched = {
+								...base,
+								fetchMs,
+								requests: stats.requests,
+								cacheHits: stats.cacheHits,
+								fetchFailures: stats.failures,
+								weekRows: summary?.weeks.length,
+								activities: activities?.activities.length,
+								hiddenStrava: activities?.hidden,
+								wellnessDays: wellness?.length
+							};
+							if (!summary) {
+								recordTraining({ ...fetched, outcome: 'data_unavailable', totalMs: msSince(t0) });
+								return 'Training data is not connected.';
+							}
+							const { files, note } = trainingDataFiles(summary, activities, wellness);
+							reportStatus('Crunching the numbers…');
+							const run = await runPython(code, files, {
+								networkPolicy: intervalsNetworkPolicy(activities?.ids)
+							});
+							if (!run.ok) {
+								timer.timings.analysis_sandbox = (timer.timings.analysis_sandbox ?? 0) + run.ms;
+								recordTraining({
+									...fetched,
+									outcome: 'run_failed',
+									totalMs: msSince(t0),
+									sandboxError: run.error.slice(0, 300),
+									sandboxPhase: run.phase
+								});
+								return `The analysis could not run: ${run.error}`;
+							}
+							timer.timings.analysis_sandbox =
+								(timer.timings.analysis_sandbox ?? 0) + run.createMs + run.runMs;
+							recordTraining({
+								...fetched,
+								outcome: run.exitCode === 0 ? 'ok' : 'script_error',
+								totalMs: msSince(t0),
+								sandboxCreateMs: run.createMs,
+								sandboxRunMs: run.runMs,
+								exitCode: run.exitCode,
+								stdoutBytes: run.stdoutBytes,
+								stderrHead: run.stderr ? run.stderr.slice(0, 300) : undefined
+							});
+							return [
+								note,
+								`Exit code: ${run.exitCode}`,
+								run.stdout
+									? `Output:\n${run.stdout}`
+									: 'Output: (none). Only what the script writes to stdout comes back, so print the results.',
+								run.stderr ? `Errors:\n${run.stderr}` : null
+							]
+								.filter(Boolean)
+								.join('\n');
+						}
 					})
 				};
 
@@ -932,6 +1131,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
+- Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data when the answer needs computing (biggest week, month-by-month trend, this year vs last, averages, longest ride) and for any other question his intervals.icu data can answer: sleep, HRV, resting HR, readiness, power curves, FTP, best efforts, gear, planned workouts and races. Don't say you don't have that kind of data before trying it. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight, sleep, HRV, readiness and devices are fine to share as plain numbers and facts ("his sleep score's averaged 82 this month"), without reading anything medical into them. For location, name the places the coordinates fall in (a town, a climb, a park, a road) rather than pasting raw numbers.
 
 ## Navigation
 Routing is an extra, not an answer. If the visitor asked a question or asked you to tell, describe, write or explain something, answer it in text first; then, if a specific page would help, also call route_to_page in the same response. Only route without writing an answer when they explicitly asked to go somewhere ("take me to the projects page", "open the Karoo case study"). The page they're on already isn't in the list, so never try to route there; just answer from it. Only route to URLs from the APPROVED ROUTES list in the live details section below. Never construct or guess a URL — if the exact path isn't in the list, discuss the work without routing. Never route more than once per response.
@@ -992,7 +1192,16 @@ ${contextForModel}`;
 					instructions: systemPrompt,
 					messages: modelMessages,
 					tools,
-					stopWhen: isStepCount(3),
+					stopWhen: ({ steps }) => {
+						const analyzing = steps.some((step) =>
+							step.toolCalls.some((call) => call.toolName === 'analyze_training_data')
+						);
+						if (analyzing && Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
+							turn.analysisDeadlineHit = true;
+							return true;
+						}
+						return steps.length >= (analyzing ? MAX_ANALYSIS_STEPS : MAX_STEPS);
+					},
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads
@@ -1037,7 +1246,12 @@ ${contextForModel}`;
 						}
 						for (const tc of toolCalls ?? []) {
 							const ms = performance.toolExecutionMs[tc.toolCallId];
-							if (ms != null) timer.timings[`tool_${tc.toolName}`] = Math.round(ms);
+							// Summed, so a tool called several times in a turn (a script retried) shows
+							// its total time rather than just the last call.
+							if (ms != null) {
+								const key = `tool_${tc.toolName}`;
+								timer.timings[key] = (timer.timings[key] ?? 0) + Math.round(ms);
+							}
 						}
 
 						const callNames =
@@ -1108,8 +1322,7 @@ ${contextForModel}`;
 								// content. Meta questions ("what do you know about me?") and topicless
 								// follow-ups ("show me those details") aren't, and used to get an unrelated
 								// page. The same gate covers the pages CONTEXT happened to hold.
-								const embedding =
-									laneDecision.embedding ?? (await embedQueryText(lastMessageText));
+								const embedding = laneDecision.embedding ?? (await embedQueryText(lastMessageText));
 								const found = await findRelatedSitePaths(embedding, RELATED_PAGE_LIMIT + 2);
 								turn.relatedTopScore = found.topScore;
 								if (found.topScore >= RELATED_MIN_SCORE) {
