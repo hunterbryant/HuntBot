@@ -12,7 +12,7 @@ import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
 import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
 import { matchJobDescription } from '$lib/server/job-match';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
-import { searchNotion } from '$lib/server/notion';
+import { queryNotion } from '$lib/server/notion';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
 import { isSandboxAvailable, runPython } from '$lib/server/python-sandbox';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
@@ -932,40 +932,89 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 							return result.text;
 						}
 					}),
-					search_notion: tool({
+					query_notion: tool({
 						description:
-							"Search Hunter's Notion live for notes, plans, lists and writing that CONTEXT doesn't cover, or that may have changed recently (what he's reading, working on, planning, thinking about). Returns the text of the best few matching pages with their last-edited dates, no links. Use it after CONTEXT comes up short on a personal or current-events question about Hunter, not for his portfolio work (that's in CONTEXT).",
+							"Look things up in Hunter's Notion live, for personal or current questions CONTEXT doesn't cover (what he's reading, working on, planning, did on a given day). Not for his portfolio work. Four actions. search: find pages by words. describe: with no database it lists his databases; with one it returns the property names, types and select options. query: filter and sort one database by its typed properties, which is how to answer anything about a date or period (a day, a week, a month): describe first to get exact property names, then query with date filters, e.g. {property:'Due', op:'on_or_after', value:'2025-09-22'} and {property:'Due', op:'on_or_before', value:'2025-09-30'}, and set include_content to read what's inside the matching pages. read: open one page by an id from an earlier result. Dates are ISO (YYYY-MM-DD) and need the right year. If a call is rejected, the error lists the valid properties or options: fix the call and retry.",
 						inputSchema: z.object({
-							query: z.string().describe('What to look for in his notes, in a few plain words.')
+							action: z.enum(['search', 'describe', 'query', 'read']),
+							query: z
+								.string()
+								.optional()
+								.describe('search: what to look for, in a few plain words.'),
+							database: z.string().optional().describe('describe / query: a database name or id.'),
+							filters: z
+								.array(
+									z.object({
+										property: z.string(),
+										op: z.enum([
+											'equals',
+											'not_equals',
+											'contains',
+											'not_contains',
+											'before',
+											'on_or_before',
+											'after',
+											'on_or_after',
+											'is_empty',
+											'is_not_empty'
+										]),
+										value: z
+											.string()
+											.optional()
+											.describe('Omit for is_empty / is_not_empty. Dates are YYYY-MM-DD.')
+									})
+								)
+								.optional()
+								.describe('query: all must match. Property names come from describe.'),
+							sort_by: z
+								.string()
+								.optional()
+								.describe('query: a property name, or created_time / last_edited_time.'),
+							sort_dir: z.enum(['ascending', 'descending']).optional(),
+							limit: z
+								.number()
+								.int()
+								.optional()
+								.describe('query: rows to return, 1 to 10 (default 8).'),
+							include_content: z
+								.boolean()
+								.optional()
+								.describe('query: also read the body of each matching page (up to 8).'),
+							page_id: z.string().optional().describe('read: the page id.')
 						}),
-						execute: async ({ query }) => {
-							reportStatus('Searching his notes…');
-							logRag('tool search_notion', { query: query.slice(0, 200) });
+						execute: async (input) => {
+							reportStatus(
+								input.action === 'query' || input.action === 'describe'
+									? 'Checking his notes…'
+									: input.action === 'read'
+										? 'Reading a note…'
+										: 'Searching his notes…'
+							);
+							logRag('tool query_notion', {
+								action: input.action,
+								query: input.query?.slice(0, 200),
+								database: input.database?.slice(0, 80),
+								filters: input.filters?.length
+							});
 							const t0 = performance.now();
-							const result = await searchNotion(query);
+							const result = await queryNotion(input);
 							if (!result.ok) {
 								recordTool({
-									tool: 'search_notion',
+									tool: 'query_notion',
+									action: input.action,
 									outcome: result.reason,
 									ms: msSince(t0)
 								});
-								return result.reason === 'not_configured'
-									? 'Notion is not connected.'
-									: 'Could not search Notion right now.';
+								return result.message;
 							}
 							recordTool({
-								tool: 'search_notion',
-								outcome: result.hits.length ? 'ok' : 'empty',
+								tool: 'query_notion',
+								action: input.action,
+								outcome: result.results ? 'ok' : 'empty',
 								ms: msSince(t0),
-								results: result.hits.length
+								results: result.results
 							});
-							if (result.hits.length === 0) return 'Nothing in his notes matched that.';
-							return [
-								"From Hunter's Notion (live, not the indexed notes):",
-								...result.hits.map(
-									(h) => `[${h.title}${h.lastEdited ? `, edited ${h.lastEdited}` : ''}]\n${h.text}`
-								)
-							].join('\n\n---\n\n');
+							return `From Hunter's Notion (live, not the indexed notes):\n\n${result.text}`;
 						}
 					}),
 					explain_huntbot: tool({
@@ -1306,7 +1355,7 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. For "how do you work", "what model are you", "how were you built", "what can you do" and the like, call explain_huntbot first: it reads HuntBot's own write-ups, and its Building HuntBot post is the plain-language source, so name that post in your answer. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for code-level detail and for what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
 - Use find_open_roles when a visitor says where they work or that they're hiring ("I'm at Uber", "we're hiring a maps designer"): look up the company's real open design roles yourself instead of asking them to paste a posting, then talk about the relevant one and offer match_job_description with its link. Never describe a company's open roles, teams or postings from memory or guesswork: only roles from the Visitor hints or from find_open_roles. If it finds none, say you couldn't find a listing.
 - Use match_job_description when a visitor pastes a job posting, shares a link to one, or asks whether Hunter would fit a specific role (the links in the Visitor hints' open roles work too once they say they're hiring for one). Pass the text or the link. It returns each requirement with evidence from his own writing, and says where there is none. Answer in two to four sentences: the strongest two or three matches in plain words, naming the project or case study, then any real gap honestly, and never invent experience he doesn't have. Then call capture_lead_intent. If it says it couldn't read the link, ask them to paste the text.
-- Use search_notion for personal or current questions CONTEXT doesn't answer (what he's reading, working on, planning, thinking about), since it searches his Notion live and can be newer than the indexed notes. Treat results like NOTES & DOCUMENTS: paraphrase in plain language, say it's from his notes, never quote private details about other people, and say so plainly if nothing matched.
+- Use query_notion for personal or current questions CONTEXT doesn't answer (what he's reading, working on, planning, did on a given day), since it reads his Notion live and can be newer than the indexed notes. For any question about a day, week or month, don't text-search: describe the database to get its exact property names, then query it with date filters on its date property (work out the dates and year from today's date) and include_content to read the matching pages. Use search for topics, and read to open a page by id. If a call is rejected, fix it from the error and retry. Treat results like NOTES & DOCUMENTS: paraphrase in plain language, say it's from his notes, never quote private details about other people, and say so plainly if nothing matched.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
 - Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data when the answer needs computing (biggest week, month-by-month trend, this year vs last, averages, longest ride) and for any other question his intervals.icu data can answer: sleep, HRV, resting HR, readiness, power curves, FTP, best efforts, gear, planned workouts and races. Don't say you don't have that kind of data before trying it. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight, sleep, HRV, readiness and devices are fine to share as plain numbers and facts ("his sleep score's averaged 82 this month"), without reading anything medical into them. For location, name the places the coordinates fall in (a town, a climb, a park, a road) rather than pasting raw numbers.
 
@@ -1373,11 +1422,15 @@ ${contextForModel}`;
 						const analyzing = steps.some((step) =>
 							step.toolCalls.some((call) => call.toolName === 'analyze_training_data')
 						);
+						// query_notion chains describe -> query -> read, so it gets the longer budget too
+						const chaining =
+							analyzing ||
+							steps.some((step) => step.toolCalls.some((call) => call.toolName === 'query_notion'));
 						if (analyzing && Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
 							turn.analysisDeadlineHit = true;
 							return true;
 						}
-						return steps.length >= (analyzing ? MAX_ANALYSIS_STEPS : MAX_STEPS);
+						return steps.length >= (chaining ? MAX_ANALYSIS_STEPS : MAX_STEPS);
 					},
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,

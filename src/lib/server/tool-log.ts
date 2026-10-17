@@ -3,7 +3,9 @@
 // never page text, posting text or anything a visitor typed.
 
 export type ToolCallLog = {
-	tool: 'search_notion' | 'match_job_description' | 'explain_huntbot' | 'company_roles';
+	tool: 'query_notion' | 'match_job_description' | 'explain_huntbot' | 'company_roles';
+	/** query_notion: which action ran (search / describe / query / read). */
+	action?: string;
 	outcome: string;
 	ms: number;
 	/** How many Notion pages, role listings, doc sections or evidence chunks came back. */
@@ -32,6 +34,7 @@ export function logToolCall(runId: string, call: ToolCallLog): void {
 	const line = JSON.stringify({
 		run_id: runId,
 		tool: call.tool,
+		action: call.action,
 		outcome: call.outcome,
 		ms: call.ms,
 		results: call.results,
@@ -51,11 +54,15 @@ export function toolAnalyticsProps(calls: ToolCallLog[]): Record<string, unknown
 	const find = (tool: ToolCallLog['tool']) => calls.find((c) => c.tool === tool);
 	const roles = find('company_roles');
 	const jd = find('match_job_description');
-	const notion = find('search_notion');
+	const notion = calls.filter((c) => c.tool === 'query_notion');
 	const docs = find('explain_huntbot');
 	return {
 		tool_outcomes: calls.map((c) => `${c.tool}:${c.outcome}`),
-		...(notion && { notion_results: notion.results ?? 0 }),
+		...(notion.length && {
+			notion_calls: notion.length,
+			notion_actions: notion.map((c) => c.action),
+			notion_results: notion.reduce((n, c) => n + (c.results ?? 0), 0)
+		}),
 		...(docs && { self_docs_sections: docs.results ?? 0 }),
 		...(roles && { roles_source: roles.source ?? 'none', roles_count: roles.results ?? 0 }),
 		...(jd && { jd_requirements: jd.requirements ?? 0, jd_gaps: jd.gaps ?? 0, jd_input: jd.input })
