@@ -35,7 +35,7 @@ const OVERALL_TIMEOUT_MS = 3000;
 // opener and find_open_roles). Board discovery is one quick search call.
 const WEB_TIMEOUT_MS = 20_000;
 const WEB_WAIT_TIMEOUT_MS = 40_000;
-const DISCOVERY_TIMEOUT_MS = 12_000;
+const DISCOVERY_TIMEOUT_MS = 15_000;
 const MAX_ROLES = 5;
 const MAX_SLUGS = 4;
 const HIT_TTL_MS = 12 * 60 * 60_000;
@@ -494,6 +494,12 @@ const discoverySchema = z.object({
 		.describe(
 			'URLs of its hosted job boards or job search, e.g. https://acme.wd5.myworkdayjobs.com/External, https://boards.greenhouse.io/acme, https://jobs.lever.co/acme.'
 		),
+	job_posting_urls: z
+		.array(z.string())
+		.max(3)
+		.describe(
+			'Up to 3 URLs of individual open design or product jobs at the company on that platform, as seen in search results. They reveal the platform board (a Workday site name can only be read from a posting URL).'
+		),
 	domain: z.string().nullable().describe("The company's main web domain, e.g. acme.com.")
 });
 type Discovery = z.infer<typeof discoverySchema>;
@@ -501,7 +507,10 @@ type Discovery = z.infer<typeof discoverySchema>;
 async function discoverBoards(org: OrgRef): Promise<Discovery | null> {
 	const storeKey = key(org);
 	const stored = await getRecord('board', storeKey);
-	if (stored && Array.isArray(stored.board_urls)) return stored as unknown as Discovery;
+	// (records from before `job_posting_urls` existed are re-discovered)
+	if (stored && Array.isArray(stored.board_urls) && Array.isArray(stored.job_posting_urls)) {
+		return stored as unknown as Discovery;
+	}
 	if (!env.OPENAI_API_KEY) return null;
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -512,7 +521,7 @@ async function discoverBoards(org: OrgRef): Promise<Discovery | null> {
 			reasoning: 'low',
 			abortSignal: AbortSignal.timeout(DISCOVERY_TIMEOUT_MS),
 			providerOptions: { openai: { reasoningSummary: null } },
-			prompt: `Where does ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''} list its open jobs? Give its careers page and the URLs of the job platform it uses for listings if any (Workday myworkdayjobs.com, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Eightfold or similar), as seen in search results. Don't list job aggregators (LinkedIn, Indeed, Glassdoor). Use null / an empty list when you can't find them; never guess a URL.`
+			prompt: `Where does ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''} list its open jobs? Give its careers page and the URLs of the job platform it uses for listings if any (Workday myworkdayjobs.com, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Eightfold or similar), as seen in search results. Also give up to 3 URLs of individual open design or product job postings on that platform exactly as they appear in search results, because they reveal its board name. Don't list job aggregators (LinkedIn, Indeed, Glassdoor). Use null / an empty list when you can't find them; never guess a URL.`
 		});
 		await putRecord('board', storeKey, output as unknown as Record<string, unknown>);
 		return output;
@@ -626,7 +635,11 @@ async function fromDiscoveredBoards(
 	};
 	const domain =
 		(found.domain ?? org.domain ?? '').replace(/^https?:\/\//, '').replace(/^www\./, '') || null;
-	const urls = [...found.board_urls, ...(found.careers_url ? [found.careers_url] : [])].slice(0, 6);
+	const urls = [
+		...found.job_posting_urls,
+		...found.board_urls,
+		...(found.careers_url ? [found.careers_url] : [])
+	].slice(0, 8);
 	const boards = await Promise.all(urls.map((u) => fromBoardUrl(u, domain).catch(() => null)));
 	// Hosts and counts only: shows what discovery found and which adapter (if any) could read it.
 	console.log('[HuntBot tools] company roles discovery', {
