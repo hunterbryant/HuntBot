@@ -320,10 +320,18 @@ async function resolveDatabase(
 	if (UUID.test(ref.trim())) return { id: ref.trim() };
 	const all = await listDatabases(notion);
 	const want = ref.trim().toLowerCase();
-	const match =
-		all.find((d) => d.title.toLowerCase() === want) ??
-		all.find((d) => d.title.toLowerCase().includes(want) || want.includes(d.title.toLowerCase()));
-	if (match) return { id: match.id };
+	const exact = all.find((d) => d.title.toLowerCase() === want);
+	if (exact) return { id: exact.id };
+	// Several partial matches ("Agenda" vs "Agenda 2024") must not silently pick the first.
+	const partial = all.filter(
+		(d) => d.title.toLowerCase().includes(want) || want.includes(d.title.toLowerCase())
+	);
+	if (partial.length === 1) return { id: partial[0].id };
+	if (partial.length > 1) {
+		return {
+			error: `"${ref}" matches several databases: ${partial.map((d) => `${d.title} (id ${d.id})`).join(', ')}. Pass the id of the right one.`
+		};
+	}
 	return {
 		error: all.length
 			? `No database named "${ref}". Databases he has shared: ${all.map((d) => d.title).join(', ')}.`
@@ -622,11 +630,27 @@ async function runSearch(
 async function runDescribe(notion: Client, req: NotionRequest): Promise<NotionResult> {
 	if (!req.database) {
 		const all = await listDatabases(notion);
+		// A sample of titles per database, since a name like "Agenda" or "Home" says little about
+		// what's in it (and the same kind of page can live in a database with a different name).
+		const samples = await mapLimit(all.slice(0, 20), 4, async (d) => {
+			try {
+				const rows = await notion.databases.query({ database_id: d.id, page_size: 3 });
+				return (rows.results as unknown as Record<string, unknown>[]).map(pageTitle);
+			} catch {
+				return [];
+			}
+		});
+		const lines = all.map((d, i) => {
+			const sample = samples[i]?.length
+				? ` e.g. ${samples[i].map((t) => `"${t}"`).join(', ')}`
+				: '';
+			return `- ${d.title} (id ${d.id})${sample}`;
+		});
 		return {
 			ok: true,
 			action: 'describe',
 			text: all.length
-				? `Databases he has shared:\n${all.map((d) => `- ${d.title} (id ${d.id})`).join('\n')}`
+				? `Databases he has shared:\n${lines.join('\n')}`
 				: 'No databases are shared with this integration.',
 			results: all.length
 		};
