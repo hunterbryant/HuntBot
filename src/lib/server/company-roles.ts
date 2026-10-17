@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import { oneLine } from '$lib/server/clean-text';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
 import { safeFetchText } from '$lib/server/safe-fetch';
 import { describeError } from '$lib/server/tool-log';
@@ -42,7 +43,7 @@ const CACHE_MAX = 200;
 const DESIGN_TITLE =
 	/\b(product design|designer|ux|ui\/ux|user experience|interaction design|visual design|brand design|design system|design research|ux research|content design|design manager|design director|head of design|design lead|design program)/i;
 const NOT_DESIGN =
-	/\b(engineer|verification|physical design|electrical|manufacturing|silicon|asic|circuit|civil|architect(?!ure)|interior|fashion|graphic production)\b/i;
+	/\b(engineer|writer|copywriter|writing|verification|physical design|electrical|manufacturing|silicon|asic|circuit|civil|architect(?!ure)|interior|fashion|graphic production)\b/i;
 
 export function isDesignRole(title: string): boolean {
 	return DESIGN_TITLE.test(title) && !NOT_DESIGN.test(title);
@@ -58,13 +59,6 @@ type Stored = {
 	/** The web agent already ran for this company (and found nothing), so waiting for it again is pointless. */
 	webTried?: boolean;
 };
-
-const oneLine = (t: string, max: number) =>
-	t
-		.replace(/[\u0000-\u001f\u007f]+/g, ' ')
-		.replace(/\s+/g, ' ')
-		.trim()
-		.slice(0, max);
 
 /**
  * Role text comes from third-party job boards and a web agent, and ends up in the system prompt and

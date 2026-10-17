@@ -35,7 +35,7 @@ export function classifyOrg(name: string, domain: string | null): OrgClass {
 
 const cache = new Map<string, { at: number; value: IpOrg | null }>();
 
-function isPublicIp(ip: string): boolean {
+export function isPublicIp(ip: string): boolean {
 	if (!ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.')) return false;
 	if (ip.startsWith('192.168.') || ip.startsWith('169.254.')) return false;
 	if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return false;

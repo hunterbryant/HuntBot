@@ -10,9 +10,9 @@ import {
 	searchRepoCode
 } from '$lib/server/github-repo';
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
-import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
+import { simulatedOrg, type IpOrg } from '$lib/server/ip-org';
 import { matchJobDescription } from '$lib/server/job-match';
-import { allowLookup } from '$lib/server/lookup-limit';
+import { allowCompany, allowLookup } from '$lib/server/lookup-limit';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { queryNotion } from '$lib/server/notion';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
@@ -38,6 +38,12 @@ import {
 	trainingDataFiles,
 	type TrainingCallRecord
 } from '$lib/server/training';
+import {
+	companyAsOrg,
+	logResolution,
+	resolveVisitorCompany,
+	type CompanyResolution
+} from '$lib/server/visitor-company';
 import {
 	buildVisitorContext,
 	formatVisitorContextForPrompt,
@@ -113,6 +119,8 @@ const MAX_STEPS = 3;
 const MAX_ANALYSIS_STEPS = 6;
 // query_notion chains describe -> query -> (titles scan) -> read, so it gets a longer budget.
 const MAX_NOTION_STEPS = 8;
+// How long a turn waits for the company-identification stack before going without it.
+const COMPANY_CAP_MS = 1500;
 
 /** How many steps this turn may use, given the tools it has called so far. */
 function stepLimit(steps: Array<{ toolCalls: Array<{ toolName: string }> }>): number {
@@ -328,6 +336,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				analysisDeadlineHit: false,
 				visitor: null as VisitorContext | null,
 				orgMentioned: false,
+				// The company-identification result for this turn (visitor-company.ts)
+				company: null as CompanyResolution | null,
 				// The visitor used /simulate <Company>: the org is theirs to pick, not their network
 				simulatedOrg: false,
 				// Best vector score of the visitor's message against public content, set only on misses
@@ -349,6 +359,11 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						? { $geoip_disable: true }
 						: { $ip: clientIp ?? undefined, $raw_user_agent: userAgent ?? undefined }),
 					...(gpc ? { gpc: true } : visitorAnalyticsProps(turn.visitor, turn.orgMentioned)),
+					...(!gpc &&
+						turn.company && {
+							visitor_company_layers: turn.company.layers,
+							visitor_company_anonymized: turn.company.anonymized
+						}),
 					$current_url: `${SITE_ORIGIN_PREFIX}${currentPage}`,
 					$pathname: currentPage,
 					is_admin: isAdmin,
@@ -466,13 +481,39 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				const requestedOrg = visitorEnabled
 					? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
 					: null;
-				const simulated = requestedOrg && allowLookup(clientIp) ? requestedOrg : null;
+				const simulated =
+					requestedOrg && allowCompany(clientIp, requestedOrg.name) ? requestedOrg : null;
+				// What they said about where they work counts as "certain", so a made-up name is rate
+				// limited like /simulate (each new name; repeating one is free).
+				const statedRaw = visitorEnabled
+					? simulatedOrg((body.visitor as { statedCompany?: unknown } | undefined)?.statedCompany)
+					: null;
+				const stated = statedRaw && allowCompany(clientIp, statedRaw.name) ? statedRaw : null;
 				turn.simulatedOrg = Boolean(simulated);
-				const orgPromise: Promise<IpOrg | null> = simulated
-					? Promise.resolve(simulated)
-					: visitorEnabled && !gpcRequested
-						? timer.time('ip_org', () => lookupIpOrg(clientIp))
-						: Promise.resolve(null);
+				// Which company they work at, from the identification stack (stated, pixel, referrer, two
+				// reverse-IP providers; see visitor-company.ts). Raced against a short cap, since it gates
+				// the reply: a slow layer is dropped for this turn (its result is cached for the next).
+				const orgPromise: Promise<IpOrg | null> = visitorEnabled
+					? Promise.race([
+							timer
+								.time('visitor_company', () =>
+									resolveVisitorCompany({
+										clientIp,
+										payload: body.visitor,
+										gpc: gpcRequested,
+										simulated,
+										stated,
+										canClassifyReferrer: () => allowLookup(clientIp)
+									})
+								)
+								.then((resolution) => {
+									turn.company = resolution;
+									logResolution(runID, 'chat', resolution);
+									return companyAsOrg(resolution);
+								}),
+							new Promise<null>((resolve) => setTimeout(() => resolve(null), COMPANY_CAP_MS))
+						]).catch(() => null)
+					: Promise.resolve(null);
 				// Open design roles at the visitor's company, when the network is an org. Bounded (~2.8s,
 				// cached 12h) and race-limited below to the length of retrieval: a slow lookup never
 				// delays a reply, it just lands in the cache for the next turn.
@@ -551,7 +592,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						payload: body.visitor,
 						pages: navPages,
 						currentPage,
-						org: visitorOrg
+						org: visitorOrg,
+						company: turn.company?.company ?? null
 					});
 					logRag('visitor context', { ...turn.visitor, org: turn.visitor.org?.orgClass ?? null });
 				}
@@ -905,9 +947,14 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 								.string()
 								.min(2)
 								.max(60)
-								.describe('The company name as the visitor said it, e.g. "Uber".')
+								.describe('The company name as the visitor said it, e.g. "Uber".'),
+							visitor_works_there: z
+								.boolean()
+								.describe(
+									'True only when the visitor said they work at this company or are hiring for it ("I\'m at Uber", "we\'re hiring"); false when they just ask about a company.'
+								)
 						}),
-						execute: async ({ company }) => {
+						execute: async ({ company, visitor_works_there }) => {
 							reportStatus('Looking up open roles…');
 							const name = company
 								.replace(/[^\p{L}\p{N} &.'-]/gu, ' ')
@@ -916,6 +963,11 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 							logRag('tool find_open_roles', { company: name.slice(0, 60) });
 							const t0 = performance.now();
 							if (name.length < 2) return 'That is not a company name I can look up.';
+							// They said where they work: remember it for the rest of the chat (the client
+							// keeps it and sends it back as the "stated" company layer).
+							if (visitor_works_there) {
+								writer.write({ type: 'data-company', data: { name }, transient: true });
+							}
 							const found = await lookupCompanyRoles({ name, domain: null }, { waitForWeb: true });
 							recordTool({
 								tool: 'company_roles',
@@ -1305,7 +1357,7 @@ You are HuntBot, not Hunter. Talk about him in the third person ("Hunter", "he")
 Visitors often talk to you as if you were Hunter ("how do you work?", "are you open to freelance?"). Answer about him in the third person ("He starts with..."). Never claim his work or experiences as your own: "He processed the point cloud in CloudCompare", never "I processed the point cloud".
 
 ## Visitor hints
-The Live details section can include "Visitor hints (internal)": rough signals like how they arrived, their device, their local time, pages they've already read, and sometimes the network they're on. Use them only to choose emphasis, length and date math: skip what they've already read, lean toward work that fits how they arrived, keep it short on a phone. Never say where the visitor came from, their location, device, language or reading history unless they bring it up first. The company on their network is the one exception, and only when the hints list open design roles there: you then ask, proactively, whether they're hiring for the best-matching one (for example "Are you hiring for the Maps designer role at Acme?"). Answer what they asked first, then end that reply with the question as one short extra sentence; when two or three of the listed roles could fit, call ask_visitor with up to three of them as options plus "No, I'm not hiring for these roles" (each option's reply should say they're hiring for that role and ask how Hunter matches it), so it comes with their first real question (skip a bare thanks or hello and ask on the next reply). Ask only once per conversation: if an earlier assistant message already asked about a role (the chat may have opened with it), don't ask again. Never as a greeting or your first words, and always as a question, because the network can belong to a VPN, a coworking space or a parent company and your guess may be wrong. If they say no or don't pick it up, drop it for good. If they say yes or ask how Hunter matches the role, use match_job_description with that role's link from the hints. If the hints don't list roles, never mention their company or network at all. If they ask what you know about them, answer honestly and generally ("rough hints like your device, time zone and how you got here, to tailor answers") without listing specifics unless they ask for them.
+The Live details section can include "Visitor hints (internal)": rough signals like how they arrived, their device, their local time, pages they've already read, and sometimes the company they probably work at (with how it was found). Use them only to choose emphasis, length and date math: skip what they've already read, lean toward work that fits how they arrived, keep it short on a phone. Never say where the visitor came from, their location, device, language or reading history unless they bring it up first. Their company is the one exception, and only when the hints list open design roles there: you then ask, proactively, whether they're hiring for the best-matching one (for example "Are you hiring for the Maps designer role at Acme?"). Answer what they asked first, then end that reply with the question as one short extra sentence; when two or three of the listed roles could fit, call ask_visitor with up to three of them as options plus "No, I'm not hiring for these roles" (each option's reply should say they're hiring for that role and ask how Hunter matches it), so it comes with their first real question (skip a bare thanks or hello and ask on the next reply). Ask only once per conversation: if an earlier assistant message already asked about a role (the chat may have opened with it), don't ask again. Never as a greeting or your first words, and always as a question, because unless the hints say they told you, the company is a guess (from their network, their browser or where they came from) and may be wrong. If the hints say they told you where they work, don't phrase it as a guess. If they say no or don't pick it up, drop it for good. If they say yes or ask how Hunter matches the role, use match_job_description with that role's link from the hints. If the hints don't list roles, never mention their company or network at all. If they ask what you know about them, answer honestly and generally ("rough hints like your device, time zone and how you got here, to tailor answers") without listing specifics unless they ask for them.
 
 ## How Hunter talks
 
@@ -1689,7 +1741,7 @@ ${contextForModel}`;
 					retrieval_failed: turn.retrievalError ? true : undefined,
 					model_failure: turn.modelFailure ?? undefined,
 					excluded_by_audit: turn.excludedByAudit || undefined,
-					ip_org_class: turn.visitor?.org?.orgClass,
+					ip_org_class: turn.company?.ipOrg?.orgClass ?? turn.visitor?.org?.orgClass,
 					...timer.timings
 				})
 			);
