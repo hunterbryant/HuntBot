@@ -2,6 +2,7 @@ import { env } from '$env/dynamic/private';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
 import { CALENDAR_TIMEZONE, formatEventTime, getCalendarEvents } from '$lib/server/calendar';
 import { displayName, lookupCompanyRoles, type CompanyRoles } from '$lib/server/company-roles';
+import { isEvalRequest } from '$lib/server/eval-auth';
 import {
 	getRecentCommits,
 	getRepoInfo,
@@ -239,8 +240,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 	const userAgent = request.headers.get('user-agent');
 	// Eval runs (scripts/eval) authenticate with CRON_SECRET so their turns count as admin traffic
 	// and stay out of the PostHog chat analytics, without needing a login cookie.
-	const evalKey = request.headers.get('x-huntbot-eval');
-	const isEvalRun = Boolean(env.CRON_SECRET) && evalKey === env.CRON_SECRET;
+	const isEvalRun = isEvalRequest(request);
 	const isAdmin = locals.user?.role === UserRole.ADMIN || isEvalRun;
 	// Global Privacy Control, from the header or the browser flag the client sends along. Known
 	// before the pipeline runs, so even a turn that throws early honors it.
@@ -461,9 +461,11 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				// Reverse-IP network lookup (IPinfo Lite) also overlaps classification + retrieval; it
 				// has an 800ms cap, never throws, and is skipped under GPC or without a token.
 				// `/simulate <Company>` in the chat stands in for the lookup (see simulatedOrg).
-				const simulated = visitorEnabled
-					? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
-					: null;
+				// Admin login or the eval header only: the name picks who gets looked up.
+				const simulated =
+					visitorEnabled && isAdmin
+						? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
+						: null;
 				turn.simulatedOrg = Boolean(simulated);
 				const orgPromise: Promise<IpOrg | null> = simulated
 					? Promise.resolve(simulated)

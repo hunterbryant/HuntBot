@@ -11,6 +11,9 @@ import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 
 const MAX_BYTES = 1_000_000;
 const TIMEOUT_MS = 5000;
+// A wall-clock cap for the whole request, so a server that drip-feeds bytes under the idle
+// timeout can't hold a turn open.
+const TOTAL_MS = 12_000;
 const MAX_REDIRECTS = 3;
 const ALLOWED_TYPES = /^(text\/(html|plain)|application\/(xhtml\+xml|json))\b/i;
 
@@ -170,8 +173,14 @@ function once(
 					resolve({ status, location: null, contentType, body: Buffer.concat(chunks) })
 				);
 				stream.on('error', (error) => (truncated ? undefined : reject(error)));
+				// Errors on the raw response don't travel through the decompressor; a connection that
+				// drops mid-body would otherwise leave this promise pending or throw uncaught.
+				if (stream !== res) res.on('error', (error) => stream.destroy(error));
+				res.on('aborted', () => stream.destroy(new Error('connection dropped')));
 			}
 		);
+		const deadline = setTimeout(() => req.destroy(new Error('timed out')), TOTAL_MS);
+		req.on('close', () => clearTimeout(deadline));
 		req.on('timeout', () => req.destroy(new Error('timed out')));
 		req.on('error', reject);
 		req.end();

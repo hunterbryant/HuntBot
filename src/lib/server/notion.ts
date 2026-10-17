@@ -312,13 +312,55 @@ async function listDatabases(notion: Client) {
 	return value;
 }
 
+// Which databases a visitor may look inside. Notion answers anonymous visitors, so "everything the
+// integration can see" is too wide for databases (journals, finances, people notes): by default
+// only the Home database that's already indexed for the chatbot is open. NOTION_DATABASES is a
+// comma-separated list of database names or ids, or "*" for all of them. Pages that aren't in any
+// database stay reachable through search, as before.
+const DEFAULT_DATABASES = ['637fbb5a-0236-401f-a1ee-8e5e05775b5e'];
+const normId = (id: string) => id.replace(/-/g, '').toLowerCase();
+
+/** The allowed database ids (dashes stripped), or null when every database is allowed. */
+async function allowedDatabaseIds(notion: Client): Promise<Set<string> | null> {
+	const raw = (env.NOTION_DATABASES ?? '').trim();
+	if (raw === '*') return null;
+	const entries = raw
+		? raw
+				.split(',')
+				.map((e) => e.trim())
+				.filter(Boolean)
+		: DEFAULT_DATABASES;
+	const ids = new Set<string>();
+	const names: string[] = [];
+	for (const e of entries) {
+		if (UUID.test(e)) ids.add(normId(e));
+		else names.push(e.toLowerCase());
+	}
+	if (names.length) {
+		for (const d of await listDatabases(notion)) {
+			if (names.includes(d.title.toLowerCase())) ids.add(normId(d.id));
+		}
+	}
+	return ids;
+}
+
+/** Databases the visitor may see, by name. */
+async function visibleDatabases(notion: Client) {
+	const [all, allowed] = await Promise.all([listDatabases(notion), allowedDatabaseIds(notion)]);
+	return allowed ? all.filter((d) => allowed.has(normId(d.id))) : all;
+}
+
 /** Resolves a database name (exact, then partial, case-insensitive) or id to its id. */
 async function resolveDatabase(
 	notion: Client,
 	ref: string
 ): Promise<{ id: string } | { error: string }> {
-	if (UUID.test(ref.trim())) return { id: ref.trim() };
-	const all = await listDatabases(notion);
+	const all = await visibleDatabases(notion);
+	if (UUID.test(ref.trim())) {
+		return all.some((d) => normId(d.id) === normId(ref))
+			? { id: ref.trim() }
+			: { error: "That database isn't available." };
+	}
 	const want = ref.trim().toLowerCase();
 	const exact = all.find((d) => d.title.toLowerCase() === want);
 	if (exact) return { id: exact.id };
@@ -472,7 +514,10 @@ export function buildFilter(
 			? TEXT_OPS
 			: prop.type === 'number'
 				? NUMBER_OPS
-				: prop.type === 'date' || timestamp
+				: prop.type === 'date' ||
+					  timestamp ||
+					  prop.type === 'created_time' ||
+					  prop.type === 'last_edited_time'
 					? DATE_OPS
 					: prop.type === 'multi_select'
 						? MULTI_OPS
@@ -496,7 +541,12 @@ export function buildFilter(
 				const n = Number(value);
 				if (!Number.isFinite(n)) return { error: `"${value}" isn't a number (property ${name}).` };
 				condition = n;
-			} else if (prop.type === 'date' || timestamp) {
+			} else if (
+				prop.type === 'date' ||
+				timestamp ||
+				prop.type === 'created_time' ||
+				prop.type === 'last_edited_time'
+			) {
 				if (!DATE_VALUE.test(value)) {
 					return { error: `Dates must be ISO like 2025-09-22 (property ${name}); got "${value}".` };
 				}
@@ -605,7 +655,13 @@ async function runSearch(
 			}),
 		1
 	);
-	const pages = found.results as unknown as Record<string, unknown>[];
+	const allowed = await allowedDatabaseIds(notion);
+	const pages = (found.results as unknown as Record<string, unknown>[]).filter((page) => {
+		const parent = page.parent as { type?: string; database_id?: string } | undefined;
+		return (
+			!allowed || parent?.type !== 'database_id' || allowed.has(normId(parent.database_id ?? ''))
+		);
+	});
 	if (pages.length === 0)
 		return { ok: true, action: 'search', text: 'Nothing matched.', results: 0 };
 
@@ -629,7 +685,7 @@ async function runSearch(
 
 async function runDescribe(notion: Client, req: NotionRequest): Promise<NotionResult> {
 	if (!req.database) {
-		const all = await listDatabases(notion);
+		const all = await visibleDatabases(notion);
 		// A sample of titles per database, since a name like "Agenda" or "Home" says little about
 		// what's in it (and the same kind of page can live in a database with a different name).
 		const samples = await mapLimit(all.slice(0, 20), 4, async (d) => {
@@ -766,11 +822,20 @@ async function runRead(
 		);
 	}
 	const perPage = Math.floor(MAX_CHARS_TOTAL / ids.length);
+	const allowed = await allowedDatabaseIds(notion);
 	const texts = await mapLimit(ids, CONTENT_CONCURRENCY, async (id) => {
 		const page = (await withRetry(
 			() => notion.pages.retrieve({ page_id: id }),
 			1
 		)) as unknown as Record<string, unknown>;
+		const parent = page.parent as { type?: string; database_id?: string } | undefined;
+		if (
+			allowed &&
+			parent?.type === 'database_id' &&
+			!allowed.has(normId(parent.database_id ?? ''))
+		) {
+			return "(That page isn't available.)";
+		}
 		const body = await readPage(notion, page, perPage, deadline);
 		return [`[${pageTitle(page)}] edited ${edited(page)}`, extractPageProperties(page), body]
 			.filter(Boolean)
