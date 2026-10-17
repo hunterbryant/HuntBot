@@ -10,14 +10,17 @@ import {
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
 import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
+import { searchNotion } from '$lib/server/notion';
 import { captureServerEvent, isAnalyticsEnabled, runInBackground } from '$lib/server/posthog';
 import { isSandboxAvailable, runPython } from '$lib/server/python-sandbox';
 import { classifyQueryLane, type LaneDecision, type QueryLane } from '$lib/server/query-lane';
 import { logRag } from '$lib/server/rag-debug';
 import { sendRagReflectionToPosthog } from '$lib/server/rag-reflection';
 import { planSupplementalSearches } from '$lib/server/rag-router';
+import { explainHuntBot } from '$lib/server/self-docs';
 import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
+import { logToolCall, toolAnalyticsProps, type ToolCallLog } from '$lib/server/tool-log';
 import {
 	checkDateRange,
 	formatTrainingTotals,
@@ -302,6 +305,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				// One record per get_training_totals / analyze_training_data call, and whether
 				// the turn ran out of time for more analysis (ANALYSIS_DEADLINE_MS).
 				trainingCalls: [] as TrainingCallRecord[],
+				// Notion, job matching, self-docs and the company-role lookup (see tool-log.ts).
+				toolCalls: [] as ToolCallLog[],
 				analysisDeadlineHit: false,
 				visitor: null as VisitorContext | null,
 				orgMentioned: false,
@@ -348,6 +353,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						? JSON.stringify(turn.serverTools.map((t) => ({ [t.name]: t.input })))
 						: null,
 					...trainingAnalyticsProps(turn.trainingCalls, turn.analysisDeadlineHit),
+					...toolAnalyticsProps(turn.toolCalls),
 					context_confidence: turn.contextConfidence,
 					context_answers_question: turn.contextAnswersQuestion,
 					context_excluded_by_audit: turn.excludedByAudit,
@@ -644,6 +650,11 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					logTrainingCall(runID, record);
 				};
 				const msSince = (t0: number) => Math.round(performance.now() - t0);
+				// Logs one [HuntBot tools] line and keeps the record for the PostHog event.
+				const recordTool = (call: ToolCallLog) => {
+					turn.toolCalls.push(call);
+					logToolCall(runID, call);
+				};
 
 				const tools = {
 					minimize_chat: tool({
@@ -820,6 +831,66 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 										: `${formatEventTime(e.start)}–${formatEventTime(e.end)} ${e.title}`
 								)
 								.join('\n');
+						}
+					}),
+					search_notion: tool({
+						description:
+							"Search Hunter's Notion live for notes, plans, lists and writing that CONTEXT doesn't cover, or that may have changed recently (what he's reading, working on, planning, thinking about). Returns the text of the best few matching pages with their last-edited dates, no links. Use it after CONTEXT comes up short on a personal or current-events question about Hunter, not for his portfolio work (that's in CONTEXT).",
+						inputSchema: z.object({
+							query: z.string().describe('What to look for in his notes, in a few plain words.')
+						}),
+						execute: async ({ query }) => {
+							reportStatus('Searching his notes…');
+							logRag('tool search_notion', { query: query.slice(0, 200) });
+							const t0 = performance.now();
+							const result = await searchNotion(query);
+							if (!result.ok) {
+								recordTool({
+									tool: 'search_notion',
+									outcome: result.reason,
+									ms: msSince(t0)
+								});
+								return result.reason === 'not_configured'
+									? 'Notion is not connected.'
+									: 'Could not search Notion right now.';
+							}
+							recordTool({
+								tool: 'search_notion',
+								outcome: result.hits.length ? 'ok' : 'empty',
+								ms: msSince(t0),
+								results: result.hits.length
+							});
+							if (result.hits.length === 0) return 'Nothing in his notes matched that.';
+							return [
+								"From Hunter's Notion (live, not the indexed notes):",
+								...result.hits.map(
+									(h) => `[${h.title}${h.lastEdited ? `, edited ${h.lastEdited}` : ''}]\n${h.text}`
+								)
+							].join('\n\n---\n\n');
+						}
+					}),
+					explain_huntbot: tool({
+						description:
+							'Look up how HuntBot itself works, from its own write-ups: the Building HuntBot post on this site and the repo\'s docs. Use it for "how do you work", "what model are you", "how were you built", "what can you do", "how do you remember things" and similar. Returns the most relevant sections with their source. Use read_github_file or search_repo_code afterwards only when someone wants code-level detail.',
+						inputSchema: z.object({
+							question: z.string().describe("The visitor's question about how HuntBot works.")
+						}),
+						execute: async ({ question }) => {
+							reportStatus('Checking how I work…');
+							logRag('tool explain_huntbot', { question: question.slice(0, 200) });
+							const t0 = performance.now();
+							const sections = await explainHuntBot(question);
+							if (!sections) {
+								recordTool({ tool: 'explain_huntbot', outcome: 'failed', ms: msSince(t0) });
+								return 'Could not load my own write-ups right now.';
+							}
+							recordTool({
+								tool: 'explain_huntbot',
+								outcome: sections.length ? 'ok' : 'empty',
+								ms: msSince(t0),
+								results: sections.length
+							});
+							return sections.map((s) => `[${s.label}]\n${s.text}`).join('\n\n---\n\n');
 						}
 					}),
 					get_training_totals: tool({
@@ -1133,7 +1204,8 @@ Never fill gaps with training-data knowledge about companies or tech if CONTEXT 
 - Use reset_conversation only when the visitor clearly asks to clear or restart the chat. (Typing "clear" already does it instantly, so mention that if they ask how.)
 - Use ask_clarifying_question sparingly — only when you genuinely cannot give a useful answer without more info. If you have relevant context, share it. Never ask a clarifying question when the visitor is already on a specific page. Don't ask clarifying questions back-to-back.
 - Use capture_lead_intent when a visitor signals hiring or project interest, or asks how to contact Hunter, whether he's available (freelance, fractional, full-time), or what kind of collaborations he takes on. Answer what they asked in text first, then call it in the same response; it adds a contact card under your reply. If they're asking to be convinced ("why should I hire him", "what makes him different", "would he fit a role like X"), that text is the pitch: two to four sentences from ABOUT HUNTER and CONTEXT, specific (a role, something he shipped, the kind of problem he's best at), same voice rules, no hype. For availability, say what ABOUT HUNTER says; if it says nothing, say the quickest way to find out is to ask him. The card already shows his LinkedIn and email, so don't repeat contact info in text. Never answer these with "I don't have that".
-- HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for any question about how HuntBot or the site is built, what model or stack it uses, or what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
+- HuntBot itself (this chatbot and the site it lives on) is one of Hunter's projects, and the go-to answer for questions about his AI or chatbot work. For "how do you work", "what model are you", "how were you built", "what can you do" and the like, call explain_huntbot first: it reads HuntBot's own write-ups, and its Building HuntBot post is the plain-language source, so name that post in your answer. Use read_github_file, get_recent_commits, get_repo_info, and search_repo_code for code-level detail and for what's changed on the site or in the code recently ("what's new", "latest update", "recent features") — reach for get_recent_commits before saying you don't know. Never use them for questions about Hunter's design work. Summarize what you read in plain language, same length/tone rules as everything else — never paste raw code, diffs, or commit/file lists verbatim into a reply.
+- Use search_notion for personal or current questions CONTEXT doesn't answer (what he's reading, working on, planning, thinking about), since it searches his Notion live and can be newer than the indexed notes. Treat results like NOTES & DOCUMENTS: paraphrase in plain language, say it's from his notes, never quote private details about other people, and say so plainly if nothing matched.
 - Use get_calendar_events for questions about Hunter's schedule or what he was/is up to on a specific date. If the year is missing, assume the most recent past occurrence of that date instead of asking. It only returns event titles and times — never invent attendees, locations, or details beyond the title. If a title is vague ("Sync", "Hold"), say so plainly rather than guessing what it's about.
 - Hunter rides a lot (and runs some). For how much he's trained over a period ("how much did he bike this year"), use get_training_totals. Use analyze_training_data when the answer needs computing (biggest week, month-by-month trend, this year vs last, averages, longest ride) and for any other question his intervals.icu data can answer: sleep, HRV, resting HR, readiness, power curves, FTP, best efforts, gear, planned workouts and races. Don't say you don't have that kind of data before trying it. Answer in miles, hours and feet, rounded ("about 4,100 miles"), one or two sentences, never a table. Totals come in whole weeks, so say "about" when the range edges matter. If a per-activity answer may be missing Strava-synced rides, say it's from the rides you can see. Ride names, start times, heart rate, weight, sleep, HRV, readiness and devices are fine to share as plain numbers and facts ("his sleep score's averaged 82 this month"), without reading anything medical into them. For location, name the places the coordinates fall in (a town, a climb, a park, a road) rather than pasting raw numbers.
 

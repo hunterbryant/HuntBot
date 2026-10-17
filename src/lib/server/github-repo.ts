@@ -21,7 +21,8 @@ async function githubApiFetch(url: string): Promise<Response | null> {
  * chat tool always reflects the current code, no re-indexing step required.
  */
 export async function readRepoFile(
-	path: string
+	path: string,
+	{ maxChars = MAX_CHARS }: { maxChars?: number } = {}
 ): Promise<{ content: string; truncated: boolean } | null> {
 	// Path traversal / absolute-path guard — raw.githubusercontent.com would 404 on these
 	// anyway, but reject before making the request.
@@ -34,8 +35,8 @@ export async function readRepoFile(
 		const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
 		if (!res.ok) return null;
 		const text = await res.text();
-		const truncated = text.length > MAX_CHARS;
-		return { content: truncated ? text.slice(0, MAX_CHARS) : text, truncated };
+		const truncated = text.length > maxChars;
+		return { content: truncated ? text.slice(0, maxChars) : text, truncated };
 	} catch {
 		return null;
 	}
