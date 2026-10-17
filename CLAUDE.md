@@ -145,5 +145,5 @@ Tailwind utilities everywhere (no CSS files beyond `app.css`, which loads the fo
 - [docs/visitor-context.md](docs/visitor-context.md): visitor hints and privacy rules (GPC, never-mention).
 - [docs/knowledge-base.md](docs/knowledge-base.md): embedding sources, the chunk audit, the Qdrant keepalive.
 - [docs/observability.md](docs/observability.md): log lines and PostHog events; read before adding either.
-- [docs/evals.md](docs/evals.md): the tool eval harness (`pnpm eval`) and how to add cases. Run it on a preview after changing a tool or the prompt.
+- [docs/evals.md](docs/evals.md): the tool eval harness (`pnpm eval`) and how to add cases. Slow and costs tokens, so run it occasionally (before merging a big tool or prompt change), not after every edit.
 - [docs/site-story/README.md](docs/site-story/README.md): how the Building HuntBot page's figures are built and published.

@@ -8,7 +8,7 @@ pnpm eval --group notion          # notion | calendar | training | self | jobs |
 pnpm eval --id notion-last-week-sept --verbose   # prints every tool call and its output
 ```
 
-- `EVAL_BASE_URL` (required): the deployment to hit. It uses real models and Hunter's real data, so it costs tokens; run it on a preview after changing a tool or the prompt, not in CI.
+- `EVAL_BASE_URL` (required): the deployment to hit. It uses real models and Hunter's real data, so it costs tokens; run it occasionally on a preview (before merging a big tool or prompt change), not after every edit and not in CI.
 - `EVAL_CRON_SECRET`: the deployment's `CRON_SECRET`. Sent as `x-huntbot-eval`; the chat route then treats the turn as admin traffic (`is_admin`), so PostHog ignores it.
 - `EVAL_BYPASS_SECRET`: the project's Deployment Protection automation bypass secret, for previews behind Vercel auth.
 - Exit code 1 if any case fails.
