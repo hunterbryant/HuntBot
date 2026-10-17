@@ -1,158 +1,18 @@
 import { env } from '$env/dynamic/private';
+import {
+	extractPageProperties,
+	getBlockChildren,
+	NOTION_REQUEST_SPACING_MS,
+	sleep,
+	withRetry
+} from '$lib/server/notion';
 import { OpenAIEmbeddings } from '@langchain/openai';
 import { QdrantVectorStore } from '@langchain/qdrant';
 import { Client } from '@notionhq/client';
-import type { BlockObjectResponse } from '@notionhq/client/build/src/api-endpoints';
 import { Document } from 'langchain/document';
 import { MarkdownTextSplitter } from 'langchain/text_splitter';
 
 const DATABASE_ID = '637fbb5a0236401fa1ee8e5e05775b5e';
-
-function getPlainText(richTextArray: Array<{ plain_text: string }>): string {
-	return richTextArray.map((t) => t.plain_text).join('');
-}
-
-function extractPageProperties(page: Record<string, unknown>): string {
-	const properties = page.properties as Record<string, Record<string, unknown>>;
-	const lines: string[] = [];
-
-	for (const [key, prop] of Object.entries(properties)) {
-		const type = prop.type as string;
-		let value = '';
-
-		if (type === 'title') {
-			value = getPlainText((prop.title as Array<{ plain_text: string }>) || []);
-		} else if (type === 'rich_text') {
-			value = getPlainText((prop.rich_text as Array<{ plain_text: string }>) || []);
-		} else if (type === 'select' && prop.select) {
-			value = (prop.select as { name: string }).name;
-		} else if (type === 'multi_select') {
-			value = ((prop.multi_select as Array<{ name: string }>) || []).map((s) => s.name).join(', ');
-		} else if (type === 'number' && prop.number != null) {
-			value = String(prop.number);
-		} else if (type === 'date' && prop.date) {
-			const d = prop.date as { start: string; end?: string };
-			value = d.end ? `${d.start} → ${d.end}` : d.start;
-		} else if (type === 'url' && prop.url) {
-			value = prop.url as string;
-		} else if (type === 'checkbox') {
-			value = prop.checkbox ? 'Yes' : 'No';
-		} else if (type === 'email' && prop.email) {
-			value = prop.email as string;
-		} else if (type === 'phone_number' && prop.phone_number) {
-			value = prop.phone_number as string;
-		} else if (type === 'status' && prop.status) {
-			value = (prop.status as { name: string }).name;
-		}
-
-		if (value) lines.push(`${key}: ${value}`);
-	}
-
-	return lines.join('\n');
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((r) => setTimeout(r, ms));
-}
-
-// Notion's API averages ~3 requests/second; stay under that between calls
-// so recursive block-children fetches don't trip rate limiting.
-const NOTION_REQUEST_SPACING_MS = 350;
-
-async function getBlockChildren(notion: Client, blockId: string): Promise<string> {
-	const lines: string[] = [];
-	let cursor: string | undefined;
-
-	do {
-		const response = await withRetry(() =>
-			notion.blocks.children.list({
-				block_id: blockId,
-				start_cursor: cursor,
-				page_size: 100
-			})
-		);
-		await sleep(NOTION_REQUEST_SPACING_MS);
-
-		for (const block of response.results) {
-			const b = block as BlockObjectResponse;
-			const text = blockToMarkdown(b);
-			if (text) lines.push(text);
-
-			if (b.has_children) {
-				const childText = await getBlockChildren(notion, b.id);
-				if (childText) lines.push(childText);
-			}
-		}
-
-		cursor = response.has_more ? (response.next_cursor ?? undefined) : undefined;
-	} while (cursor);
-
-	return lines.join('\n');
-}
-
-function blockToMarkdown(block: BlockObjectResponse): string {
-	const type = block.type;
-	const data = block[type as keyof typeof block] as Record<string, unknown> | undefined;
-	if (!data) return '';
-
-	const richText = data.rich_text as Array<{ plain_text: string }> | undefined;
-	const text = richText ? getPlainText(richText) : '';
-
-	switch (type) {
-		case 'paragraph':
-			return text;
-		case 'heading_1':
-			return `# ${text}`;
-		case 'heading_2':
-			return `## ${text}`;
-		case 'heading_3':
-			return `### ${text}`;
-		case 'bulleted_list_item':
-			return `- ${text}`;
-		case 'numbered_list_item':
-			return `1. ${text}`;
-		case 'to_do': {
-			const checked = (data.checked as boolean) ? 'x' : ' ';
-			return `- [${checked}] ${text}`;
-		}
-		case 'toggle':
-		case 'quote':
-		case 'callout':
-			return `> ${text}`;
-		case 'code':
-			return `\`\`\`\n${text}\n\`\`\``;
-		case 'divider':
-			return '---';
-		case 'bookmark':
-		case 'link_preview':
-			return (data.url as string) || '';
-		case 'table_row': {
-			const cells = data.cells as Array<Array<{ plain_text: string }>>;
-			return '| ' + cells.map((cell) => getPlainText(cell)).join(' | ') + ' |';
-		}
-		default:
-			return text;
-	}
-}
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
-	for (let attempt = 0; attempt <= retries; attempt++) {
-		try {
-			return await fn();
-		} catch (err) {
-			const msg = String(err);
-			const is429 = msg.includes('429') || msg.includes('rate') || msg.includes('quota');
-			if (is429 && attempt < retries) {
-				const delay = 2000 * Math.pow(2, attempt); // 2s, 4s, 8s
-				console.warn(`Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`);
-				await new Promise((r) => setTimeout(r, delay));
-				continue;
-			}
-			throw err;
-		}
-	}
-	throw new Error('Unreachable');
-}
 
 export async function GET() {
 	console.log('Server Notion embed API endpoint hit');
@@ -191,7 +51,9 @@ export async function GET() {
 
 				// 2. Validate env vars before touching any pages — fail fast instead of skipping everything
 				if (!env.QDRANT_URL?.startsWith('http')) {
-					throw new Error(`QDRANT_URL is missing or invalid: "${env.QDRANT_URL}". Must start with https://`);
+					throw new Error(
+						`QDRANT_URL is missing or invalid: "${env.QDRANT_URL}". Must start with https://`
+					);
 				}
 				if (!env.QDRANT_API_KEY) throw new Error('QDRANT_API_KEY is not set');
 				if (!env.QDRANT_COLLECTION) throw new Error('QDRANT_COLLECTION is not set');

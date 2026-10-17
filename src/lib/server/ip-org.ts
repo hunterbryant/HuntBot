@@ -18,7 +18,8 @@ const CACHE_TTL_MS = 60 * 60 * 1000;
 const CACHE_MAX = 500;
 
 // Networks that say "this is a consumer connection or a datacenter", not "this is a company".
-const MOBILE = /\b(t-?mobile|verizon wireless|cellco|vodafone|orange|telefonica|o2|mobile|wireless|cellular|lte)\b/i;
+const MOBILE =
+	/\b(t-?mobile|verizon wireless|cellco|vodafone|orange|telefonica|o2|mobile|wireless|cellular|lte)\b/i;
 const ISP =
 	/\b(comcast|xfinity|verizon|at&t|att|charter|spectrum|cox|centurylink|lumen|frontier|optimum|altice|sky|bt|virgin media|telekom|telstra|rogers|bell canada|shaw|telus|swisscom|proximus|kpn|ziggo|free sas|bouygues|sfr|wind tre|tim|broadband|cable|telecom|communications|internet service|fibre|fiber|dsl|isp)\b/i;
 const HOSTING =
@@ -79,10 +80,25 @@ export async function lookupIpOrg(ip: string | null): Promise<IpOrg | null> {
 	return value;
 }
 
+/**
+ * A company name typed by the visitor with `/simulate <Company>` (a way to see the open-role
+ * opener without being on a company network). Only names that look like names get through; the
+ * result is treated like a real company network for that visitor's own chat.
+ */
+export function simulatedOrg(value: unknown): IpOrg | null {
+	if (typeof value !== 'string') return null;
+	const name = value.trim();
+	if (!/^[\p{L}\p{N} .&'’-]{2,60}$/u.test(name)) return null;
+	return { name, domain: null, countryCode: null, orgClass: 'org' };
+}
+
 /** Strips legal suffixes and punctuation so "ACME-CORP, INC." can be matched in reply text. */
 export function coreOrgName(name: string): string {
 	return name
-		.replace(/\b(inc|llc|ltd|limited|corp|corporation|co|gmbh|plc|sa|ag|as|asn|autonomous system)\b\.?/gi, '')
+		.replace(
+			/\b(inc|llc|ltd|limited|corp|corporation|co|gmbh|plc|sa|ag|as|asn|autonomous system)\b\.?/gi,
+			''
+		)
 		.replace(/[^a-z0-9 ]+/gi, ' ')
 		.replace(/\s+/g, ' ')
 		.trim();

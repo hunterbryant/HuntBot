@@ -26,9 +26,11 @@
 		fetchScrollSuggestions,
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
+		triggerRoleOpener,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
+		getMessageOptions,
 		streamingAssistantHasText,
 		getStreamingStatus,
 		restoredMessageIds,
@@ -125,9 +127,13 @@
 	type SuggestionType = 'post_message' | 'starter' | 'hover' | 'scroll';
 	type ActiveSuggestions = { items: string[]; type: SuggestionType | null };
 	const activeSuggestions = derived(
-		[messages, hoverSuggestions, scrollSuggestions, suggestions],
-		([$msgs, $hover, $scroll, $sugg]): ActiveSuggestions => {
+		[messages, hoverSuggestions, scrollSuggestions, suggestions, isLoading],
+		([$msgs, $hover, $scroll, $sugg, $loading]): ActiveSuggestions => {
 			const hasUser = $msgs.some((m) => m.role === 'user');
+			// A question with its own tappable answers is on screen: no other chips beside it.
+			const last = $msgs[$msgs.length - 1];
+			// (Only once the reply has finished, which is when the options render.)
+			if (last && !$loading && getMessageOptions(last).length > 0) return { items: [], type: null };
 			if (!readyForSuggestions && !hasUser) return { items: [], type: null };
 			if (hasUser) {
 				if ($sugg.length > 0) return { items: $sugg, type: 'post_message' };
@@ -173,6 +179,12 @@
 	// Clear suggestions when user starts typing
 	$: if ($input && $input.trim() !== '') {
 		suggestions.set([]);
+	}
+
+	// Open-role opener: the first time the chat opens with no conversation, the server may ask
+	// whether the visitor is hiring for a role at their company (see triggerRoleOpener).
+	$: if (!$minimized && !$messages.some((m) => m.role === 'user')) {
+		triggerRoleOpener();
 	}
 
 	// Proactive page-aware opener: fire when user navigates to a project/case study
@@ -561,7 +573,7 @@
 			{#if isScrolling && !scrolledToBottom}
 				<div
 					transition:fade|global
-					class="sticky top-[calc(100%-6rem)] mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white dark:to-black"
+					class="sticky top-[calc(100%-6rem)] z-10 mx-0 -mt-20 block h-24 w-full bg-gradient-to-b from-transparent to-white dark:to-black"
 				>
 					<button
 						on:click={() => {
@@ -595,6 +607,8 @@
 							animate={shouldAnimate(message.id)}
 							sources={getMessageSources(message)}
 							related={getMessageRelated(message)}
+							options={i === $messages.length - 1 && !$isLoading ? getMessageOptions(message) : []}
+							onOption={(option) => selectSuggestion(option.reply, 'option')}
 						/>
 					{:else if (message.role as string) === 'data'}
 						<ActionMessage value={message as unknown as FunctionMessage} />

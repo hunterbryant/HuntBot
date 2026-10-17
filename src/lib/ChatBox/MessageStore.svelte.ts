@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
-import { getVisitorContext } from '$lib/visitorContext';
+import { getSimulatedOrg, getVisitorContext, hasGpc, setSimulatedOrg } from '$lib/visitorContext';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
@@ -95,6 +95,77 @@ export async function triggerProactiveOpener(
 		// Silently fail — proactive opener is best-effort
 	}
 }
+
+const ROLE_OPENER_KEY = 'huntbot_role_opener_v1';
+
+/**
+ * Once per browser session, the first time the chat opens with no conversation: if the visitor's
+ * network is a company with open design roles, HuntBot asks whether they're hiring for one. The
+ * server returns nothing under Global Privacy Control or for non-company networks.
+ */
+export async function triggerRoleOpener(simulate?: string): Promise<void> {
+	// `/simulate` always asks again; otherwise once per browser session
+	if (!simulate) {
+		try {
+			if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
+			sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+		} catch {
+			// storage blocked: ask at most once per page load instead
+			if (roleOpenerAsked) return;
+		}
+	}
+	roleOpenerAsked = true;
+	try {
+		const response = await fetch('/api/chat/role-opener', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				visitor: { gpc: hasGpc() },
+				simulateOrg: simulate ?? getSimulatedOrg() ?? undefined
+			})
+		});
+		if (!response.ok) return;
+		const data = await response.json();
+		if (!chatInstance) return;
+		if (!data.message) {
+			if (simulate) {
+				chatInstance.messages = [
+					...chatInstance.messages,
+					{
+						id: 'role-opener-' + Date.now(),
+						role: 'assistant' as const,
+						parts: [
+							{
+								type: 'text' as const,
+								text: `Simulating ${simulate}, but I couldn't find open design roles there.`
+							}
+						]
+					}
+				];
+			}
+			return;
+		}
+		// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
+		if (chatInstance.messages.some((m) => m.role === 'user')) return;
+		chatInstance.messages = [
+			...chatInstance.messages,
+			{
+				id: 'role-opener-' + Date.now(),
+				role: 'assistant' as const,
+				parts: [
+					{ type: 'text' as const, text: data.message },
+					...(Array.isArray(data.options) && data.options.length
+						? [{ type: 'data-options' as const, data: { options: data.options } }]
+						: [])
+				] as UIMessage['parts']
+			}
+		];
+		captureEvent('role_opener_shown', SESSION_ID, { session_id: SESSION_ID });
+	} catch {
+		// best-effort, like the page opener
+	}
+}
+let roleOpenerAsked = false;
 
 export function fetchScrollSuggestions(
 	currentPage: string,
@@ -197,7 +268,7 @@ export async function fetchSuggestions(messages: UIMessage[], currentPage: strin
 }
 
 const greetingResponse: string =
-	"Yeah, another chatbot — I know. But I'm wired into Hunter's site, so I can actually talk about the work. Ask me anything.\nNot interested? Minimize me up top ↗";
+	"Yeah, another chatbot — I know. But I'm wired into Hunter's site, so I can actually talk about the work. Ask me anything.";
 
 const initMessage: UIMessage = {
 	id: 'initialmessage',
@@ -210,7 +281,7 @@ let chatInstance: Chat | null = null;
 /** Ids of messages restored from storage, so the UI doesn't replay their reveal animation. */
 export const restoredMessageIds = new Set<string>();
 
-const SAVED_PART_TYPES = new Set(['text', 'source-url', 'data-related']);
+const SAVED_PART_TYPES = new Set(['text', 'source-url', 'data-related', 'data-options']);
 
 /** Only what's worth showing again: replies, sources, related chips and the contact card. */
 function sanitizeForStorage(messages: UIMessage[]): UIMessage[] {
@@ -274,6 +345,21 @@ function loadSavedChat(): UIMessage[] | null {
 
 // Typing "clear" works like a terminal: instant, no model call.
 const RESET_COMMAND = /^\/?(clear|reset|start over|new chat)[.!]?$/i;
+// `/simulate Airbnb` restarts the chat as if the visitor were on that company's network;
+// `/simulate off` goes back to normal. Not advertised anywhere.
+const SIMULATE_COMMAND = /^\/simulate(?:\s+(.+))?$/i;
+
+/** Handles `/simulate`; returns true when the text was that command. */
+function runSimulateCommand(text: string): boolean {
+	const match = SIMULATE_COMMAND.exec(text.trim());
+	if (!match) return false;
+	const name = match[1]?.trim();
+	const off = !name || /^(off|none|reset)$/i.test(name);
+	setSimulatedOrg(off ? null : name);
+	resetChat('command');
+	if (!off) void triggerRoleOpener(name);
+	return true;
+}
 
 /** Wipes the conversation (and its saved copy) back to the greeting. */
 export function resetChat(trigger: 'command' | 'tool') {
@@ -313,6 +399,44 @@ export function getMessageSources(message: UIMessage): { url: string; title?: st
 		}
 	}
 	return sources;
+}
+
+/** A tappable answer under a bot question: chip text, and what is sent when it's tapped. */
+export type ChatOption = { label: string; reply: string };
+
+/** True when the reply text already asks the question (reworded copies count: the model writes both). */
+function alreadyAsked(text: string, question: string): boolean {
+	const norm = (s: string) =>
+		s
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, ' ')
+			.trim();
+	return norm(text).includes(norm(question)) || /\?["')\]]*\s*$/.test(text.trim());
+}
+
+function cleanOptions(raw: unknown): ChatOption[] {
+	if (!Array.isArray(raw)) return [];
+	const out: ChatOption[] = [];
+	for (const o of raw as { label?: unknown; reply?: unknown }[]) {
+		const label = typeof o?.label === 'string' ? o.label.trim().slice(0, 80) : '';
+		if (!label) continue;
+		const reply =
+			typeof o.reply === 'string' && o.reply.trim() ? o.reply.trim().slice(0, 300) : label;
+		if (out.some((x) => x.label === label)) continue;
+		out.push({ label, reply });
+		if (out.length === 5) break;
+	}
+	return out;
+}
+
+/** Tappable answers attached to a reply (`data-options` part, from `ask_visitor` or the role opener). */
+export function getMessageOptions(message: UIMessage): ChatOption[] {
+	for (const p of message.parts) {
+		if (p.type === 'data-options') {
+			return cleanOptions((p as { data?: { options?: unknown } }).data?.options);
+		}
+	}
+	return [];
 }
 
 /** Closest site pages the server attached to a reply that came up empty (`data-related` part). */
@@ -442,7 +566,9 @@ export const chat = () => {
 			value = v;
 			return '';
 		});
-		if (RESET_COMMAND.test(value.trim())) {
+		if (runSimulateCommand(value)) {
+			// handled
+		} else if (RESET_COMMAND.test(value.trim())) {
 			resetChat('command');
 		} else if (value.trim()) {
 			instance.sendMessage({ text: value.trim() });
@@ -451,6 +577,7 @@ export const chat = () => {
 
 	async function append(message: { role: string; content: string }) {
 		if (message.role === 'user') {
+			if (runSimulateCommand(message.content)) return;
 			if (RESET_COMMAND.test(message.content.trim())) resetChat('command');
 			else await instance.sendMessage({ text: message.content });
 		}
@@ -562,19 +689,24 @@ function handleToolCall(toolCall: {
 		setTimeout(() => {
 			goto(`${args.page}`);
 		}, 400);
-	} else if (toolCall.toolName === 'ask_clarifying_question') {
-		const args = toolCall.args as { question: string };
+	} else if (toolCall.toolName === 'ask_visitor') {
+		const args = toolCall.args as { question?: string; options?: ChatOption[] };
+		const options = cleanOptions(args.options);
+		const question = args.question?.trim();
+		// Keep what the model already wrote; add the question only when it says something new.
+		const text =
+			streamedText && question && !alreadyAsked(streamedText, question)
+				? `${streamedText}\n\n${question}`
+				: streamedText || question || "Could you tell me a bit more about what you're looking for?";
 		chatInstance.messages = [
 			...baseMessages,
 			{
 				id: generateId(),
 				role: 'assistant',
 				parts: [
-					{
-						type: 'text',
-						text: args.question ?? "Could you tell me a bit more about what you're looking for?"
-					}
-				]
+					{ type: 'text', text },
+					...(options.length ? [{ type: 'data-options', data: { options } }] : [])
+				] as UIMessage['parts']
 			}
 		];
 	} else if (toolCall.toolName === 'capture_lead_intent') {

@@ -57,7 +57,7 @@
 			<img src={caretdown} alt="Caret down icon" class="m-auto flex-none" />
 		</button>
 		<hr
-			class="absolute inset-x-2 top-14 border-stone-200 peer-focus:hidden dark:border-stone-700"
+			class="absolute inset-x-2 top-14 z-20 border-stone-200 peer-focus:hidden dark:border-stone-700"
 		/>
 	{/if}
 </div>

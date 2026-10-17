@@ -1,4 +1,5 @@
 import { env } from '$env/dynamic/private';
+import type { CompanyRoles } from '$lib/server/company-roles';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
 import type { NavPage } from '$lib/server/site-nav-routes';
 
@@ -33,7 +34,11 @@ export function visitorContextEnabled(): boolean {
 
 function bucketReferrer(domain: string): string {
 	if (/(^|\.)(linkedin\.com|lnkd\.in)$/.test(domain)) return 'linkedin';
-	if (/(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|ecosia\.org|search\.brave\.com|kagi\.com)$/.test(domain))
+	if (
+		/(^|\.)(google\.[a-z.]+|bing\.com|duckduckgo\.com|ecosia\.org|search\.brave\.com|kagi\.com)$/.test(
+			domain
+		)
+	)
 		return 'search';
 	if (
 		/(^|\.)(twitter\.com|x\.com|t\.co|facebook\.com|instagram\.com|reddit\.com|threads\.net|bsky\.app|news\.ycombinator\.com|dribbble\.com|behance\.net)$/.test(
@@ -76,10 +81,9 @@ export function buildVisitorContext(options: {
 	org: IpOrg | null;
 }): VisitorContext {
 	const { request, pages, currentPage } = options;
-	const raw = (options.payload && typeof options.payload === 'object' ? options.payload : {}) as Record<
-		string,
-		unknown
-	>;
+	const raw = (
+		options.payload && typeof options.payload === 'object' ? options.payload : {}
+	) as Record<string, unknown>;
 
 	const gpc = request.headers.get('sec-gpc') === '1' || raw.gpc === true;
 
@@ -120,7 +124,8 @@ export function buildVisitorContext(options: {
 			if (typeof e?.path !== 'string' || e.path === currentPage) continue;
 			const page = byPath.get(e.path);
 			if (!page) continue;
-			const seconds = typeof e.seconds === 'number' && e.seconds >= 0 ? Math.min(e.seconds, 3600) : 0;
+			const seconds =
+				typeof e.seconds === 'number' && e.seconds >= 0 ? Math.min(e.seconds, 3600) : 0;
 			const prev = seen.get(e.path);
 			if (prev) prev.seconds += seconds;
 			else seen.set(e.path, { title: page.displayTitle, kind: pageKind(page.category), seconds });
@@ -152,12 +157,20 @@ function dwell(seconds: number): string {
 	return `~${Math.round(seconds / 60)} min`;
 }
 
-/** The "Visitor hints" block for the Live details section. Empty string when there's nothing to say. */
-export function formatVisitorContextForPrompt(ctx: VisitorContext): string {
+/**
+ * The "Visitor hints" block for the Live details section. Empty string when there's nothing to say.
+ * `roles` are open design roles at the company the visitor's network belongs to, when one was found.
+ */
+export function formatVisitorContextForPrompt(
+	ctx: VisitorContext,
+	roles: CompanyRoles | null = null
+): string {
 	const lines: string[] = [];
 
 	if (ctx.arrivedVia.startsWith('campaign:')) {
-		lines.push(`Arrived via a link Hunter shared, tagged "${ctx.arrivedVia.slice('campaign:'.length)}"`);
+		lines.push(
+			`Arrived via a link Hunter shared, tagged "${ctx.arrivedVia.slice('campaign:'.length)}"`
+		);
 	} else if (ctx.arrivedVia === 'linkedin') lines.push('Arrived from LinkedIn');
 	else if (ctx.arrivedVia === 'search') lines.push('Arrived from a search engine');
 	else if (ctx.arrivedVia === 'social') lines.push('Arrived from a social/design community site');
@@ -165,6 +178,13 @@ export function formatVisitorContextForPrompt(ctx: VisitorContext): string {
 		lines.push(`Arrived from another site (${ctx.arrivedVia.slice('referral:'.length)})`);
 
 	if (ctx.org && ctx.org.orgClass === 'org') lines.push(`On the network of: ${ctx.org.name}`);
+	if (ctx.org && ctx.org.orgClass === 'org' && roles && roles.roles.length) {
+		lines.push(
+			`Open design roles at ${roles.company}, from their public job board (a guess from the network, which could be a VPN, coworking space or parent company): ${roles.roles
+				.map((r) => `${r.title}${r.location ? `, ${r.location}` : ''} <${r.url}>`)
+				.join('; ')}`
+		);
+	}
 
 	if (ctx.device === 'mobile')
 		lines.push(
@@ -186,18 +206,17 @@ export function formatVisitorContextForPrompt(ctx: VisitorContext): string {
 	if (ctx.country) lines.push(`Country: ${ctx.country} (only for location-relative questions)`);
 	if (ctx.returning) lines.push('Returning visitor');
 
-	return lines.length ? `\n## Visitor hints (internal)\n${lines.map((l) => `- ${l}`).join('\n')}\n` : '';
+	return lines.length
+		? `\n## Visitor hints (internal)\n${lines.map((l) => `- ${l}`).join('\n')}\n`
+		: '';
 }
 
 /**
  * True when the reply names the visitor's network owner without the visitor having typed it
- * themselves. The prompt forbids that; this makes it measurable if it ever happens.
+ * themselves. HuntBot may now do that when it asks about a listed open role, so this measures how
+ * often it happens (`visitor_org_mentioned` on chat_message) rather than flagging it as a mistake.
  */
-export function replyMentionsOrg(
-	reply: string,
-	visitorText: string,
-	org: IpOrg | null
-): boolean {
+export function replyMentionsOrg(reply: string, visitorText: string, org: IpOrg | null): boolean {
 	if (!org || org.orgClass !== 'org') return false;
 	const core = coreOrgName(org.name).toLowerCase();
 	if (core.length < 4) return false;
