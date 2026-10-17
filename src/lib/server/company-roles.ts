@@ -1,5 +1,6 @@
 import { env } from '$env/dynamic/private';
 import { coreOrgName, type IpOrg } from '$lib/server/ip-org';
+import { safeFetchText } from '$lib/server/safe-fetch';
 import { describeError } from '$lib/server/tool-log';
 import { createOpenAI } from '@ai-sdk/openai';
 import { waitUntil } from '@vercel/functions';
@@ -22,11 +23,11 @@ export type CompanyRoles = {
 	/** Display name for the prompt (the job board's own name when it has one). */
 	company: string;
 	roles: CompanyRole[];
-	source: 'ats' | 'web' | 'cache' | 'none';
+	source: Source;
 };
 
 const REQUEST_TIMEOUT_MS = 2500;
-const OVERALL_TIMEOUT_MS = 2800;
+const OVERALL_TIMEOUT_MS = 5000;
 const WEB_TIMEOUT_MS = 8000;
 const MAX_ROLES = 5;
 const MAX_SLUGS = 4;
@@ -46,11 +47,15 @@ export function isDesignRole(title: string): boolean {
 	return DESIGN_TITLE.test(title) && !NOT_DESIGN.test(title);
 }
 
-type Stored = { company: string; roles: CompanyRole[]; source: 'ats' | 'web' | 'none' };
+type Source = 'ats' | 'site' | 'page' | 'web' | 'cache' | 'none';
+// Where a hit came from: a job-board API (ats), one of the big companies' own career sites (site),
+// links scraped from the company's careers page (page), or a web search (web).
+const AUTHORITATIVE = new Set<Source>(['ats', 'site']);
+type Stored = { company: string; roles: CompanyRole[]; source: Exclude<Source, 'cache'> };
 const cache = new Map<string, { expires: number; value: Stored }>();
 
 function remember(key: string, value: Stored) {
-	const ttl = value.roles.length || value.source === 'ats' ? HIT_TTL_MS : MISS_TTL_MS;
+	const ttl = value.roles.length || AUTHORITATIVE.has(value.source) ? HIT_TTL_MS : MISS_TTL_MS;
 	if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
 	cache.set(key, { expires: Date.now() + ttl, value });
 }
@@ -170,20 +175,216 @@ function plausibleBoard(board: Board, org: OrgRef, slug: string): boolean {
 	return wanted.some((w) => company.includes(w) || w.includes(company));
 }
 
+async function smartrecruiters(slug: string): Promise<Board | null> {
+	const data = (await getJson(
+		`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=100`
+	)) as {
+		totalFound?: number;
+		content?: {
+			id?: string;
+			name?: string;
+			company?: { name?: string };
+			location?: { city?: string; country?: string };
+		}[];
+	} | null;
+	// Unknown companies answer 200 with an empty list
+	if (!Array.isArray(data?.content) || !data.content.length) return null;
+	return {
+		company: str(data.content[0]?.company?.name),
+		jobs: data.content.flatMap((j) =>
+			str(j.name) && str(j.id)
+				? [
+						{
+							title: str(j.name)!,
+							location:
+								[str(j.location?.city), str(j.location?.country)?.toUpperCase()]
+									.filter(Boolean)
+									.join(', ') || null,
+							url: `https://jobs.smartrecruiters.com/${slug}/${j.id}`
+						}
+					]
+				: []
+		)
+	};
+}
+
+async function workable(slug: string): Promise<Board | null> {
+	const data = (await getJson(`https://apply.workable.com/api/v1/widget/accounts/${slug}`)) as {
+		name?: string;
+		jobs?: { title?: string; url?: string; city?: string; country?: string }[];
+	} | null;
+	if (!Array.isArray(data?.jobs)) return null;
+	return {
+		company: str(data.name),
+		jobs: data.jobs.flatMap((j) =>
+			str(j.title) && str(j.url)
+				? [
+						{
+							title: str(j.title)!,
+							location: [str(j.city), str(j.country)].filter(Boolean).join(', ') || null,
+							url: str(j.url)!
+						}
+					]
+				: []
+		)
+	};
+}
+
+// Big companies that run their own career sites instead of a shared job board. Each adapter reads
+// the site's public search (no key) for design roles; adding one means adding a function here.
+const ACRONYMS = new Set(['ux', 'ui', 'ai', 'ml', 'xr', 'vr', 'ar', 'hci', 'cx', 'ii', 'iii']);
+const SMALL = new Set(['and', 'of', 'for', 'the', 'to', 'in']);
+const titleCase = (slug: string) =>
+	slug
+		.split('-')
+		.map((w, i) =>
+			ACRONYMS.has(w)
+				? w.toUpperCase()
+				: i && SMALL.has(w)
+					? w
+					: w.charAt(0).toUpperCase() + w.slice(1)
+		)
+		.join(' ');
+
+async function googleCareers(): Promise<Board | null> {
+	const queries = ['product designer', 'ux designer', 'interaction designer'];
+	const pages = await Promise.all(
+		queries.map(async (q) => {
+			try {
+				const res = await fetch(
+					`https://www.google.com/about/careers/applications/jobs/results/?q=${encodeURIComponent(q)}`,
+					{
+						headers: { 'User-Agent': 'Mozilla/5.0 (compatible; huntbot)' },
+						signal: AbortSignal.timeout(4500)
+					}
+				);
+				return res.ok ? await res.text() : '';
+			} catch {
+				return '';
+			}
+		})
+	);
+	const seen = new Set<string>();
+	const jobs: CompanyRole[] = [];
+	for (const html of pages) {
+		// The listing links carry the title in the slug: jobs/results/<id>-<title-slug>
+		for (const m of html.matchAll(/jobs\/results\/(\d+)-([a-z0-9-]+)/g)) {
+			if (seen.has(m[1])) continue;
+			seen.add(m[1]);
+			jobs.push({
+				title: titleCase(m[2]),
+				location: null,
+				url: `https://www.google.com/about/careers/applications/jobs/results/${m[1]}-${m[2]}`
+			});
+		}
+	}
+	return jobs.length ? { company: 'Google', jobs } : null;
+}
+
+async function amazonJobs(): Promise<Board | null> {
+	const data = (await getJson(
+		'https://www.amazon.jobs/en/search.json?base_query=product+designer&result_limit=40'
+	)) as { jobs?: { title?: string; job_path?: string; normalized_location?: string }[] } | null;
+	if (!Array.isArray(data?.jobs)) return null;
+	return {
+		company: 'Amazon',
+		jobs: data.jobs.flatMap((j) =>
+			str(j.title) && str(j.job_path)
+				? [
+						{
+							title: str(j.title)!,
+							location: str(j.normalized_location),
+							url: `https://www.amazon.jobs${j.job_path}`
+						}
+					]
+				: []
+		)
+	};
+}
+
+async function netflixJobs(): Promise<Board | null> {
+	const data = (await getJson(
+		'https://explore.jobs.netflix.net/api/apply/v2/jobs?domain=netflix.com&query=designer&num=40'
+	)) as {
+		positions?: { name?: string; location?: string; canonicalPositionUrl?: string }[];
+	} | null;
+	if (!Array.isArray(data?.positions)) return null;
+	return {
+		company: 'Netflix',
+		jobs: data.positions.flatMap((j) =>
+			str(j.name) && str(j.canonicalPositionUrl)
+				? [{ title: str(j.name)!, location: str(j.location), url: str(j.canonicalPositionUrl)! }]
+				: []
+		)
+	};
+}
+
+const OWN_SITES: { match: RegExp; lookup: () => Promise<Board | null> }[] = [
+	{ match: /^(google|alphabet)$/, lookup: googleCareers },
+	{ match: /^amazon$/, lookup: amazonJobs },
+	{ match: /^netflix$/, lookup: netflixJobs }
+];
+
+async function fromOwnSite(org: OrgRef): Promise<Board | null> {
+	const slugs = slugCandidates(org);
+	const site = OWN_SITES.find((s) => slugs.some((slug) => s.match.test(slug)));
+	return site ? site.lookup() : null;
+}
+
+/**
+ * Last keyless resort for a custom careers site: fetch likely careers URLs on the company's own
+ * domain and keep links whose text reads as a design role. Server-rendered pages only.
+ */
+async function fromCareersPage(org: OrgRef): Promise<Board | null> {
+	const domain = (org.domain ?? `${slugCandidates(org)[0] ?? ''}.com`)
+		.toLowerCase()
+		.replace(/^www\./, '');
+	if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) return null;
+	const candidates = [
+		`https://careers.${domain}`,
+		`https://jobs.${domain}`,
+		`https://${domain}/careers`,
+		`https://www.${domain}/careers`
+	];
+	const pages = await Promise.all(candidates.map((u) => safeFetchText(u).catch(() => null)));
+	const jobs: CompanyRole[] = [];
+	const seen = new Set<string>();
+	for (const page of pages) {
+		if (!page || !page.ok) continue;
+		for (const m of page.text.matchAll(/\[([^\]\n]{6,120})\]\((https:\/\/[^)\s]+)\)/g)) {
+			const title = m[1].trim();
+			if (!isDesignRole(title) || seen.has(m[2]) || !isTrustedRoleUrl(m[2], org)) continue;
+			seen.add(m[2]);
+			jobs.push({ title, location: null, url: m[2] });
+		}
+	}
+	return jobs.length ? { company: displayName(org.name), jobs } : null;
+}
+
 async function fromBoards(org: OrgRef): Promise<{ company: string; roles: CompanyRole[] } | null> {
 	const slugs = slugCandidates(org);
 	const attempts = slugs.flatMap((slug) =>
-		[greenhouse, lever, ashby].map(async (lookup) => {
+		[greenhouse, lever, ashby, smartrecruiters, workable].map(async (lookup) => {
 			const board = await lookup(slug);
 			return board && plausibleBoard(board, org, slug) ? { board, slug } : null;
 		})
 	);
 	// Slug order is likeliness order, so take the first hit in that order rather than the fastest.
 	const settled = await Promise.all(attempts);
-	const found = settled.find((r) => r !== null);
-	if (!found) return null;
-	const roles = found.board.jobs.filter((j) => isDesignRole(j.title)).slice(0, MAX_ROLES);
-	return { company: found.board.company ?? displayName(org.name) ?? found.slug, roles };
+	const hits = settled.flatMap((r) => (r ? [r] : []));
+	if (!hits.length) return null;
+	// A board with design roles beats an earlier one that has none (a guessed slug can be someone else's)
+	const withRoles = hits
+		.map((h) => ({
+			h,
+			roles: h.board.jobs.filter((j) => isDesignRole(j.title)).slice(0, MAX_ROLES)
+		}))
+		.find((x) => x.roles.length);
+	const pick = withRoles ?? { h: hits[0], roles: [] as CompanyRole[] };
+	return {
+		company: pick.h.board.company ?? displayName(org.name) ?? pick.h.slug,
+		roles: pick.roles
+	};
 }
 
 const ATS_HOSTS =
@@ -247,6 +448,31 @@ async function fromWebSearch(org: OrgRef): Promise<CompanyRole[]> {
 	}
 }
 
+/**
+ * Job-board APIs and the big companies' own sites in parallel; the careers-page scrape only when
+ * those turn up no design roles. A board that exists but has no design roles right now still
+ * counts as an answer ("ats", zero roles), so the web search isn't spent on a company we can read.
+ */
+async function findRoles(org: OrgRef): Promise<Stored | null> {
+	const [boards, own] = await Promise.all([
+		fromBoards(org).catch(() => null),
+		fromOwnSite(org).catch(() => null)
+	]);
+	const ownRoles = own?.jobs.filter((j) => isDesignRole(j.title)).slice(0, MAX_ROLES) ?? [];
+	if (boards?.roles.length) return { company: boards.company, roles: boards.roles, source: 'ats' };
+	if (own && ownRoles.length)
+		return { company: own.company ?? displayName(org.name), roles: ownRoles, source: 'site' };
+	const page = await fromCareersPage(org).catch(() => null);
+	if (page) {
+		const roles = page.jobs.slice(0, MAX_ROLES);
+		if (roles.length)
+			return { company: page.company ?? displayName(org.name), roles, source: 'page' };
+	}
+	// A guessed slug can land on an unrelated or empty board ("apple", "meta"), so a board with no
+	// design roles isn't an answer: fall through to the web search rather than claim there are none.
+	return null;
+}
+
 const key = (org: OrgRef) => (org.domain ?? coreOrgName(org.name)).toLowerCase();
 
 /**
@@ -264,21 +490,20 @@ export async function lookupCompanyRoles(
 	if (
 		hit &&
 		hit.expires > Date.now() &&
-		(hit.value.roles.length || hit.value.source === 'ats' || !waitForWeb)
+		(hit.value.roles.length || AUTHORITATIVE.has(hit.value.source) || !waitForWeb)
 	) {
 		return { ...hit.value, source: 'cache' };
 	}
 
 	const none: Stored = { company: displayName(org.name), roles: [], source: 'none' };
 	try {
-		const boards = await Promise.race([
-			fromBoards(org),
+		const found = await Promise.race([
+			findRoles(org),
 			new Promise<null>((resolve) => setTimeout(() => resolve(null), OVERALL_TIMEOUT_MS))
 		]);
-		if (boards) {
-			const value = { company: boards.company, roles: boards.roles, source: 'ats' as const };
-			remember(k, value);
-			return value;
+		if (found) {
+			remember(k, found);
+			return found;
 		}
 	} catch {
 		// fall through to "none"

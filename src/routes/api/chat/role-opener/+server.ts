@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const miss = (reason: string) => json({ message: null, ...(simulated && { reason }) });
 
 	const t0 = performance.now();
-	const found = await lookupCompanyRoles(org);
+	const found = await lookupCompanyRoles(org, { waitForWeb: true });
 	logToolCall(crypto.randomUUID(), {
 		tool: 'company_roles',
 		outcome: found.roles.length ? 'ok' : 'empty',
