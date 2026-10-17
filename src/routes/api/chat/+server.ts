@@ -109,6 +109,17 @@ const LANE_MODEL_CONFIG: Record<
 const MAX_STEPS = 3;
 
 const MAX_ANALYSIS_STEPS = 6;
+// query_notion chains describe -> query -> (titles scan) -> read, so it gets a longer budget.
+const MAX_NOTION_STEPS = 8;
+
+/** How many steps this turn may use, given the tools it has called so far. */
+function stepLimit(steps: Array<{ toolCalls: Array<{ toolName: string }> }>): number {
+	const called = (name: string) =>
+		steps.some((step) => step.toolCalls.some((call) => call.toolName === name));
+	if (called('query_notion')) return MAX_NOTION_STEPS;
+	if (called('analyze_training_data')) return MAX_ANALYSIS_STEPS;
+	return MAX_STEPS;
+}
 // The route's maxDuration is 300s. Past this point into a turn no new analysis starts
 // (one run can take ~50s with sandbox startup), and the step loop stops, so the model
 // answers with what it has instead of the function being killed mid-stream.
@@ -938,7 +949,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					}),
 					query_notion: tool({
 						description:
-							"Look things up in Hunter's Notion live, for personal or current questions CONTEXT doesn't cover (what he's reading, working on, planning, did on a given day). Not for his portfolio work. Four actions. search: find pages by words. describe: with no database it lists his databases; with one it returns the property names, types and select options. query: filter and sort one database by its typed properties, which is how to answer anything about a date or period (a day, a week, a month): describe first to get exact property names, then query with date filters, e.g. {property:'Due', op:'on_or_after', value:'2025-09-22'} and {property:'Due', op:'on_or_before', value:'2025-09-30'}, and set include_content to read what's inside the matching pages. read: open pages by id (page_ids, up to 8) from an earlier result. Dates written in a title usually come back as ISO text (\"Agenda 2026-09-23\"), so a filter like {property:'Name', op:'contains', value:'2026-09-2'} finds a whole stretch of days, and describe with no database shows sample titles for every database so you can tell where such pages live. Dates are often written in a page's title (\"Daily Agenda Sept 24\") with the date property empty, so if a date filter finds nothing, or the database's titles look like they carry the dates, use query with titles_only (no date filter, sort_by created_time descending) to scan the titles, pick the ones that fit, and read them with page_ids. Dates are ISO (YYYY-MM-DD) and need the right year. If a call is rejected, the error lists the valid properties or options: fix the call and retry.",
+							"Look things up in Hunter's Notion live, for personal or current questions CONTEXT doesn't cover (what he's reading, working on, planning, did on a given day). Not for his portfolio work. Four actions. search: find pages by words. describe: with no database it lists his databases; with one it returns the property names, types and select options. query: filter and sort one database by its typed properties, which is how to answer anything about a date or period (a day, a week, a month): describe first to get exact property names, then query with date filters, e.g. {property:'Due', op:'on_or_after', value:'2025-09-22'} and {property:'Due', op:'on_or_before', value:'2025-09-30'}, and set include_content to read what's inside the matching pages. read: open pages by id (page_ids, up to 8) from an earlier result. Describe with no database shows sample titles for every database so you can tell where such pages live (skip the second describe: query by database name or id straight away). Title filters can't see dates written as date mentions in a title, so when a date filter finds nothing use titles_only. Dates are often written in a page's title (\"Daily Agenda Sept 24\") with the date property empty, so if a date filter finds nothing, or the database's titles look like they carry the dates, use query with titles_only (no date filter, sort_by created_time descending) to scan the titles, pick the ones that fit, and read them with page_ids. Dates are ISO (YYYY-MM-DD) and need the right year. If a call is rejected, the error lists the valid properties or options: fix the call and retry.",
 						inputSchema: z.object({
 							action: z.enum(['search', 'describe', 'query', 'read']),
 							query: z
@@ -1434,16 +1445,17 @@ ${contextForModel}`;
 						const analyzing = steps.some((step) =>
 							step.toolCalls.some((call) => call.toolName === 'analyze_training_data')
 						);
-						// query_notion chains describe -> query -> read, so it gets the longer budget too
-						const chaining =
-							analyzing ||
-							steps.some((step) => step.toolCalls.some((call) => call.toolName === 'query_notion'));
 						if (analyzing && Date.now() - requestStartedAt > ANALYSIS_DEADLINE_MS) {
 							turn.analysisDeadlineHit = true;
 							return true;
 						}
-						return steps.length >= (chaining ? MAX_ANALYSIS_STEPS : MAX_STEPS);
+						return steps.length >= stepLimit(steps);
 					},
+					// The last allowed step can't call tools, so a long tool chain still ends in an
+					// answer instead of running out of steps mid-lookup (which left only the
+					// "blanked on that one" fallback).
+					prepareStep: ({ steps }) =>
+						steps.length + 1 >= stepLimit(steps) ? { toolChoice: 'none' as const } : undefined,
 					// Includes reasoning tokens — reply length itself is governed by the system prompt
 					maxOutputTokens: modelConfig.maxOutputTokens,
 					// Smooths raw token deltas into small word-sized chunks so the UI stream reads

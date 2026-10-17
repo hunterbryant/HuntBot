@@ -122,6 +122,16 @@ function check(c, result) {
 		if (rx(pattern).test(result.text)) fails.push(`reply matched /${pattern}/`);
 	}
 	if (!result.text) fails.push('empty reply');
+	// Replies that mean the turn failed or the tool was off, whatever the case expects.
+	for (const pattern of [
+		'blanked on that one',
+		"n['\u2019]t connected|not connected",
+		'trouble (reaching|answering)|try again in a moment'
+	]) {
+		if (rx(pattern).test(result.text) && !(c.allow ?? []).includes(pattern)) {
+			fails.push(`reply is a failure/fallback line (/${pattern}/)`);
+		}
+	}
 	// A tool the model called wrongly twice in a row is a robustness smell even if it recovered.
 	const rejected = result.calls.filter((call) =>
 		/^(No property|Operator |Dates must|Can't sort|read needs|query needs|No database|Filter on|Checkbox |Property "|.* isn't (a number|an option))|matches several databases/.test(
