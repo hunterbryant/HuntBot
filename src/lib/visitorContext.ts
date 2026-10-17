@@ -20,6 +20,8 @@ export type VisitorPayload = {
 	device: 'mobile' | 'desktop';
 	returning: boolean;
 	gpc: boolean;
+	/** Company named with `/simulate <Company>`; the server treats it as the visitor's network. */
+	simulatedOrg: string | null;
 };
 
 type Stored = {
@@ -53,6 +55,25 @@ function save() {
 		sessionStorage.setItem(KEY, JSON.stringify(state));
 	} catch {
 		// storage blocked: context lives for this page load only
+	}
+}
+
+const SIM_KEY = 'huntbot_simulated_org';
+
+export function getSimulatedOrg(): string | null {
+	try {
+		return sessionStorage.getItem(SIM_KEY);
+	} catch {
+		return null;
+	}
+}
+
+export function setSimulatedOrg(name: string | null) {
+	try {
+		if (name) sessionStorage.setItem(SIM_KEY, name);
+		else sessionStorage.removeItem(SIM_KEY);
+	} catch {
+		// storage blocked: the simulation lasts until reload
 	}
 }
 
@@ -154,6 +175,7 @@ export function getVisitorContext(): VisitorPayload {
 		timezone,
 		device: mobile ? 'mobile' : 'desktop',
 		returning,
-		gpc: hasGpc()
+		gpc: hasGpc(),
+		simulatedOrg: getSimulatedOrg()
 	};
 }

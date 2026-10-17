@@ -1,6 +1,5 @@
-import { env } from '$env/dynamic/private';
 import { displayName, lookupCompanyRoles } from '$lib/server/company-roles';
-import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
+import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
 import { logToolCall } from '$lib/server/tool-log';
 import { visitorContextEnabled } from '$lib/server/visitor-context';
 import { json, type RequestHandler } from '@sveltejs/kit';
@@ -13,7 +12,7 @@ import { json, type RequestHandler } from '@sveltejs/kit';
 
 export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const none = json({ message: null });
-	let body: { visitor?: { gpc?: unknown }; testOrg?: { name?: unknown; domain?: unknown } } = {};
+	let body: { visitor?: { gpc?: unknown }; simulateOrg?: unknown } = {};
 	try {
 		body = await request.json();
 	} catch {
@@ -22,21 +21,15 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 
 	// Same gates as the chat route: kill switch and Global Privacy Control (no network lookup).
 	if (!visitorContextEnabled()) return none;
-	if (request.headers.get('sec-gpc') === '1' || body.visitor?.gpc === true) return none;
+	// `/simulate <Company>` names a company on purpose, so it isn't a network lookup and GPC
+	// doesn't apply; it only ever affects that visitor's own chat.
+	const simulated = simulatedOrg(body.simulateOrg);
+	if (!simulated && (request.headers.get('sec-gpc') === '1' || body.visitor?.gpc === true)) {
+		return none;
+	}
 
-	// Eval runs (CRON_SECRET in x-huntbot-eval) can name a company, to exercise this without
-	// being on a company network.
-	const isEvalRun =
-		Boolean(env.CRON_SECRET) && request.headers.get('x-huntbot-eval') === env.CRON_SECRET;
-	let org: IpOrg | null = null;
-	if (isEvalRun && typeof body.testOrg?.name === 'string') {
-		org = {
-			name: body.testOrg.name.slice(0, 80),
-			domain: typeof body.testOrg.domain === 'string' ? body.testOrg.domain.slice(0, 80) : null,
-			countryCode: null,
-			orgClass: 'org'
-		};
-	} else {
+	let org: IpOrg | null = simulated;
+	if (!org) {
 		let ip: string | null = null;
 		try {
 			ip = getClientAddress();
@@ -46,6 +39,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		org = await lookupIpOrg(ip);
 	}
 	if (!org || org.orgClass !== 'org') return none;
+	const miss = (reason: string) => json({ message: null, ...(simulated && { reason }) });
 
 	const t0 = performance.now();
 	const found = await lookupCompanyRoles(org);
@@ -57,7 +51,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 		source: found.source
 	});
 	const role = found.roles[0];
-	if (!role) return none;
+	if (!role) return miss('no_roles');
 
 	return json({
 		message: `Quick guess from your network: are you hiring for the ${role.title} role at ${displayName(found.company)}? If so, I can show how Hunter's work lines up.`,

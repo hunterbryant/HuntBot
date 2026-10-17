@@ -30,6 +30,6 @@ Everything worth reflecting on later lands in two places: **Vercel runtime logs*
 | `rag_reflection` | Optional (`RAG_REFLECTION=1`) | `rag_thinking`, `rag_citations`, `rag_confidence` |
 | `chunk_audit_run` | Each audit run | Counts, `by_source`, `input_tokens`, `duration_ms`, `more` |
 | `chunk_audit_finished` / `chunk_audit_failed` | End of an audit job | Job totals, `duration_ms`, `input_tokens`; `error` on failure |
-| Client events | `src/lib/analytics.ts` | `$pageview`, `role_opener_shown` (the proactive open-role question; its chip is `suggestion_clicked` with `suggestion_type: role_opener`), `suggestions_shown`, `suggestion_clicked`, `related_page_clicked`, `contact_clicked`, `not_helpful` |
+| Client events | `src/lib/analytics.ts` | `$pageview`, `role_opener_shown` (the proactive open-role question; its chip is `suggestion_clicked` with `suggestion_type: role_opener`); `chat_message` gets `simulated_org: true` on turns using `/simulate`, `suggestions_shown`, `suggestion_clicked`, `related_page_clicked`, `contact_clicked`, `not_helpful` |
 
 Chunk audit events use `distinct_id: huntbot-system` with `$process_person_profile: false`, so they don't create a fake person. Filter `is_admin = true` out of chat analytics to drop Hunter's own testing.

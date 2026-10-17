@@ -1,7 +1,7 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
 import { FunctionState, type FunctionMessage } from '$lib/types';
-import { getVisitorContext, hasGpc } from '$lib/visitorContext';
+import { getSimulatedOrg, getVisitorContext, hasGpc, setSimulatedOrg } from '$lib/visitorContext';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
 import { toStore, writable } from 'svelte/store';
@@ -105,24 +105,48 @@ const ROLE_OPENER_KEY = 'huntbot_role_opener_v1';
  * network is a company with open design roles, HuntBot asks whether they're hiring for one. The
  * server returns nothing under Global Privacy Control or for non-company networks.
  */
-export async function triggerRoleOpener(): Promise<void> {
-	try {
-		if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
-		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
-	} catch {
-		// storage blocked: ask at most once per page load instead
-		if (roleOpenerAsked) return;
+export async function triggerRoleOpener(simulate?: string): Promise<void> {
+	// `/simulate` always asks again; otherwise once per browser session
+	if (!simulate) {
+		try {
+			if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
+			sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+		} catch {
+			// storage blocked: ask at most once per page load instead
+			if (roleOpenerAsked) return;
+		}
 	}
 	roleOpenerAsked = true;
 	try {
 		const response = await fetch('/api/chat/role-opener', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ visitor: { gpc: hasGpc() } })
+			body: JSON.stringify({
+				visitor: { gpc: hasGpc() },
+				simulateOrg: simulate ?? getSimulatedOrg() ?? undefined
+			})
 		});
 		if (!response.ok) return;
 		const data = await response.json();
-		if (!data.message || !chatInstance) return;
+		if (!chatInstance) return;
+		if (!data.message) {
+			if (simulate) {
+				chatInstance.messages = [
+					...chatInstance.messages,
+					{
+						id: 'role-opener-' + Date.now(),
+						role: 'assistant' as const,
+						parts: [
+							{
+								type: 'text' as const,
+								text: `Simulating ${simulate}, but I couldn't find open design roles there.`
+							}
+						]
+					}
+				];
+			}
+			return;
+		}
 		// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
 		if (chatInstance.messages.some((m) => m.role === 'user')) return;
 		chatInstance.messages = [
@@ -319,6 +343,21 @@ function loadSavedChat(): UIMessage[] | null {
 
 // Typing "clear" works like a terminal: instant, no model call.
 const RESET_COMMAND = /^\/?(clear|reset|start over|new chat)[.!]?$/i;
+// `/simulate Airbnb` restarts the chat as if the visitor were on that company's network;
+// `/simulate off` goes back to normal. Not advertised anywhere.
+const SIMULATE_COMMAND = /^\/simulate(?:\s+(.+))?$/i;
+
+/** Handles `/simulate`; returns true when the text was that command. */
+function runSimulateCommand(text: string): boolean {
+	const match = SIMULATE_COMMAND.exec(text.trim());
+	if (!match) return false;
+	const name = match[1]?.trim();
+	const off = !name || /^(off|none|reset)$/i.test(name);
+	setSimulatedOrg(off ? null : name);
+	resetChat('command');
+	if (!off) void triggerRoleOpener(name);
+	return true;
+}
 
 /** Wipes the conversation (and its saved copy) back to the greeting. */
 export function resetChat(trigger: 'command' | 'tool') {
@@ -488,7 +527,9 @@ export const chat = () => {
 			value = v;
 			return '';
 		});
-		if (RESET_COMMAND.test(value.trim())) {
+		if (runSimulateCommand(value)) {
+			// handled
+		} else if (RESET_COMMAND.test(value.trim())) {
 			resetChat('command');
 		} else if (value.trim()) {
 			instance.sendMessage({ text: value.trim() });
@@ -497,6 +538,7 @@ export const chat = () => {
 
 	async function append(message: { role: string; content: string }) {
 		if (message.role === 'user') {
+			if (runSimulateCommand(message.content)) return;
 			if (RESET_COMMAND.test(message.content.trim())) resetChat('command');
 			else await instance.sendMessage({ text: message.content });
 		}

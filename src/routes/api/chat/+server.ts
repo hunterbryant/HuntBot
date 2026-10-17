@@ -9,7 +9,7 @@ import {
 	searchRepoCode
 } from '$lib/server/github-repo';
 import { sendGroundingScoreToPosthog } from '$lib/server/grounding-score';
-import { lookupIpOrg, type IpOrg } from '$lib/server/ip-org';
+import { lookupIpOrg, simulatedOrg, type IpOrg } from '$lib/server/ip-org';
 import { matchJobDescription } from '$lib/server/job-match';
 import { classifyModelFailure, type ModelFailure } from '$lib/server/model-errors';
 import { queryNotion } from '$lib/server/notion';
@@ -327,6 +327,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				analysisDeadlineHit: false,
 				visitor: null as VisitorContext | null,
 				orgMentioned: false,
+				// The visitor used /simulate <Company>: the org is theirs to pick, not their network
+				simulatedOrg: false,
 				// Best vector score of the visitor's message against public content, set only on misses
 				relatedTopScore: null as number | null
 			};
@@ -364,6 +366,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 						: null,
 					...trainingAnalyticsProps(turn.trainingCalls, turn.analysisDeadlineHit),
 					...toolAnalyticsProps(turn.toolCalls),
+					...(turn.simulatedOrg && { simulated_org: true }),
 					context_confidence: turn.contextConfidence,
 					context_answers_question: turn.contextAnswersQuestion,
 					context_excluded_by_audit: turn.excludedByAudit,
@@ -457,8 +460,14 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				routesPromise.catch(() => {});
 				// Reverse-IP network lookup (IPinfo Lite) also overlaps classification + retrieval; it
 				// has an 800ms cap, never throws, and is skipped under GPC or without a token.
-				const orgPromise: Promise<IpOrg | null> =
-					visitorEnabled && !gpcRequested
+				// `/simulate <Company>` in the chat stands in for the lookup (see simulatedOrg).
+				const simulated = visitorEnabled
+					? simulatedOrg((body.visitor as { simulatedOrg?: unknown } | undefined)?.simulatedOrg)
+					: null;
+				turn.simulatedOrg = Boolean(simulated);
+				const orgPromise: Promise<IpOrg | null> = simulated
+					? Promise.resolve(simulated)
+					: visitorEnabled && !gpcRequested
 						? timer.time('ip_org', () => lookupIpOrg(clientIp))
 						: Promise.resolve(null);
 				// Open design roles at the visitor's company, when the network is an org. Bounded (~2.8s,
