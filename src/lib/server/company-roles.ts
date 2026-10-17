@@ -523,7 +523,8 @@ async function discoverBoards(org: OrgRef): Promise<Discovery | null> {
 			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `Where does ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''} list its open jobs? Give its careers page and the URLs of the job platform it uses for listings if any (Workday myworkdayjobs.com, Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Eightfold or similar), as seen in search results. Also give up to 3 URLs of individual open design or product job postings on that platform exactly as they appear in search results, because they reveal its board name. Don't list job aggregators (LinkedIn, Indeed, Glassdoor). Use null / an empty list when you can't find them; never guess a URL.`
 		});
-		await putRecord('board', storeKey, output as unknown as Record<string, unknown>);
+		// Kept only once something read from it (see fromDiscoveredBoards), so a search that found
+		// the wrong platform isn't remembered for a month.
 		return output;
 	} catch (error) {
 		console.warn('[HuntBot tools] company roles board discovery failed', {
@@ -534,17 +535,11 @@ async function discoverBoards(org: OrgRef): Promise<Discovery | null> {
 	}
 }
 
-/** Workday's public job search (CXS), from any `<tenant>.<wdN>.myworkdayjobs.com/<site>` URL. */
-async function workday(url: URL): Promise<Board | null> {
-	if (!/^[a-z0-9-]+\.wd\d+\.myworkdayjobs\.com$/i.test(url.hostname)) return null;
-	const tenant = url.hostname.split('.')[0];
-	const site = url.pathname
-		.split('/')
-		.filter(Boolean)
-		.find((p) => !/^[a-z]{2}-[A-Z]{2}$/.test(p) && !/^(job|details|login)$/i.test(p));
-	if (!site || !/^[\w-]+$/.test(site)) return null;
+const WORKDAY_CLUSTERS = [1, 3, 5, 12, 103, 501];
+
+async function workdaySearch(host: string, tenant: string, site: string): Promise<Board | null> {
 	try {
-		const res = await fetch(`https://${url.hostname}/wday/cxs/${tenant}/${site}/jobs`, {
+		const res = await fetch(`https://${host}/wday/cxs/${tenant}/${site}/jobs`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
 			body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText: 'designer' }),
@@ -563,7 +558,7 @@ async function workday(url: URL): Promise<Board | null> {
 							{
 								title: str(j.title)!,
 								location: str(j.locationsText),
-								url: `https://${url.hostname}/${site}${j.externalPath}`
+								url: `https://${host}/${site}${j.externalPath}`
 							}
 						]
 					: []
@@ -572,6 +567,47 @@ async function workday(url: URL): Promise<Board | null> {
 	} catch {
 		return null;
 	}
+}
+
+const firstBoard = async (attempts: Promise<Board | null>[]) =>
+	(await Promise.all(attempts)).find((b) => b !== null) ?? null;
+
+/**
+ * Workday's public job search (CXS), from a `<tenant>.<wdN>.myworkdayjobs.com[/<site>]` URL.
+ * A search can name the wrong cluster (wd1 for wd12) or only the tenant, so a miss on the given
+ * host/site tries the other clusters, and a missing site tries the usual names.
+ */
+async function workday(url: URL): Promise<Board | null> {
+	const m = /^([a-z0-9-]+)\.wd(\d+)\.myworkdayjobs\.com$/i.exec(url.hostname);
+	if (!m) return null;
+	const [, tenant, cluster] = m;
+	const site = url.pathname
+		.split('/')
+		.filter(Boolean)
+		.find((p) => !/^[a-z]{2}-[A-Z]{2}$/.test(p) && !/^(job|details|login)$/i.test(p));
+	const hostFor = (n: number | string) => `${tenant}.wd${n}.myworkdayjobs.com`;
+	if (site && /^[\w-]+$/.test(site)) {
+		const exact = await workdaySearch(url.hostname, tenant, site);
+		if (exact) return exact;
+		return firstBoard(
+			WORKDAY_CLUSTERS.filter((n) => String(n) !== cluster).map((n) =>
+				workdaySearch(hostFor(n), tenant, site)
+			)
+		);
+	}
+	const t = tenant.charAt(0).toUpperCase() + tenant.slice(1);
+	const sites = [
+		'External',
+		'external',
+		'Careers',
+		'careers',
+		'External_Career_Site',
+		t,
+		`${t}_Careers`,
+		`${t}_External`,
+		`${t}Careers`
+	];
+	return firstBoard(sites.map((sName) => workdaySearch(url.hostname, tenant, sName)));
 }
 
 /** Eightfold's public job search (`/api/apply/v2/jobs`), tried on a careers host when nothing else matched. */
@@ -652,7 +688,10 @@ async function fromDiscoveredBoards(
 			0,
 			MAX_ROLES
 		);
-		if (hit && roles.length) return { roles, via: hit.via };
+		if (hit && roles.length) {
+			await putRecord('board', key(org), found as unknown as Record<string, unknown>);
+			return { roles, via: hit.via };
+		}
 	}
 	return null;
 }
