@@ -327,7 +327,7 @@ async function fromBoards(org: OrgRef): Promise<{ company: string; roles: Compan
 }
 
 const ATS_HOSTS =
-	/(^|\.)(greenhouse\.io|lever\.co|ashbyhq\.com|workable\.com|smartrecruiters\.com|myworkdayjobs\.com|bamboohr\.com|jobvite\.com|icims\.com|rippling\.com)$/;
+	/(^|\.)(greenhouse\.io|lever\.co|ashbyhq\.com|workable\.com|smartrecruiters\.com|myworkdayjobs\.com|bamboohr\.com|jobvite\.com|icims\.com|rippling\.com|oraclecloud\.com)$/;
 
 /** The name part of a hostname's registrable domain: careers.uber.com -> uber, shop.acme.co.uk -> acme. */
 export function registrableLabel(hostname: string): string {
@@ -797,6 +797,49 @@ async function eightfold(url: URL, domain: string | null): Promise<Board | null>
 	};
 }
 
+const ORACLE_BOARD =
+	/https:\/\/([a-z0-9-]+\.fa\.[a-z0-9.-]*oraclecloud\.com)\/hcmUI\/CandidateExperience\/[A-Za-z-]+\/sites\/([\w-]+)/i;
+
+/**
+ * Oracle Hiring (Oracle Recruiting Cloud) public job search, used by Uber and many large
+ * companies. A URL on `<pod>.fa.<region>.oraclecloud.com/.../sites/<Site>` names the board; a
+ * custom careers domain is read once for a link to one (plain fetch, Firecrawl if that is empty).
+ */
+async function oracle(url: URL): Promise<Board | null> {
+	let m = ORACLE_BOARD.exec(url.href);
+	if (!m && !url.hostname.endsWith('oraclecloud.com')) {
+		const page = await readPage(url.href);
+		m = page ? ORACLE_BOARD.exec(page) : null;
+	}
+	if (!m) return null;
+	const [, host, site] = m;
+	const data = (await getJson(
+		`https://${host}/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&expand=requisitionList&finder=${encodeURIComponent(
+			`findReqs;siteNumber=${site},keyword="designer",limit=40`
+		)}`
+	)) as {
+		items?: {
+			requisitionList?: { Id?: string; Title?: string; PrimaryLocation?: string }[];
+		}[];
+	} | null;
+	const list = data?.items?.[0]?.requisitionList;
+	if (!Array.isArray(list)) return null;
+	return {
+		company: null,
+		jobs: list.flatMap((j) =>
+			str(j.Id) && str(j.Title)
+				? [
+						{
+							title: str(j.Title)!,
+							location: str(j.PrimaryLocation),
+							url: `https://${host}/hcmUI/CandidateExperience/en/sites/${site}/job/${j.Id}`
+						}
+					]
+				: []
+		)
+	};
+}
+
 /** The adapter a board URL calls for, with the board slug taken from the URL instead of guessed. Exported for tests. */
 export async function fromBoardUrl(
 	raw: string,
@@ -821,7 +864,7 @@ export async function fromBoardUrl(
 	if (host === 'jobs.smartrecruiters.com' && slugOk)
 		return via('smartrecruiters', await smartrecruiters(first));
 	if (host === 'apply.workable.com' && slugOk) return via('workable', await workable(first));
-	return via('eightfold', await eightfold(url, domain));
+	return via('eightfold', await eightfold(url, domain)) ?? via('oracle', await oracle(url));
 }
 
 /** Discovery, then the platform adapters. Never throws. */
