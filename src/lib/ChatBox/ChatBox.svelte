@@ -28,6 +28,8 @@
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		triggerRoleOpener,
+		prefetchRoleOpener,
+		roleTeaser,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
@@ -181,6 +183,9 @@
 	$: if ($input && $input.trim() !== '') {
 		suggestions.set([]);
 	}
+
+	// Once a conversation is underway the open-role teaser has had its chance.
+	$: if ($messages.some((m) => m.role === 'user')) roleTeaser.set(null);
 
 	// Open-role opener: the first time the chat opens with no conversation, the server may ask
 	// whether the visitor is hiring for a role at their company (see triggerRoleOpener).
@@ -485,7 +490,12 @@
 		hoverSuggestions.set([]);
 	}
 
+	// Look the visitor's company up once they've stayed a while, so the bar can tease open roles.
+	const ROLE_PREFETCH_DELAY_MS = 8000;
+	let rolePrefetchTimer: ReturnType<typeof setTimeout> | null = null;
+
 	onMount(() => {
+		rolePrefetchTimer = setTimeout(prefetchRoleOpener, ROLE_PREFETCH_DELAY_MS);
 		if (canFetchScroll()) {
 			fetchCount++;
 			fetchScrollSuggestions($page.url.pathname, getScrollDepth(), null);
@@ -495,6 +505,7 @@
 	});
 
 	onDestroy(() => {
+		if (rolePrefetchTimer) clearTimeout(rolePrefetchTimer);
 		resetScrollState();
 	});
 
@@ -588,7 +599,7 @@
 			{/if}
 			<!-- Render the chat messages -->
 			<div class="first:pt-4 {$activeSuggestions.items.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
-				{#each $messages as message, i}
+				{#each $messages as message, i (message.id)}
 					<div
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
 						on:introend={() => {

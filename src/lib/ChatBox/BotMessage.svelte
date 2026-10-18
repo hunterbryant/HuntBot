@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
+	import { onMount } from 'svelte';
 	import { slide, fade } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { captureEvent } from '$lib/analytics';
@@ -18,6 +19,17 @@
 	export let onOption: (option: { label: string; reply: string }) => void = () => {};
 
 	$: updatedVal = value;
+
+	// A message that arrives whole (the role opener) types out first, then its chips fade in.
+	// Streamed replies mount nearly empty, so for them this is already over when options arrive.
+	// Shared with the text reveal in `streamReveal`.
+	const CHAR_STAGGER_MS = 10;
+	let optionsReady = !animate;
+	onMount(() => {
+		if (optionsReady) return;
+		const t = setTimeout(() => (optionsReady = true), value.length * CHAR_STAGGER_MS + 400);
+		return () => clearTimeout(t);
+	});
 
 	const SITE_ORIGIN = /^https?:\/\/(www\.)?hunterbryant\.io(?=\/|$)/i;
 
@@ -53,8 +65,6 @@
 
 	function streamReveal(node: HTMLElement, text: string) {
 		ensureKeyframes();
-
-		const STAGGER = 10;
 
 		let current = '';
 		let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -99,7 +109,7 @@
 
 				if (isSpace) {
 					for (const ch of chunk) {
-						const delay = Math.max(0, charIndex * STAGGER - elapsed);
+						const delay = Math.max(0, charIndex * CHAR_STAGGER_MS - elapsed);
 						charIndex++;
 						lastDelay = delay;
 						const span = document.createElement('span');
@@ -117,7 +127,7 @@
 					let wordMounted = false;
 
 					for (const ch of chunk) {
-						const delay = Math.max(0, charIndex * STAGGER - elapsed);
+						const delay = Math.max(0, charIndex * CHAR_STAGGER_MS - elapsed);
 						charIndex++;
 						lastDelay = delay;
 						const charSpan = document.createElement('span');
@@ -208,7 +218,7 @@
 				in:slide|global={{ duration: 400 }}
 				use:streamReveal={value}
 			></p>
-			{#if options.length > 0}
+			{#if options.length > 0 && optionsReady}
 				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
 					{#each options as option, i (i)}
 						<button

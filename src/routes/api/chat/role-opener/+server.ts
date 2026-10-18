@@ -18,8 +18,10 @@ import { visitorContextEnabled } from '$lib/server/visitor-context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 // The proactive "are you hiring for the <role> role?" opener. When the identification stack
-// (visitor-company.ts) finds the visitor's company and it has open design roles, the chat posts the question itself on first open
-// instead of waiting for a hiring question. It is a guess (VPN, coworking space, parent company),
+// (visitor-company.ts) finds the visitor's company and it has open design roles, the response
+// carries a short `teaser` for the closed chat bar and the question the chat posts itself on
+// open (instead of waiting for a hiring question). The client calls this early, after a few
+// seconds on the page, so both are ready before the chat opens. It is a guess (VPN, coworking space, parent company),
 // so it's phrased as a question and the chat route's prompt asks at most once per conversation.
 // No LLM: the text is a template, so it can't invent a role.
 
@@ -107,8 +109,10 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const lead = LEAD[resolution.company?.source ?? 'ip_asn'];
 	const ask = (rest: string) =>
 		lead ? `${lead} are you hiring for ${rest}` : `Are you hiring for ${rest}`;
+	// The chat bar's teaser: one short line while the chat is still closed.
 	if (standsOut) {
 		return json({
+			teaser: `Is that ${company} design opening yours?`,
 			message: `${ask(`the ${top.title} role at ${company}?`)} If so, I can show how Hunter's work lines up.`,
 			options: [
 				{ label: 'Yes, that one', reply: roleOption(top.title).reply },
@@ -118,6 +122,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	const shown = ranked.slice(0, 3);
 	return json({
+		teaser: `${company} has a few design roles open. Hiring?`,
 		message: `${ask(`one of these roles at ${company}?`)} If so, I can show how Hunter's work lines up.`,
 		options: [
 			...shown.map((r) => roleOption(r.title)),
