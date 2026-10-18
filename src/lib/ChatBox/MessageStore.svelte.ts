@@ -1,5 +1,6 @@
 import { goto } from '$app/navigation';
 import { captureEvent } from '$lib/analytics';
+import { chatOpen } from '$lib/nav/navstore';
 import { FunctionState, type FunctionMessage } from '$lib/types';
 import {
 	getSimulatedOrg,
@@ -149,13 +150,17 @@ export function prefetchRoleOpener(): void {
 	void roleOpenerPromise.then((data) => {
 		// The chat may have opened (and posted the opener) while the lookup ran.
 		if (!data?.message || !data.teaser || !get(minimized) || hasUserMessage()) return;
-		roleTeaser.set(data.teaser);
-		// The "Any questions?" bar turns into the input bar, which carries the teaser.
-		botEngaged.set(true);
-		roleTeaserHold.set(true);
-		setTimeout(() => roleTeaserHold.set(false), TEASER_HOLD_MS);
-		captureEvent('role_teaser_shown', SESSION_ID, { session_id: SESSION_ID });
+		showRoleTeaser(data.teaser);
 	});
+}
+
+function showRoleTeaser(teaser: string) {
+	roleTeaser.set(teaser);
+	// The "Any questions?" bar turns into the input bar, which carries the teaser.
+	botEngaged.set(true);
+	roleTeaserHold.set(true);
+	setTimeout(() => roleTeaserHold.set(false), TEASER_HOLD_MS);
+	captureEvent('role_teaser_shown', SESSION_ID, { session_id: SESSION_ID });
 }
 
 /**
@@ -208,6 +213,15 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 	}
 	// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
 	if (hasUserMessage()) return;
+	if (simulate && data.teaser) {
+		// Play it as a real visit: minimize, tease in the bar, and post the question on open.
+		roleOpenerPromise = Promise.resolve(data);
+		roleOpenerPosted = false;
+		minimized.set(true);
+		chatOpen.set(false);
+		showRoleTeaser(data.teaser);
+		return;
+	}
 	roleOpenerPosted = true;
 	roleTeaser.set(null);
 	roleTeaserHold.set(false);
@@ -422,6 +436,11 @@ function runSimulateCommand(text: string): boolean {
 	const name = match[1]?.trim();
 	const off = !name || /^(off|none|reset)$/i.test(name);
 	setSimulatedOrg(off ? null : name);
+	// Forget any earlier lookup: the next opener and teaser come from the simulated company.
+	roleOpenerPromise = null;
+	roleOpenerPosted = false;
+	roleTeaser.set(null);
+	roleTeaserHold.set(false);
 	// Resetting re-runs the on-open trigger in ChatBox; mark it done so only this call asks.
 	try {
 		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
