@@ -595,7 +595,7 @@
 			{/if}
 			<!-- Render the chat messages -->
 			<div class="first:pt-4 {$activeSuggestions.items.length > 0 && !$isLoading && $input.trim() === '' ? '' : 'last:pb-6'}">
-				{#each $messages as message, i}
+				{#each $messages as message, i (message.id)}
 					<div
 						in:slide|global={{ duration: message.role === 'assistant' ? 0 : 400 }}
 						on:introend={() => {

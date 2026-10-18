@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
+	import { onMount } from 'svelte';
 	import { slide, fade } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { captureEvent } from '$lib/analytics';
@@ -18,6 +19,16 @@
 	export let onOption: (option: { label: string; reply: string }) => void = () => {};
 
 	$: updatedVal = value;
+
+	// A message that arrives whole (the role opener) types out first, then its chips fade in.
+	// Streamed replies mount nearly empty, so for them this is already over when options arrive.
+	const REVEAL_MS_PER_CHAR = 10;
+	let optionsReady = !animate;
+	onMount(() => {
+		if (optionsReady) return;
+		const t = setTimeout(() => (optionsReady = true), value.length * REVEAL_MS_PER_CHAR + 400);
+		return () => clearTimeout(t);
+	});
 
 	const SITE_ORIGIN = /^https?:\/\/(www\.)?hunterbryant\.io(?=\/|$)/i;
 
@@ -208,7 +219,7 @@
 				in:slide|global={{ duration: 400 }}
 				use:streamReveal={value}
 			></p>
-			{#if options.length > 0}
+			{#if options.length > 0 && optionsReady}
 				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
 					{#each options as option, i (i)}
 						<button
