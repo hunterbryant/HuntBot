@@ -29,6 +29,7 @@
 		triggerProactiveOpener,
 		triggerRoleOpener,
 		prefetchRoleOpener,
+		roleTeaser,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
@@ -182,6 +183,9 @@
 	$: if ($input && $input.trim() !== '') {
 		suggestions.set([]);
 	}
+
+	// Once a conversation is underway the open-role teaser has had its chance.
+	$: if ($messages.some((m) => m.role === 'user')) roleTeaser.set(null);
 
 	// Open-role opener: the first time the chat opens with no conversation, the server may ask
 	// whether the visitor is hiring for a role at their company (see triggerRoleOpener).

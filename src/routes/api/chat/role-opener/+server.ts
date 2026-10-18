@@ -18,8 +18,10 @@ import { visitorContextEnabled } from '$lib/server/visitor-context';
 import { json, type RequestHandler } from '@sveltejs/kit';
 
 // The proactive "are you hiring for the <role> role?" opener. When the identification stack
-// (visitor-company.ts) finds the visitor's company and it has open design roles, the chat posts the question itself on first open
-// instead of waiting for a hiring question. It is a guess (VPN, coworking space, parent company),
+// (visitor-company.ts) finds the visitor's company and it has open design roles, the response
+// carries a short `teaser` for the closed chat bar and the question the chat posts itself on
+// open (instead of waiting for a hiring question). The client calls this early, after a few
+// seconds on the page, so both are ready before the chat opens. It is a guess (VPN, coworking space, parent company),
 // so it's phrased as a question and the chat route's prompt asks at most once per conversation.
 // No LLM: the text is a template, so it can't invent a role.
 

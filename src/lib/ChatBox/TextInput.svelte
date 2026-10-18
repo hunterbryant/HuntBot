@@ -132,8 +132,10 @@
 		handleSubmit(event, { body: { currentPage } });
 	}
 
-	function focusInput() {
+	function focusInput(event?: Event) {
 		if (showingTeaser) {
+			// The form also listens for keydown: only a click or Enter counts as tapping the teaser.
+			if (event?.type === 'keydown' && (event as KeyboardEvent).key !== 'Enter') return;
 			// Opening the chat posts the question the teaser is about.
 			captureEvent('role_teaser_clicked', SESSION_ID, { session_id: SESSION_ID });
 			minimized.set(false);

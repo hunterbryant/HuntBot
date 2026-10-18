@@ -111,6 +111,26 @@ export const roleTeaser = writable<string | null>(null);
 /** True for a few seconds after the teaser lands, so it beats whatever suggestion is showing. */
 export const roleTeaserHold = writable(false);
 const TEASER_HOLD_MS = 10_000;
+let teaserHoldTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Once the opener has been posted or the lookup found nothing, a session doesn't ask again. A
+// teaser that was never tapped doesn't count, so a reload brings it back.
+let openerDoneFallback = false;
+const openerDone = () => {
+	try {
+		return !!sessionStorage.getItem(ROLE_OPENER_KEY);
+	} catch {
+		// storage blocked: once per page load instead
+		return openerDoneFallback;
+	}
+};
+function markOpenerDone() {
+	try {
+		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+	} catch {
+		openerDoneFallback = true;
+	}
+}
 
 async function requestRoleOpener(simulate?: string): Promise<RoleOpenerData | null> {
 	try {
@@ -139,17 +159,15 @@ const isRoleOpener = (m: UIMessage) => String(m.id).startsWith('role-opener-');
  * networks.
  */
 export function prefetchRoleOpener(): void {
-	if (roleOpenerPromise || roleOpenerAsked || hasUserMessage()) return;
-	try {
-		if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
-		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
-	} catch {
-		// storage blocked: ask at most once per page load instead
-	}
-	roleOpenerPromise = requestRoleOpener();
-	void roleOpenerPromise.then((data) => {
-		// The chat may have opened (and posted the opener) while the lookup ran.
-		if (!data?.message || !data.teaser || !get(minimized) || hasUserMessage()) return;
+	if (roleOpenerPromise || openerDone() || hasUserMessage()) return;
+	const mine = (roleOpenerPromise = requestRoleOpener());
+	void mine.then((data) => {
+		if (!data?.message) {
+			markOpenerDone();
+			return;
+		}
+		// `/simulate` may have replaced this lookup, or the chat opened, while it ran.
+		if (roleOpenerPromise !== mine || !data.teaser || !get(minimized) || hasUserMessage()) return;
 		showRoleTeaser(data.teaser);
 	});
 }
@@ -159,7 +177,8 @@ function showRoleTeaser(teaser: string) {
 	// The "Any questions?" bar turns into the input bar, which carries the teaser.
 	botEngaged.set(true);
 	roleTeaserHold.set(true);
-	setTimeout(() => roleTeaserHold.set(false), TEASER_HOLD_MS);
+	if (teaserHoldTimer) clearTimeout(teaserHoldTimer);
+	teaserHoldTimer = setTimeout(() => roleTeaserHold.set(false), TEASER_HOLD_MS);
 	captureEvent('role_teaser_shown', SESSION_ID, { session_id: SESSION_ID });
 }
 
@@ -170,20 +189,10 @@ function showRoleTeaser(teaser: string) {
  */
 export async function triggerRoleOpener(simulate?: string): Promise<void> {
 	if (!simulate) {
-		if (roleOpenerPosted) return;
-		if (!roleOpenerPromise) {
-			// `/simulate` always asks again; otherwise once per browser session
-			try {
-				if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
-				sessionStorage.setItem(ROLE_OPENER_KEY, '1');
-			} catch {
-				// storage blocked: ask at most once per page load instead
-				if (roleOpenerAsked) return;
-			}
-			roleOpenerPromise = requestRoleOpener();
-		}
+		// `/simulate` always asks again; otherwise once per browser session
+		if (roleOpenerPosted || openerDone()) return;
+		roleOpenerPromise ??= requestRoleOpener();
 	}
-	roleOpenerAsked = true;
 	// Only the newest call may post: a simulate and the on-open trigger can start together.
 	const run = ++roleOpenerRun;
 	const stale = () => run !== roleOpenerRun;
@@ -191,6 +200,7 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 	const data = await (simulate ? requestRoleOpener(simulate) : roleOpenerPromise);
 	if (!chatInstance || stale()) return;
 	if (!data?.message) {
+		if (!simulate) markOpenerDone();
 		if (simulate) {
 			chatInstance.messages = [
 				...withoutOpeners(),
@@ -223,6 +233,7 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 		return;
 	}
 	roleOpenerPosted = true;
+	markOpenerDone();
 	roleTeaser.set(null);
 	roleTeaserHold.set(false);
 	chatInstance.messages = [
@@ -242,7 +253,6 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 	captureEvent('role_opener_shown', SESSION_ID, { session_id: SESSION_ID });
 }
 
-let roleOpenerAsked = false;
 let roleOpenerPosted = false;
 let roleOpenerPromise: Promise<RoleOpenerData | null> | null = null;
 let roleOpenerRun = 0;
@@ -442,11 +452,7 @@ function runSimulateCommand(text: string): boolean {
 	roleTeaser.set(null);
 	roleTeaserHold.set(false);
 	// Resetting re-runs the on-open trigger in ChatBox; mark it done so only this call asks.
-	try {
-		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
-	} catch {
-		roleOpenerAsked = true;
-	}
+	markOpenerDone();
 	resetChat('command');
 	if (!off) void triggerRoleOpener(name);
 	return true;

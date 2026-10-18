@@ -22,11 +22,12 @@
 
 	// A message that arrives whole (the role opener) types out first, then its chips fade in.
 	// Streamed replies mount nearly empty, so for them this is already over when options arrive.
-	const REVEAL_MS_PER_CHAR = 10;
+	// Shared with the text reveal in `streamReveal`.
+	const CHAR_STAGGER_MS = 10;
 	let optionsReady = !animate;
 	onMount(() => {
 		if (optionsReady) return;
-		const t = setTimeout(() => (optionsReady = true), value.length * REVEAL_MS_PER_CHAR + 400);
+		const t = setTimeout(() => (optionsReady = true), value.length * CHAR_STAGGER_MS + 400);
 		return () => clearTimeout(t);
 	});
 
@@ -64,8 +65,6 @@
 
 	function streamReveal(node: HTMLElement, text: string) {
 		ensureKeyframes();
-
-		const STAGGER = 10;
 
 		let current = '';
 		let settleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -110,7 +109,7 @@
 
 				if (isSpace) {
 					for (const ch of chunk) {
-						const delay = Math.max(0, charIndex * STAGGER - elapsed);
+						const delay = Math.max(0, charIndex * CHAR_STAGGER_MS - elapsed);
 						charIndex++;
 						lastDelay = delay;
 						const span = document.createElement('span');
@@ -128,7 +127,7 @@
 					let wordMounted = false;
 
 					for (const ch of chunk) {
-						const delay = Math.max(0, charIndex * STAGGER - elapsed);
+						const delay = Math.max(0, charIndex * CHAR_STAGGER_MS - elapsed);
 						charIndex++;
 						lastDelay = delay;
 						const charSpan = document.createElement('span');
