@@ -85,6 +85,7 @@ GOOGLE_CALENDAR_ID=        # optional (default "primary")
 GOOGLE_CALENDAR_TIMEZONE=  # optional IANA zone (default America/Los_Angeles)
 INTERVALS_API_KEY=  INTERVALS_ATHLETE_ID=   # intervals.icu training tools; unset means "not connected"
 IPINFO_TOKEN=              # optional: IPinfo Lite, the ASN layer of company identification
+FIRECRAWL_API_KEY=         # optional: Firecrawl renders JavaScript-only career sites for the open-role lookup (free ~1,000 credits/mo)
 IPAPI_IS_KEY=              # optional: ipapi.is (free 1,000/day), the IP-block-owner layer with VPN flags
 PUBLIC_RB2B_KEY=           # optional: RB2B pixel key (default: Hunter's, in +layout.svelte); "off" disables the pixel
 RB2B_WEBHOOK_SECRET=       # optional: secret path segment of the RB2B webhook URL (/api/visitor-id/rb2b/<secret>)
