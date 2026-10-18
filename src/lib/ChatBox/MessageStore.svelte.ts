@@ -150,6 +150,8 @@ export function prefetchRoleOpener(): void {
 		// The chat may have opened (and posted the opener) while the lookup ran.
 		if (!data?.message || !data.teaser || !get(minimized) || hasUserMessage()) return;
 		roleTeaser.set(data.teaser);
+		// The "Any questions?" bar turns into the input bar, which carries the teaser.
+		botEngaged.set(true);
 		roleTeaserHold.set(true);
 		setTimeout(() => roleTeaserHold.set(false), TEASER_HOLD_MS);
 		captureEvent('role_teaser_shown', SESSION_ID, { session_id: SESSION_ID });
