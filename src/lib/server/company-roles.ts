@@ -514,9 +514,14 @@ async function fromRenderedPages(urls: string[], org: OrgRef): Promise<CompanyRo
 	const found = new Map<string, CompanyRole>();
 	for (const page of pages) {
 		if (!page) continue;
-		for (const m of page.markdown.matchAll(/\[([^\]\n]{4,160})\]\((https:\/\/[^)\s]+)\)/g)) {
-			// "[Product Designer\n...](url)" cards: the title is the first line of the link text
-			const title = m[1].replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim();
+		for (const m of page.markdown.matchAll(/\[([^\]]{4,400})\]\((https:\/\/[^)\s]+)\)/g)) {
+			// Cards render as "[**Title**\\\n\\\nCity\\\n\\\nTeam](url)": the title is the first non-empty line
+			const title =
+				m[1]
+					.replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+					.split('\n')
+					.map((l) => l.replace(/[*\\]/g, '').trim())
+					.find(Boolean) ?? '';
 			if (!isDesignRole(title) || !isTrustedRoleUrl(m[2], org) || found.has(m[2])) continue;
 			found.set(m[2], { title, location: null, url: m[2] });
 		}
