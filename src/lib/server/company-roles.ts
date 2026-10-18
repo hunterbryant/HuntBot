@@ -51,6 +51,10 @@ const DESIGN_TITLE =
 const NOT_DESIGN =
 	/\b(engineer|writer|copywriter|writing|verification|physical design|electrical|manufacturing|silicon|asic|circuit|civil|architect(?!ure)|interior|fashion|graphic production)\b/i;
 
+/** A title that names some other job, so a page showing it is not the design posting we were told about. */
+const OTHER_JOB =
+	/\b(engineer|developer|manager|analyst|scientist|recruiter|accountant|counsel|attorney|sales|marketing|specialist|administrator|technician|coordinator|writer|director|architect|associate|intern|consultant|operations|support)\b/i;
+
 export function isDesignRole(title: string): boolean {
 	return DESIGN_TITLE.test(title) && !NOT_DESIGN.test(title);
 }
@@ -186,10 +190,10 @@ async function greenhouse(slug: string): Promise<Board | null> {
 	};
 }
 
-async function lever(slug: string): Promise<Board | null> {
-	const data = (await getJson(`https://api.lever.co/v0/postings/${slug}?mode=json`)) as
-		| { text?: string; hostedUrl?: string; categories?: { location?: string } }[]
-		| null;
+async function lever(slug: string, eu = false): Promise<Board | null> {
+	const data = (await getJson(
+		`https://api.${eu ? 'eu.' : ''}lever.co/v0/postings/${slug}?mode=json`
+	)) as { text?: string; hostedUrl?: string; categories?: { location?: string } }[] | null;
 	if (!Array.isArray(data)) return null;
 	return {
 		company: null,
@@ -404,12 +408,15 @@ async function stillOpen(role: CompanyRole, requireTitle = false): Promise<boole
 	if (!page) return !requireTitle;
 	if (!page.ok) return !requireTitle && page.status !== 404 && page.status !== 410;
 	// A link trusted only loosely (its host merely contains the name: metacareers.com, but also
-	// evilmeta.example) has to prove itself with a design title on the page.
-	if (requireTitle && !pageTitle(page.text)) return false;
-	// When the posting page names its job (og:title, which even JavaScript-only career sites like
-	// Meta's render server-side), it has to be a design role: a search-result title can't be trusted.
+	// evilmeta.example) has to prove itself with a design title on the page. Otherwise the page
+	// is dropped only when its og:title names a different job: a generic title ("Acme") is no evidence.
 	const title = pageTitle(page.text);
-	if (title && !isDesignRole(title)) return false;
+	if (
+		requireTitle
+			? !title || !isDesignRole(title)
+			: title && OTHER_JOB.test(title) && !isDesignRole(title)
+	)
+		return false;
 	return !DEAD_POSTING.test(visibleText(page.text));
 }
 
@@ -493,15 +500,20 @@ export async function renderPage(
 }
 
 /** Plain fetch first (free, fast); a page with almost no text is rendered in a browser instead. */
-async function readPage(url: string): Promise<string | null> {
+async function readPage(url: string, { render = true } = {}): Promise<string | null> {
 	const page = await safeFetchText(url, { truncate: true });
-	if (page.ok) {
-		const text = /html/i.test(page.contentType) ? htmlToText(page.text) : page.text;
-		if (text.trim().length >= 600) return text;
+	const isHtml = page.ok && /html/i.test(page.contentType);
+	const text = page.ok ? (isHtml ? htmlToText(page.text) : page.text) : '';
+	if (text.trim().length >= 600) return text;
+	// Credits are scarce: render only an empty JavaScript shell (HTML with scripts and no text) or a
+	// bot wall (401/403/406/429), not a short real page, JSON, or a 404.
+	const shell = isHtml && /<script\b/i.test((page as { text: string }).text);
+	const botWall = !page.ok && [401, 403, 406, 429].includes(page.status ?? 0);
+	if (render && (shell || botWall)) {
+		const rendered = await renderPage(url);
+		if (rendered) return rendered.markdown;
 	}
-	const rendered = await renderPage(url);
-	if (rendered) return rendered.markdown;
-	return page.ok ? htmlToText(page.text) : null;
+	return page.ok ? text : null;
 }
 
 /**
@@ -539,7 +551,11 @@ async function fromRenderedPages(urls: string[], org: OrgRef): Promise<CompanyRo
  * career sites like Meta's still render server-side) decides whether it's a design role. So the
  * answer doesn't depend on the model's willingness to return a list. Never throws.
  */
-async function fromSearchSources(org: OrgRef, timeoutMs: number): Promise<CompanyRole[]> {
+async function fromSearchSources(
+	org: OrgRef,
+	timeoutMs: number,
+	signal?: AbortSignal
+): Promise<CompanyRole[]> {
 	const name = coreOrgName(org.name);
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -547,7 +563,9 @@ async function fromSearchSources(org: OrgRef, timeoutMs: number): Promise<Compan
 			model: openai.responses('gpt-6-luna'),
 			tools: { web_search: openai.tools.webSearch({ searchContextSize: 'medium' }) },
 			reasoning: 'low',
-			abortSignal: AbortSignal.timeout(timeoutMs),
+			abortSignal: signal
+				? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
+				: AbortSignal.timeout(timeoutMs),
 			providerOptions: { openai: { reasoningSummary: null } },
 			prompt: `Search the web for current open product designer, UX designer, interaction designer and design systems job postings at ${name}${org.domain ? ` (${org.domain})` : ''}, on the company's own careers site or job platform (try a few queries, e.g. "${name} product designer careers", "${name} UX designer job"). List the postings you find, each with its title and link, citing each source.`
 		});
@@ -596,7 +614,7 @@ async function fromSearchSources(org: OrgRef, timeoutMs: number): Promise<Compan
 async function fromWebSearch(
 	org: OrgRef,
 	timeoutMs = WEB_TIMEOUT_MS,
-	retry = false
+	signal?: AbortSignal
 ): Promise<CompanyRole[]> {
 	try {
 		const openai = createOpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -618,9 +636,11 @@ async function fromWebSearch(
 			stopWhen: ({ steps }) => steps.length >= MAX_AGENT_STEPS,
 			output: Output.object({ schema: zodSchema(webRolesSchema) }),
 			reasoning: 'low',
-			abortSignal: AbortSignal.timeout(timeoutMs),
+			abortSignal: signal
+				? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
+				: AbortSignal.timeout(timeoutMs),
 			providerOptions: { openai: { reasoningSummary: null } },
-			prompt: `Find up to ${MAX_ROLES} currently open product design, UX, visual or design-systems roles at ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''}. Search for the company's own careers page or job board, open it, and look for design roles (try a design filter, a Design team page, or a job search for "product designer" / "UX designer" if the site has one; many big career sites need JavaScript and show nothing when opened, so also search for its postings directly, e.g. "<company> product designer job", and use the results). Only include roles you saw on a page or in search results, each with the direct link to that posting on the company's careers site or job board (not an aggregator like LinkedIn or Indeed); each link is checked afterwards.${retry ? ' A first attempt found nothing, so do not open career pages: just run web searches for current product designer / UX designer job postings at the company and use what the results show.' : ''} If you can't open the careers page (many are JavaScript-only), that is expected: use search results instead, and always return the best matches you found, because every link is checked after you answer. Return an empty list only when the searches show no design postings at all. Never invent a role or fill one in from memory.`
+			prompt: `Find up to ${MAX_ROLES} currently open product design, UX, visual or design-systems roles at ${coreOrgName(org.name)}${org.domain ? ` (${org.domain})` : ''}. Search for the company's own careers page or job board, open it, and look for design roles (try a design filter, a Design team page, or a job search for "product designer" / "UX designer" if the site has one; many big career sites need JavaScript and show nothing when opened, so also search for its postings directly, e.g. "<company> product designer job", and use the results). Only include roles you saw on a page or in search results, each with the direct link to that posting on the company's careers site or job board (not an aggregator like LinkedIn or Indeed); each link is checked afterwards. If you can't open the careers page (many are JavaScript-only), that is expected: use search results instead, and always return the best matches you found, because every link is checked after you answer. Return an empty list only when the searches show no design postings at all. Never invent a role or fill one in from memory.`
 		});
 		const candidates = output.roles.filter(
 			(r) => isDesignRole(r.title) && isTrustedRoleUrl(r.url, org)
@@ -810,10 +830,10 @@ const ORACLE_BOARD =
  * companies. A URL on `<pod>.fa.<region>.oraclecloud.com/.../sites/<Site>` names the board; a
  * custom careers domain is read once for a link to one (plain fetch, Firecrawl if that is empty).
  */
-async function oracle(url: URL): Promise<Board | null> {
+async function oracle(url: URL, render: boolean): Promise<Board | null> {
 	let m = ORACLE_BOARD.exec(url.href);
 	if (!m && !url.hostname.endsWith('oraclecloud.com')) {
-		const page = await readPage(url.href);
+		const page = await readPage(url.href, { render });
 		m = page ? ORACLE_BOARD.exec(page) : null;
 	}
 	if (!m) return null;
@@ -848,7 +868,8 @@ async function oracle(url: URL): Promise<Board | null> {
 /** The adapter a board URL calls for, with the board slug taken from the URL instead of guessed. Exported for tests. */
 export async function fromBoardUrl(
 	raw: string,
-	domain: string | null
+	domain: string | null,
+	render = false
 ): Promise<{ board: Board; via: string } | null> {
 	let url: URL;
 	try {
@@ -862,14 +883,20 @@ export async function fromBoardUrl(
 	const slugOk = /^[\w-]{2,60}$/.test(first);
 	const via = (name: string, board: Board | null) => (board ? { board, via: name } : null);
 	if (host.endsWith('.myworkdayjobs.com')) return via('workday', await workday(url));
-	if (/(^|\.)greenhouse\.io$/.test(host) && slugOk)
-		return via('greenhouse', await greenhouse(first));
-	if (/(^|\.)lever\.co$/.test(host) && slugOk) return via('lever', await lever(first));
+	if (/(^|\.)greenhouse\.io$/.test(host)) {
+		// Embeds are boards.greenhouse.io/embed/job_board?for=<slug>
+		const slug = first === 'embed' ? url.searchParams.get('for') : first;
+		return slug && /^[\w-]{2,60}$/.test(slug) ? via('greenhouse', await greenhouse(slug)) : null;
+	}
+	if (/(^|\.)lever\.co$/.test(host) && slugOk)
+		return via('lever', await lever(first, host.includes('.eu.')));
 	if (host === 'jobs.ashbyhq.com' && slugOk) return via('ashby', await ashby(first));
 	if (host === 'jobs.smartrecruiters.com' && slugOk)
 		return via('smartrecruiters', await smartrecruiters(first));
 	if (host === 'apply.workable.com' && slugOk) return via('workable', await workable(first));
-	return via('eightfold', await eightfold(url, domain)) ?? via('oracle', await oracle(url));
+	// Anything else is a host a search result named: only public hosts, never an internal address.
+	if ('reason' in (await resolvePublicHost(url.href))) return null;
+	return via('eightfold', await eightfold(url, domain)) ?? via('oracle', await oracle(url, render));
 }
 
 /** Discovery, then the platform adapters. Never throws. */
@@ -892,7 +919,10 @@ async function fromDiscoveredBoards(
 		...found.board_urls,
 		...(found.careers_url ? [found.careers_url] : [])
 	].slice(0, 8);
-	const boards = await Promise.all(urls.map((u) => fromBoardUrl(u, domain).catch(() => null)));
+	// Only the careers page itself may be rendered (to find an Oracle board); posting URLs stay plain.
+	const boards = await Promise.all(
+		urls.map((u) => fromBoardUrl(u, domain, u === found.careers_url).catch(() => null))
+	);
 	// Hosts and counts only: shows what discovery found and which adapter (if any) could read it.
 	console.log('[HuntBot tools] company roles discovery', {
 		company: displayName(org.name),
@@ -936,13 +966,16 @@ async function fromWeb(
 	const timeout = wait ? WEB_WAIT_TIMEOUT_MS : WEB_TIMEOUT_MS;
 	// Discovery + platform API and the page-reading agent run side by side (a slow discovery used to
 	// eat the agent's time); the platform API's answer wins when it has one.
-	const agent = fromWebSearch(org, timeout).catch(() => [] as CompanyRole[]);
+	// Whichever of them loses is aborted so it stops spending tokens and render credits.
+	const abort = new AbortController();
+	const agent = fromWebSearch(org, timeout, abort.signal).catch(() => [] as CompanyRole[]);
 	// The agent often comes back empty on JavaScript-only career sites, so a second search runs
 	// beside it and its cited pages are judged by their own titles (it doesn't depend on a list the
 	// model writes); the agent's roles win when it has any.
-	const sources = fromSearchSources(org, timeout).catch(() => [] as CompanyRole[]);
+	const sources = fromSearchSources(org, timeout, abort.signal).catch(() => [] as CompanyRole[]);
 	const board = await fromDiscoveredBoards(org).catch(() => null);
 	if (board) {
+		abort.abort();
 		console.log('[HuntBot tools] company roles path', {
 			company: displayName(org.name),
 			via: `board:${board.via}`,
@@ -953,7 +986,8 @@ async function fromWeb(
 	}
 	let roles = await agent;
 	let via = 'agent';
-	if (!roles.length) {
+	if (roles.length) abort.abort();
+	else {
 		roles = await sources;
 		via = 'search-sources';
 	}
