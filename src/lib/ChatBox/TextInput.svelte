@@ -3,7 +3,16 @@
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen, mobile, keyboardOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { minimized, scrollSuggestions, hoverSuggestions, loadingContextSuggestions } from './MessageStore.svelte';
+	import {
+		minimized,
+		scrollSuggestions,
+		hoverSuggestions,
+		loadingContextSuggestions,
+		roleTeaser,
+		roleTeaserHold,
+		SESSION_ID
+	} from './MessageStore.svelte';
+	import { captureEvent } from '$lib/analytics';
 	import type { Writable, Readable } from 'svelte/store';
 
 	export let input: Writable<string>;
@@ -14,18 +23,23 @@
 
 	let inputElement: HTMLInputElement;
 
+	$: hasSuggestion = $hoverSuggestions.length > 0 || $scrollSuggestions.length > 0;
+	// The open-role teaser wins when it first lands, and stands in for the idle text afterwards.
+	$: showingTeaser = $minimized && !!$roleTeaser && ($roleTeaserHold || !hasSuggestion);
+
 	$: placeholder = $minimized
-		? $loadingContextSuggestions && $hoverSuggestions.length === 0 && $scrollSuggestions.length === 0
-			? 'Generating questions...'
-			: $hoverSuggestions.length > 0
-				? $hoverSuggestions[0]
-				: $scrollSuggestions.length > 0
-					? $scrollSuggestions[0]
-					: 'If you need me... ask away!'
+		? showingTeaser
+			? ($roleTeaser ?? '')
+			: $loadingContextSuggestions && !hasSuggestion
+				? 'Generating questions...'
+				: $hoverSuggestions.length > 0
+					? $hoverSuggestions[0]
+					: $scrollSuggestions.length > 0
+						? $scrollSuggestions[0]
+						: 'If you need me... ask away!'
 		: 'Message HuntBot';
 
-	$: isMinimizedSuggestion =
-		$minimized && ($hoverSuggestions.length > 0 || $scrollSuggestions.length > 0);
+	$: isMinimizedSuggestion = $minimized && hasSuggestion && !showingTeaser;
 
 	function typeReveal(node: HTMLElement, text: string) {
 		let timeouts: ReturnType<typeof setTimeout>[] = [];
@@ -119,6 +133,13 @@
 	}
 
 	function focusInput() {
+		if (showingTeaser) {
+			// Opening the chat posts the question the teaser is about.
+			captureEvent('role_teaser_clicked', SESSION_ID, { session_id: SESSION_ID });
+			minimized.set(false);
+			chatOpen.set(true);
+			return;
+		}
 		if (isMinimizedSuggestion && onPlaceholderSelect) {
 			onPlaceholderSelect(placeholder);
 			return;

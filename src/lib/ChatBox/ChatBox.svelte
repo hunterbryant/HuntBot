@@ -28,6 +28,7 @@
 		fetchHoverSuggestions,
 		triggerProactiveOpener,
 		triggerRoleOpener,
+		prefetchRoleOpener,
 		getMessageText,
 		getMessageSources,
 		getMessageRelated,
@@ -485,7 +486,12 @@
 		hoverSuggestions.set([]);
 	}
 
+	// Look the visitor's company up once they've stayed a while, so the bar can tease open roles.
+	const ROLE_PREFETCH_DELAY_MS = 8000;
+	let rolePrefetchTimer: ReturnType<typeof setTimeout> | null = null;
+
 	onMount(() => {
+		rolePrefetchTimer = setTimeout(prefetchRoleOpener, ROLE_PREFETCH_DELAY_MS);
 		if (canFetchScroll()) {
 			fetchCount++;
 			fetchScrollSuggestions($page.url.pathname, getScrollDepth(), null);
@@ -495,6 +501,7 @@
 	});
 
 	onDestroy(() => {
+		if (rolePrefetchTimer) clearTimeout(rolePrefetchTimer);
 		resetScrollState();
 	});
 

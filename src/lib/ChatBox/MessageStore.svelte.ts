@@ -9,7 +9,7 @@ import {
 } from '$lib/visitorContext';
 import { Chat, type UIMessage } from '@ai-sdk/svelte';
 import { DefaultChatTransport, generateId } from 'ai';
-import { toStore, writable } from 'svelte/store';
+import { get, toStore, writable } from 'svelte/store';
 
 // Re-export UIMessage as Message for backward compat with consuming code
 export type { UIMessage as Message };
@@ -103,28 +103,15 @@ export async function triggerProactiveOpener(
 
 const ROLE_OPENER_KEY = 'huntbot_role_opener_v1';
 
-/**
- * Once per browser session, the first time the chat opens with no conversation: if the visitor's
- * network is a company with open design roles, HuntBot asks whether they're hiring for one. The
- * server returns nothing under Global Privacy Control or for non-company networks.
- */
-export async function triggerRoleOpener(simulate?: string): Promise<void> {
-	// `/simulate` always asks again; otherwise once per browser session
-	if (!simulate) {
-		try {
-			if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
-			sessionStorage.setItem(ROLE_OPENER_KEY, '1');
-		} catch {
-			// storage blocked: ask at most once per page load instead
-			if (roleOpenerAsked) return;
-		}
-	}
-	roleOpenerAsked = true;
-	// Only the newest call may post: a simulate and the on-open trigger can start together.
-	const run = ++roleOpenerRun;
-	const stale = () => run !== roleOpenerRun;
-	const withoutOpeners = () =>
-		(chatInstance?.messages ?? []).filter((m) => !String(m.id).startsWith('role-opener-'));
+type RoleOpenerData = { message?: string; options?: unknown[]; teaser?: string; reason?: string };
+
+/** Short line the minimized chat bar shows once the opener is ready (null: nothing to say). */
+export const roleTeaser = writable<string | null>(null);
+/** True for a few seconds after the teaser lands, so it beats whatever suggestion is showing. */
+export const roleTeaserHold = writable(false);
+const TEASER_HOLD_MS = 10_000;
+
+async function requestRoleOpener(simulate?: string): Promise<RoleOpenerData | null> {
 	try {
 		const response = await fetch('/api/chat/role-opener', {
 			method: 'POST',
@@ -134,51 +121,114 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 				simulateOrg: simulate ?? getSimulatedOrg() ?? undefined
 			})
 		});
-		if (!response.ok) return;
-		const data = await response.json();
-		if (!chatInstance || stale()) return;
-		if (!data.message) {
-			if (simulate) {
-				chatInstance.messages = [
-					...withoutOpeners(),
-					{
-						id: 'role-opener-' + Date.now(),
-						role: 'assistant' as const,
-						parts: [
-							{
-								type: 'text' as const,
-								text:
-									data.reason === 'rate_limited'
-										? 'Too many simulations from here, try again in a few minutes.'
-										: `Simulating ${simulate}, but I couldn't find open design roles there.`
-							}
-						]
-					}
-				];
-			}
-			return;
-		}
-		// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
-		if (chatInstance.messages.some((m) => m.role === 'user')) return;
-		chatInstance.messages = [
-			...withoutOpeners(),
-			{
-				id: 'role-opener-' + Date.now(),
-				role: 'assistant' as const,
-				parts: [
-					{ type: 'text' as const, text: data.message },
-					...(Array.isArray(data.options) && data.options.length
-						? [{ type: 'data-options' as const, data: { options: data.options } }]
-						: [])
-				] as UIMessage['parts']
-			}
-		];
-		captureEvent('role_opener_shown', SESSION_ID, { session_id: SESSION_ID });
+		return response.ok ? await response.json() : null;
 	} catch {
 		// best-effort, like the page opener
+		return null;
 	}
 }
+
+const hasUserMessage = () => (chatInstance?.messages ?? []).some((m) => m.role === 'user');
+const isRoleOpener = (m: UIMessage) => String(m.id).startsWith('role-opener-');
+
+/**
+ * Looks the visitor's company and open roles up while the chat is still closed, so the minimized
+ * bar can tease it (`roleTeaser`) and opening the chat shows the question at once. Once per
+ * browser session; the server returns nothing under Global Privacy Control or for non-company
+ * networks.
+ */
+export function prefetchRoleOpener(): void {
+	if (roleOpenerPromise || roleOpenerAsked || hasUserMessage()) return;
+	try {
+		if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
+		sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+	} catch {
+		// storage blocked: ask at most once per page load instead
+	}
+	roleOpenerPromise = requestRoleOpener();
+	void roleOpenerPromise.then((data) => {
+		// The chat may have opened (and posted the opener) while the lookup ran.
+		if (!data?.message || !data.teaser || !get(minimized) || hasUserMessage()) return;
+		roleTeaser.set(data.teaser);
+		roleTeaserHold.set(true);
+		setTimeout(() => roleTeaserHold.set(false), TEASER_HOLD_MS);
+		captureEvent('role_teaser_shown', SESSION_ID, { session_id: SESSION_ID });
+	});
+}
+
+/**
+ * The first time the chat opens with no conversation: if the visitor's network is a company with
+ * open design roles, HuntBot asks whether they're hiring for one. Uses the early lookup when
+ * there is one, and then starts the conversation with that question instead of the greeting.
+ */
+export async function triggerRoleOpener(simulate?: string): Promise<void> {
+	if (!simulate) {
+		if (roleOpenerPosted) return;
+		if (!roleOpenerPromise) {
+			// `/simulate` always asks again; otherwise once per browser session
+			try {
+				if (sessionStorage.getItem(ROLE_OPENER_KEY)) return;
+				sessionStorage.setItem(ROLE_OPENER_KEY, '1');
+			} catch {
+				// storage blocked: ask at most once per page load instead
+				if (roleOpenerAsked) return;
+			}
+			roleOpenerPromise = requestRoleOpener();
+		}
+	}
+	roleOpenerAsked = true;
+	// Only the newest call may post: a simulate and the on-open trigger can start together.
+	const run = ++roleOpenerRun;
+	const stale = () => run !== roleOpenerRun;
+	const withoutOpeners = () => (chatInstance?.messages ?? []).filter((m) => !isRoleOpener(m));
+	const data = await (simulate ? requestRoleOpener(simulate) : roleOpenerPromise);
+	if (!chatInstance || stale()) return;
+	if (!data?.message) {
+		if (simulate) {
+			chatInstance.messages = [
+				...withoutOpeners(),
+				{
+					id: 'role-opener-' + Date.now(),
+					role: 'assistant' as const,
+					parts: [
+						{
+							type: 'text' as const,
+							text:
+								data?.reason === 'rate_limited'
+									? 'Too many simulations from here, try again in a few minutes.'
+									: `Simulating ${simulate}, but I couldn't find open design roles there.`
+						}
+					]
+				}
+			];
+		}
+		return;
+	}
+	// The visitor may have typed while the lookup ran; then the chat route's own prompt asks.
+	if (hasUserMessage()) return;
+	roleOpenerPosted = true;
+	roleTeaser.set(null);
+	roleTeaserHold.set(false);
+	chatInstance.messages = [
+		// The question is the greeting: drop the canned one if it already landed.
+		...withoutOpeners().filter((m) => m.id !== initMessage.id),
+		{
+			id: 'role-opener-' + Date.now(),
+			role: 'assistant' as const,
+			parts: [
+				{ type: 'text' as const, text: data.message },
+				...(Array.isArray(data.options) && data.options.length
+					? [{ type: 'data-options' as const, data: { options: data.options } }]
+					: [])
+			] as UIMessage['parts']
+		}
+	];
+	captureEvent('role_opener_shown', SESSION_ID, { session_id: SESSION_ID });
+}
+
 let roleOpenerAsked = false;
+let roleOpenerPosted = false;
+let roleOpenerPromise: Promise<RoleOpenerData | null> | null = null;
 let roleOpenerRun = 0;
 
 export function fetchScrollSuggestions(
@@ -550,7 +600,7 @@ export const chat = () => {
 	if (!restored) {
 		setTimeout(() => {
 			// A reply may already be streaming if the visitor was quick
-			if (instance.messages.length > 1) return;
+			if (instance.messages.length > 1 || instance.messages.some(isRoleOpener)) return;
 			instance.messages = [{ ...initMessage, parts: [{ type: 'text', text: greetingResponse }] }];
 		}, 2000);
 	}

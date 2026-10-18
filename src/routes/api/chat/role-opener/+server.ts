@@ -107,8 +107,10 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	const lead = LEAD[resolution.company?.source ?? 'ip_asn'];
 	const ask = (rest: string) =>
 		lead ? `${lead} are you hiring for ${rest}` : `Are you hiring for ${rest}`;
+	// The chat bar's teaser: one short line while the chat is still closed.
 	if (standsOut) {
 		return json({
+			teaser: `Spotted an open design role at ${company}. Yours?`,
 			message: `${ask(`the ${top.title} role at ${company}?`)} If so, I can show how Hunter's work lines up.`,
 			options: [
 				{ label: 'Yes, that one', reply: roleOption(top.title).reply },
@@ -118,6 +120,7 @@ export const POST: RequestHandler = async ({ request, getClientAddress }) => {
 	}
 	const shown = ranked.slice(0, 3);
 	return json({
+		teaser: `Spotted open design roles at ${company}. Yours?`,
 		message: `${ask(`one of these roles at ${company}?`)} If so, I can show how Hunter's work lines up.`,
 		options: [
 			...shown.map((r) => roleOption(r.title)),
