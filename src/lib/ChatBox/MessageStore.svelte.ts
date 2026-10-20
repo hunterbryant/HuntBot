@@ -754,10 +754,13 @@ function handleToolCall(toolCall: {
 
 	if (toolCall.toolName === 'minimize_chat') {
 		const args = toolCall.args as { message: string };
+		const text = args.message ?? "I'll be here if you need me.";
 		const textMessage: UIMessage = {
-			id: replyId,
+			// A different sentence than the one already on screen is a new message, not more of it:
+			// the streamed text only ever gets appended to.
+			id: !streamedText || text.startsWith(streamedText) ? replyId : generateId(),
 			role: 'assistant',
-			parts: [{ type: 'text', text: args.message ?? "I'll be here if you need me." }]
+			parts: [{ type: 'text', text }]
 		};
 		const functionMessage: FunctionMessage = {
 			id: generateId(),

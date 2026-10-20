@@ -12,6 +12,7 @@
 	export let value: FunctionMessage;
 
 	// Each button fades in after the one before it, once the card has slid open.
+	const CARD_SLIDE_MS = 400;
 	const CHIP_STAGGER_MS = 120;
 
 	function trackContact(channel: 'email' | 'linkedin') {
@@ -26,9 +27,12 @@
 {#if value.name === 'capture_lead_intent'}
 	<!-- Contact card under a hiring/collaboration reply: the conversion moment, so real buttons
 	     in sentence case rather than the uppercase status pill the other actions use. -->
-	<div in:slide|global={{ duration: 400 }} class="mb-4 ml-14 mr-6 mt-2 flex flex-wrap gap-2">
+	<div
+		in:slide|global={{ duration: CARD_SLIDE_MS }}
+		class="mb-4 ml-14 mr-6 mt-2 flex flex-wrap gap-2"
+	>
 		<a
-			in:fly|global={{ y: 8, duration: 200, delay: 200 }}
+			in:fly|global={{ y: 8, duration: 200, delay: CARD_SLIDE_MS }}
 			href="mailto:hunter.bryant2016@gmail.com"
 			on:click={() => trackContact('email')}
 			class="inline-flex h-10 items-center rounded bg-mud-600 px-3 pt-0.5 text-sm text-stone-50 transition hover:bg-mud-700 active:bg-mud-600 dark:bg-mud-500 dark:text-stone-950 dark:hover:bg-mud-600 dark:active:bg-mud-500"
@@ -36,7 +40,7 @@
 			Email Hunter
 		</a>
 		<a
-			in:fly|global={{ y: 8, duration: 200, delay: 200 + CHIP_STAGGER_MS }}
+			in:fly|global={{ y: 8, duration: 200, delay: CARD_SLIDE_MS + CHIP_STAGGER_MS }}
 			href="https://www.linkedin.com/in/hunterbryant1/"
 			target="_blank"
 			rel="noopener noreferrer"
