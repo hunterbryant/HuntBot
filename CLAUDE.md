@@ -53,6 +53,7 @@ src/lib/server/               server-only helpers:
   training.ts, python-sandbox.ts   intervals.icu data and the Vercel Sandbox Python runner
   notion.ts, self-docs.ts, job-match.ts   live Notion search, "how do you work" answers from our docs, job-posting matching
   company-roles.ts, safe-fetch.ts, tool-log.ts   open roles at a visitor's company, guarded fetch for visitor URLs, tool log lines
+  chat-notify.ts               pushes/emails Hunter when a visitor (not admin) chats, with their company and role when known
   timing.ts, posthog.ts, rag-debug.ts, warn-once.ts, model-errors.ts   timing, analytics capture, logging, failure classification
   imessage-config.ts, site-nav-routes.ts   iMessage toggle (cached in Qdrant), Prismic route catalog
 src/lib/slices/                Prismic slices; index.ts registers them
@@ -94,6 +95,8 @@ CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-c
 CHUNK_AUDIT_ORIGIN=        # optional: origin for the audit's follow-up calls (default https://huntbot.vercel.app)
 CHUNK_AUDIT_USD_PER_M_INPUT=  # optional: gpt-6-luna input price for the audit cost estimate (default 0.10)
 VITE_PRISMIC_ENVIRONMENT=  # optional: override the Prismic repository name
+NTFY_TOPIC=                # optional: ntfy.sh topic that gets a push for each visitor conversation (pick a long random name; NTFY_URL / NTFY_TOKEN for a self-hosted or protected server)
+RESEND_API_KEY=  NOTIFY_EMAIL=   # optional: email each visitor conversation to NOTIFY_EMAIL via Resend (NOTIFY_EMAIL_FROM overrides the sender)
 
 # Switches (defaults are on unless noted)
 RAG_DEBUG=1                # log RAG/tool steps in production (dev logs them anyway)

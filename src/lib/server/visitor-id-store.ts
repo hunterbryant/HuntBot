@@ -5,18 +5,21 @@ import { createHash } from 'node:crypto';
 // A tiny shared key-value store for company-identification records, in its own Qdrant collection
 // (`<QDRANT_COLLECTION>_visitor_ids`, 1-dim dummy vectors), since serverless instances share no
 // memory: the RB2B webhook lands on one instance and the chat turn that needs it on another.
-// Two kinds of record:
+// Kinds of record:
 // - `pixel`: page-view token -> company, written by the RB2B webhook, kept 24h
 // - `referrer`: referrer host -> company (or none), written by the referrer classifier, kept 30 days
 // - `board`: company -> its careers and job-board URLs, found once by company-roles.ts, kept 30 days
+// - `notify`: chat session -> what chat-notify.ts already messaged Hunter about, kept 24h
 // Never throws: a missing store just means the layer stays quiet.
 
-export type StoreKind = 'pixel' | 'referrer' | 'board';
+export type StoreKind = 'pixel' | 'referrer' | 'board' | 'notify';
 const TTL_MS: Record<StoreKind, number> = {
 	pixel: 24 * 3600_000,
 	referrer: 30 * 24 * 3600_000,
 	// a company's careers / job-board URLs (company-roles.ts)
-	board: 30 * 24 * 3600_000
+	board: 30 * 24 * 3600_000,
+	// what the chat notifier already reported for a session (chat-notify.ts)
+	notify: 24 * 3600_000
 };
 
 const collection = () => (env.QDRANT_COLLECTION ? `${env.QDRANT_COLLECTION}_visitor_ids` : null);

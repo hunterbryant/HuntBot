@@ -1,6 +1,7 @@
 import { env } from '$env/dynamic/private';
 import type { RagRouterPlan } from '$lib/schemas/ragRouter';
 import { CALENDAR_TIMEZONE, formatEventTime, getCalendarEvents } from '$lib/server/calendar';
+import { chatNotifyEnabled, notifyConversation } from '$lib/server/chat-notify';
 import { displayName, lookupCompanyRoles, type CompanyRoles } from '$lib/server/company-roles';
 import { isEvalRequest } from '$lib/server/eval-auth';
 import {
@@ -340,6 +341,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				company: null as CompanyResolution | null,
 				// The visitor used /simulate <Company>: the org is theirs to pick, not their network
 				simulatedOrg: false,
+				// Open design roles found at their company this turn (for the chat notification)
+				openRoles: [] as CompanyRoles['roles'],
 				// Best vector score of the visitor's message against public content, set only on misses
 				relatedTopScore: null as number | null
 			};
@@ -597,6 +600,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					});
 					logRag('visitor context', { ...turn.visitor, org: turn.visitor.org?.orgClass ?? null });
 				}
+				turn.openRoles = visitorRoles?.roles ?? [];
 				const context = retrieved.text;
 				turn.contextAnswersQuestion = retrieved.answersQuestion;
 				turn.rerankEngine = fastPath ? null : retrieved.rerankEngine;
@@ -1746,6 +1750,29 @@ ${contextForModel}`;
 				})
 			);
 			sendTurnAnalytics();
+
+			// Message Hunter about real visitors' conversations (not admin, eval or /simulate turns)
+			if (chatNotifyEnabled() && sessionId && !isAdmin && !turn.simulatedOrg) {
+				runInBackground(
+					notifyConversation({
+						sessionId,
+						transcript: [
+							...messages.map((m) => ({
+								role: m.role === 'user' ? ('visitor' as const) : ('huntbot' as const),
+								text: getMessageText(m)
+							})),
+							{
+								role: 'huntbot' as const,
+								text: turn.visibleText || clientToolReplyText(turn.clientTool) || ''
+							}
+						].filter((line) => line.text.trim()),
+						company: turn.company?.company ?? null,
+						openRoles: turn.openRoles,
+						clientTool: turn.clientTool,
+						page: currentPage
+					}).catch((error) => console.warn('[HuntBot notify]', String(error)))
+				);
+			}
 		}
 	});
 
