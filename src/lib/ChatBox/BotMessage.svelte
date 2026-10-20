@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
 	import { onMount } from 'svelte';
-	import { slide, fade } from 'svelte/transition';
+	import { slide, fade, fly } from 'svelte/transition';
 	import { page } from '$app/stores';
 	import { captureEvent } from '$lib/analytics';
 	import { SESSION_ID, minimized } from './MessageStore.svelte';
@@ -24,6 +24,8 @@
 	// Streamed replies mount nearly empty, so for them this is already over when options arrive.
 	// Shared with the text reveal in `streamReveal`.
 	const CHAR_STAGGER_MS = 10;
+	// Chips in a row fade in one after another, like the suggestion chips.
+	const CHIP_STAGGER_MS = 120;
 	let optionsReady = !animate;
 	onMount(() => {
 		if (optionsReady) return;
@@ -219,9 +221,10 @@
 				use:streamReveal={value}
 			></p>
 			{#if options.length > 0 && optionsReady}
-				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
+				<p class="mt-2 flex flex-wrap gap-2" out:fade={{ duration: 150 }}>
 					{#each options as option, i (i)}
 						<button
+							in:fly|global={{ y: 8, duration: 200, delay: i * CHIP_STAGGER_MS }}
 							type="button"
 							on:click={() => onOption(option)}
 							class="inline-flex items-center rounded-lg border border-stone-200 px-2.5 py-1.5 text-left text-sm text-stone-500 transition hover:border-stone-300 hover:bg-stone-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-mud-600 dark:border-stone-700 dark:text-stone-400 dark:hover:border-stone-600 dark:hover:bg-stone-900/40"
@@ -233,9 +236,10 @@
 			{/if}
 			{#if related.length > 0}
 				<!-- Pages the reply names (or the closest ones after a miss) replace the source links. -->
-				<p class="mt-2 flex flex-wrap gap-2" transition:fade={{ duration: 150 }}>
-					{#each related as relatedPage (relatedPage.path)}
+				<p class="mt-2 flex flex-wrap gap-2" out:fade={{ duration: 150 }}>
+					{#each related as relatedPage, i (relatedPage.path)}
 						<a
+							in:fly|global={{ y: 8, duration: 200, delay: i * CHIP_STAGGER_MS }}
 							href={relatedPage.path}
 							on:click={() => {
 								captureEvent('related_page_clicked', SESSION_ID, {

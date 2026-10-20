@@ -27,6 +27,10 @@ const toText = compile({ wordwrap: false });
 const GREENHOUSE = /^https:\/\/(?:job-)?boards(?:\.eu)?\.greenhouse\.io\/([\w-]+)\/jobs\/(\d+)/i;
 const LEVER = /^https:\/\/jobs(\.eu)?\.lever\.co\/([\w-]+)\/([0-9a-f-]{36})/i;
 const ASHBY = /^https:\/\/jobs\.ashbyhq\.com\/([\w-]+)\/([0-9a-f-]{36})/i;
+// Workday posting pages are empty shells without JavaScript; the page's own data comes from
+// /wday/cxs/<tenant>/<site>/<job path>. The host is pinned to myworkdayjobs.com by the pattern.
+const WORKDAY =
+	/^https:\/\/([a-z0-9-]+\.wd\d+\.myworkdayjobs\.com)\/(?:[a-z]{2}-[A-Z]{2}\/)?([\w-]+)(\/job\/[^?#\s]+)/i;
 
 const unescapeHtml = (s: string) =>
 	s
@@ -83,6 +87,18 @@ async function fromJobBoard(url: string): Promise<string | null> {
 		} | null;
 		const job = board?.jobs?.find((j) => j.id === ashby[2]);
 		return job?.descriptionPlain ? `${job.title ?? ''}\n\n${job.descriptionPlain}` : null;
+	}
+
+	const workday = WORKDAY.exec(url);
+	if (workday) {
+		const [, host, site, path] = workday;
+		const tenant = host.split('.')[0];
+		const data = (await getJson(`https://${host}/wday/cxs/${tenant}/${site}${path}`)) as {
+			jobPostingInfo?: { title?: string; location?: string; jobDescription?: string };
+		} | null;
+		const job = data?.jobPostingInfo;
+		if (!job?.jobDescription) return null;
+		return `${job.title ?? ''}\n${job.location ?? ''}\n\n${toText(job.jobDescription)}`;
 	}
 	return null;
 }
