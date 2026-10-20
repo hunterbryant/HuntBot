@@ -173,6 +173,7 @@ export function prefetchRoleOpener(): void {
 }
 
 function showRoleTeaser(teaser: string) {
+	roleOpenerTeased = true;
 	roleTeaser.set(teaser);
 	// The "Any questions?" bar turns into the input bar, which carries the teaser.
 	botEngaged.set(true);
@@ -190,7 +191,8 @@ function showRoleTeaser(teaser: string) {
 export async function triggerRoleOpener(simulate?: string): Promise<void> {
 	if (!simulate) {
 		// `/simulate` always asks again; otherwise once per browser session
-		if (roleOpenerPosted || openerDone()) return;
+		// A teased opener is still owed on open, even in a session `/simulate` marked as asked.
+		if (roleOpenerPosted || (openerDone() && !roleOpenerTeased)) return;
 		roleOpenerPromise ??= requestRoleOpener();
 	}
 	// Only the newest call may post: a simulate and the on-open trigger can start together.
@@ -233,6 +235,7 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 		return;
 	}
 	roleOpenerPosted = true;
+	roleOpenerTeased = false;
 	markOpenerDone();
 	roleTeaser.set(null);
 	roleTeaserHold.set(false);
@@ -254,6 +257,8 @@ export async function triggerRoleOpener(simulate?: string): Promise<void> {
 }
 
 let roleOpenerPosted = false;
+// The teaser is up and its question hasn't been posted yet.
+let roleOpenerTeased = false;
 let roleOpenerPromise: Promise<RoleOpenerData | null> | null = null;
 let roleOpenerRun = 0;
 
@@ -449,6 +454,7 @@ function runSimulateCommand(text: string): boolean {
 	// Forget any earlier lookup: the next opener and teaser come from the simulated company.
 	roleOpenerPromise = null;
 	roleOpenerPosted = false;
+	roleOpenerTeased = false;
 	roleTeaser.set(null);
 	roleTeaserHold.set(false);
 	// Resetting re-runs the on-open trigger in ChatBox; mark it done so only this call asks.
