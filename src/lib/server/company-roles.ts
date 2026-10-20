@@ -462,10 +462,11 @@ function firecrawlAllowed(): boolean {
 export async function renderPage(
 	url: string
 ): Promise<{ markdown: string; title: string | null } | null> {
-	if (!firecrawlAllowed()) return null;
-	// Same rule as everything we fetch for a visitor: https only, and a public host.
+	// Same rule as everything we fetch for a visitor: https only, and a public host. Checked first,
+	// so a link that can't be rendered doesn't spend one of the hourly Firecrawl calls.
 	const target = await resolvePublicHost(url);
 	if ('reason' in target) return null;
+	if (!firecrawlAllowed()) return null;
 	try {
 		const res = await fetch('https://api.firecrawl.dev/v2/scrape', {
 			method: 'POST',

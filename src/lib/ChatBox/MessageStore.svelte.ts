@@ -746,13 +746,21 @@ function handleToolCall(toolCall: {
 		.map(getMessageText)
 		.join('\n\n')
 		.trim();
+	// The rewritten reply keeps the streamed message's id, so the list sees the same message
+	// getting its tool result rather than a new one, and doesn't type the text out a second time.
+	const replyId =
+		chatInstance.messages.slice(baseMessages.length).find((m) => m.role === 'assistant')?.id ??
+		generateId();
 
 	if (toolCall.toolName === 'minimize_chat') {
 		const args = toolCall.args as { message: string };
+		const text = args.message ?? "I'll be here if you need me.";
 		const textMessage: UIMessage = {
-			id: generateId(),
+			// A different sentence than the one already on screen is a new message, not more of it:
+			// the streamed text only ever gets appended to.
+			id: !streamedText || text.startsWith(streamedText) ? replyId : generateId(),
 			role: 'assistant',
-			parts: [{ type: 'text', text: args.message ?? "I'll be here if you need me." }]
+			parts: [{ type: 'text', text }]
 		};
 		const functionMessage: FunctionMessage = {
 			id: generateId(),
@@ -778,7 +786,7 @@ function handleToolCall(toolCall: {
 	} else if (toolCall.toolName === 'route_to_page') {
 		const args = toolCall.args as { page: string; message: string };
 		const textMessage: UIMessage = {
-			id: generateId(),
+			id: replyId,
 			role: 'assistant',
 			parts: [{ type: 'text', text: streamedText || args.message || `Taking you to ${args.page}.` }]
 		};
@@ -811,7 +819,7 @@ function handleToolCall(toolCall: {
 		chatInstance.messages = [
 			...baseMessages,
 			{
-				id: generateId(),
+				id: replyId,
 				role: 'assistant',
 				parts: [
 					{ type: 'text', text },
@@ -826,7 +834,7 @@ function handleToolCall(toolCall: {
 		chatInstance.messages = [
 			...baseMessages,
 			{
-				id: generateId(),
+				id: replyId,
 				role: 'assistant',
 				parts: [{ type: 'text', text: warmMessage }]
 			},
