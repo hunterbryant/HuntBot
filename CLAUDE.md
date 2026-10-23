@@ -53,7 +53,7 @@ src/lib/server/               server-only helpers:
   training.ts, python-sandbox.ts   intervals.icu data and the Vercel Sandbox Python runner
   notion.ts, self-docs.ts, job-match.ts   live Notion search, "how do you work" answers from our docs, job-posting matching
   company-roles.ts, safe-fetch.ts, tool-log.ts   open roles at a visitor's company, guarded fetch for visitor URLs, tool log lines
-  timing.ts, posthog.ts, rag-debug.ts, warn-once.ts, model-errors.ts   timing, analytics capture, logging, failure classification
+  timing.ts, posthog.ts, posthog-query.ts, rag-debug.ts, warn-once.ts, model-errors.ts   timing, analytics capture, logging, failure classification
   imessage-config.ts, site-nav-routes.ts   iMessage toggle (cached in Qdrant), Prismic route catalog
 src/lib/slices/                Prismic slices; index.ts registers them
 src/routes/api/chat/           POST /api/chat (RAG + streaming) and its /suggestions, /proactive helpers
@@ -89,7 +89,7 @@ FIRECRAWL_API_KEY=         # optional: Firecrawl renders JavaScript-only career 
 IPAPI_IS_KEY=              # optional: ipapi.is (free 1,000/day), the IP-block-owner layer with VPN flags
 PUBLIC_RB2B_KEY=           # optional: RB2B pixel key (default: Hunter's, in +layout.svelte); "off" disables the pixel
 RB2B_WEBHOOK_SECRET=       # optional: secret path segment of the RB2B webhook URL (/api/visitor-id/rb2b/<secret>)
-POSTHOG_PROJECT_ID=  POSTHOG_PERSONAL_API_KEY=   # admin conversation views (read); PUBLIC_POSTHOG_API_KEY sends events
+POSTHOG_PROJECT_ID=  POSTHOG_PERSONAL_API_KEY=   # admin conversation views (read; the key needs the query:read scope); PUBLIC_POSTHOG_API_KEY sends events
 CRON_SECRET=               # authorizes Vercel Cron and the chunk audit's self-calls (16+ chars); also the `x-huntbot-eval` header for `pnpm eval`
 CHUNK_AUDIT_ORIGIN=        # optional: origin for the audit's follow-up calls (default https://huntbot.vercel.app)
 CHUNK_AUDIT_USD_PER_M_INPUT=  # optional: gpt-6-luna input price for the audit cost estimate (default 0.10)

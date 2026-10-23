@@ -1,18 +1,12 @@
 <script lang="ts">
-	import { botEngaged, minimized, SESSION_ID } from './MessageStore.svelte';
+	import { botEngaged, minimized } from './MessageStore.svelte';
 	import caretdown from '$lib/assets/caret-down.svg';
 	import { chatOpen } from '$lib/nav/navstore';
 	import Huntbotlogo from '$lib/assets/huntbotlogo.svelte';
-	import { captureEvent } from '$lib/analytics';
-	import { page } from '$app/stores';
 
 	export let greeting: string;
 
 	function handleGreet() {
-		captureEvent('chat_opened', SESSION_ID, {
-			session_id: SESSION_ID,
-			current_page: $page.url.pathname
-		});
 		botEngaged.set(true);
 		minimized.set(false);
 		chatOpen.set(true);
