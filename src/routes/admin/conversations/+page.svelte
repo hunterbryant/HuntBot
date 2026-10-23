@@ -6,13 +6,19 @@
 	import Transcript from './Transcript.svelte';
 	import {
 		attentionScore,
+		formatTime,
 		needsAttention,
 		type ConversationSummary,
 		type TranscriptItem
 	} from './types';
 
 	type SortBy = 'recent' | 'messages' | 'duration';
-	type TranscriptState = { status: 'loading' | 'loaded' | 'error'; items: TranscriptItem[]; error: string };
+	type TranscriptState = {
+		status: 'loading' | 'loaded' | 'error';
+		items: TranscriptItem[];
+		error: string;
+		truncated?: boolean;
+	};
 
 	const RANGES = [1, 7, 30, 90];
 	const DAY_MS = 24 * 60 * 60 * 1000;
@@ -21,6 +27,7 @@
 	let status: 'loading' | 'loaded' | 'error' = 'loading';
 	let error = '';
 	let fetchedAt = '';
+	let truncated = false;
 
 	// Filters: all applied in the browser, and mirrored into the URL so a view can be shared
 	let range = 30;
@@ -94,15 +101,6 @@
 	}
 	$: barMax = Math.max(1, ...bars.map((b) => b.n));
 
-	function formatTime(ts: string) {
-		return new Date(ts).toLocaleString('en-US', {
-			month: 'short',
-			day: 'numeric',
-			hour: 'numeric',
-			minute: '2-digit'
-		});
-	}
-
 	// --- URL state ---
 
 	function readUrl() {
@@ -147,17 +145,36 @@
 			if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
 			conversations = data.conversations ?? [];
 			fetchedAt = data.fetchedAt;
+			truncated = data.truncated === true;
 			status = 'loaded';
-			if (fresh) transcripts = new Map();
+			if (fresh) {
+				// Expanded rows stay open across a refresh, so re-fetch their transcripts
+				transcripts = new Map();
+				inflight.clear();
+				for (const c of conversations) if (expanded.has(c.sessionId)) void loadTranscript(c);
+			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			status = 'error';
 		}
 	}
 
-	async function loadTranscript(c: ConversationSummary): Promise<TranscriptState> {
+	// One request per session at a time, so callers (expand, copy JSON) wait for the same result
+	const inflight = new Map<string, Promise<TranscriptState>>();
+
+	function loadTranscript(c: ConversationSummary): Promise<TranscriptState> {
 		const existing = transcripts.get(c.sessionId);
-		if (existing && existing.status !== 'error') return existing;
+		if (existing && existing.status === 'loaded') return Promise.resolve(existing);
+		const pending = inflight.get(c.sessionId);
+		if (pending) return pending;
+		const request = fetchTranscript(c).finally(() => {
+			if (inflight.get(c.sessionId) === request) inflight.delete(c.sessionId);
+		});
+		inflight.set(c.sessionId, request);
+		return request;
+	}
+
+	async function fetchTranscript(c: ConversationSummary): Promise<TranscriptState> {
 		transcripts.set(c.sessionId, { status: 'loading', items: [], error: '' });
 		transcripts = transcripts;
 		let next: TranscriptState;
@@ -166,7 +183,12 @@
 			const res = await fetch(`/api/admin/conversations/${encodeURIComponent(c.sessionId)}?${qs}`);
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-			next = { status: 'loaded', items: data.items ?? [], error: '' };
+			next = {
+				status: 'loaded',
+				items: data.items ?? [],
+				error: '',
+				truncated: data.truncated === true
+			};
 		} catch (e) {
 			next = { status: 'error', items: [], error: e instanceof Error ? e.message : String(e) };
 		}
@@ -429,6 +451,12 @@
 				<p class="text-xs text-red-500">{error}</p>
 			{/if}
 
+			{#if status === 'loaded' && truncated}
+				<p class="text-xs text-amber-600 dark:text-amber-400">
+					Showing the most recent 2,000 sessions. Older ones and the 90d funnel counts are incomplete.
+				</p>
+			{/if}
+
 			{#if status === 'loaded' && sorted.length === 0}
 				<p class="text-sm text-stone-400 dark:text-stone-500">
 					{conversations.length ? 'No conversations match these filters.' : 'No conversations yet.'}
@@ -450,6 +478,7 @@
 							{convo}
 							status={t?.status ?? 'loading'}
 							items={t?.items ?? []}
+			truncated={t?.truncated ?? false}
 							error={t?.error ?? ''}
 							{showSuggestions}
 						/>

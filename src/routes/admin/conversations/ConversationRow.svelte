@@ -1,21 +1,12 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import { LOW_GROUNDING, type ConversationSummary } from './types';
+	import { formatTime, LOW_GROUNDING, type ConversationSummary } from './types';
 
 	export let convo: ConversationSummary;
 	export let expanded = false;
 	export let copied: 'json' | 'link' | null = null;
 
 	const dispatch = createEventDispatcher<{ toggle: void; copyjson: void; copylink: void }>();
-
-	function formatTime(ts: string) {
-		return new Date(ts).toLocaleString('en-US', {
-			month: 'short',
-			day: 'numeric',
-			hour: 'numeric',
-			minute: '2-digit'
-		});
-	}
 
 	function formatDuration(ms: number): string {
 		const mins = Math.floor(ms / 60000);

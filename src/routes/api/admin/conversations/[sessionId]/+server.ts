@@ -1,10 +1,11 @@
 import { authenticateUser } from '$lib/server/auth';
-import { runHogQL } from '$lib/server/posthog-query';
+import { num, runHogQL, str } from '$lib/server/posthog-query';
 import { UserRole } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { TranscriptItem } from '../../../../admin/conversations/types';
 
 const HOUR_MS = 60 * 60 * 1000;
+const MAX_EVENTS = 500;
 
 // Only the fields the transcript shows. The time bounds keep the lookup on the events table's
 // date-first sort key; they come from the session's own start and end in the summary.
@@ -30,18 +31,15 @@ SELECT
   toString(properties.suggestion_text) AS suggestion_text,
   toString(properties.suggestions) AS suggestions
 FROM events
-WHERE timestamp >= {from}
-  AND timestamp <= {to}
+WHERE timestamp >= parseDateTimeBestEffort({windowStart})
+  AND timestamp <= parseDateTimeBestEffort({windowEnd})
   AND event IN ('chat_message', 'rag_grounding', 'suggestion_clicked', 'suggestions_shown')
   AND coalesce(nullIf(toString(properties.session_id), ''), distinct_id) = {sessionId}
-ORDER BY timestamp ASC
-LIMIT 500
+ORDER BY timestamp DESC
+LIMIT ${MAX_EVENTS + 1}
 `;
 
 type Row = Record<string, unknown>;
-
-const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null);
-const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 function parseList(v: unknown): string[] {
 	const raw = str(v);
@@ -94,14 +92,18 @@ export const GET: RequestHandler = async ({ cookies, params, url }) => {
 	}
 
 	try {
-		const rows = await runHogQL<Row>(TRANSCRIPT_SQL, {
-			from: new Date(from - HOUR_MS).toISOString(),
-			to: new Date(to + HOUR_MS).toISOString(),
+		const found = await runHogQL<Row>(TRANSCRIPT_SQL, {
+			windowStart: new Date(from - HOUR_MS).toISOString(),
+			windowEnd: new Date(to + HOUR_MS).toISOString(),
 			sessionId: params.sessionId
 		});
-		if (rows === null) {
+		if (found === null) {
 			return json({ error: 'PostHog is not configured', items: [] }, { status: 503 });
 		}
+
+		// Fetched newest first with one spare row: a spare means older events were cut off
+		const truncated = found.length > MAX_EVENTS;
+		const rows = found.slice(0, MAX_EVENTS).reverse();
 
 		// Grounding arrives as its own event after the reply; attach it to its turn by run_id.
 		const grounding = new Map<string, Row>();
@@ -140,7 +142,7 @@ export const GET: RequestHandler = async ({ cookies, params, url }) => {
 			}
 		}
 
-		return json({ items }, { headers: { 'Cache-Control': 'private, max-age=300' } });
+		return json({ items, truncated }, { headers: { 'Cache-Control': 'private, no-store' } });
 	} catch (err) {
 		console.error('Transcript fetch failed:', err);
 		return json({ error: String(err), items: [] }, { status: 502 });

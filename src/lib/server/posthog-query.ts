@@ -34,3 +34,8 @@ export async function runHogQL<T = Record<string, unknown>>(
 		Object.fromEntries(data.columns.map((col, i) => [col, row[i]]))
 	) as T[];
 }
+
+/** Non-empty string, else null (HogQL returns '' for missing properties). */
+export const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null);
+/** Finite number, else null. */
+export const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);

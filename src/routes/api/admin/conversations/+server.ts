@@ -1,10 +1,11 @@
 import { authenticateUser } from '$lib/server/auth';
-import { runHogQL } from '$lib/server/posthog-query';
+import { num, runHogQL, str } from '$lib/server/posthog-query';
 import { UserRole } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
 import type { ConversationSummary } from '../../../admin/conversations/types';
 
 const DAYS = 90;
+const MAX_SESSIONS = 2000;
 const CACHE_MS = 60_000;
 
 // One scan over the window: events are folded into one row per session, so only the columns the
@@ -28,7 +29,7 @@ SELECT
   argMinIf(toString(properties.visitor_org), timestamp, event = 'chat_message' AND toString(properties.visitor_org_class) = 'org') AS org,
   argMinIf(toString(properties.visitor_company_source), timestamp, event = 'chat_message' AND toString(properties.visitor_org_class) = 'org') AS org_source,
   maxIf(toString(properties.is_admin) = 'true', event = 'chat_message') AS is_admin,
-  groupUniqArrayIf(toString(properties.current_page), event IN ('chat_message', 'suggestion_clicked') AND nullIf(toString(properties.current_page), '') IS NOT NULL) AS pages,
+  groupUniqArrayIf(toString(properties.current_page), event IN ('chat_message', 'suggestion_clicked', 'chat_opened') AND nullIf(toString(properties.current_page), '') IS NOT NULL) AS pages,
   minIf(toFloat(properties.grounding_score), event = 'rag_grounding' AND toFloat(properties.makes_claims_probability) > 0.5) AS min_grounding,
   countIf(event = 'rag_grounding' AND toFloat(properties.admits_miss_probability) > 0.5) AS misses,
   countIf(event = 'rag_grounding' AND toFloat(properties.speaks_as_hunter_probability) > 0.5) AS spoke_as_hunter,
@@ -47,13 +48,10 @@ WHERE timestamp >= now() - INTERVAL ${DAYS} DAY
   AND event IN ('chat_message', 'suggestion_clicked', 'not_helpful', 'chat_opened', 'contact_clicked', 'rag_grounding')
 GROUP BY session_id
 ORDER BY last_active_at DESC
-LIMIT 2000
+LIMIT ${MAX_SESSIONS}
 `;
 
 type Row = Record<string, unknown>;
-
-const str = (v: unknown) => (typeof v === 'string' && v !== '' ? v : null);
-const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 function navDest(args: unknown): string | null {
 	const raw = str(args);
@@ -108,7 +106,7 @@ function toSummary(r: Row): ConversationSummary {
 
 let cache: {
 	at: number;
-	body: { conversations: ConversationSummary[]; fetchedAt: string };
+	body: { conversations: ConversationSummary[]; truncated: boolean; fetchedAt: string };
 } | null = null;
 
 export const GET: RequestHandler = async ({ cookies, url }) => {
@@ -130,7 +128,12 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 				{ status: 503 }
 			);
 		}
-		const body = { conversations: rows.map(toSummary), fetchedAt: new Date().toISOString() };
+		const body = {
+			conversations: rows.map(toSummary),
+			// Newest first, so a full page means the oldest sessions were left out
+			truncated: rows.length >= MAX_SESSIONS,
+			fetchedAt: new Date().toISOString()
+		};
 		cache = { at: Date.now(), body };
 		return json(body, { headers: { 'Cache-Control': 'private, max-age=60' } });
 	} catch (err) {

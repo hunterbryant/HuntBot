@@ -5,6 +5,7 @@
 	export let status: 'loading' | 'loaded' | 'error' = 'loading';
 	export let items: TranscriptItem[] = [];
 	export let error = '';
+	export let truncated = false;
 	export let showSuggestions = false;
 
 	let expandedResponses = new Set<string>();
@@ -60,7 +61,7 @@
 					<span class={label}>Privacy</span><span>Global Privacy Control on</span>
 				</div>
 			{/if}
-			{#if meta.lat && meta.lon}
+			{#if meta.lat !== null && meta.lon !== null}
 				<div class="flex gap-3">
 					<span class={label}>Coords</span>
 					<span>{meta.lat.toFixed(4)}, {meta.lon.toFixed(4)}</span>
@@ -83,6 +84,11 @@
 	{:else if status === 'error'}
 		<p class="text-xs text-red-500">{error}</p>
 	{:else}
+		{#if truncated}
+			<p class="mb-3 text-xs text-amber-600 dark:text-amber-400">
+				Showing the latest events only; the start of this conversation is cut off.
+			</p>
+		{/if}
 		<div class="flex flex-col gap-3">
 			{#each items as item, i}
 				{#if item.type === 'chat_message'}

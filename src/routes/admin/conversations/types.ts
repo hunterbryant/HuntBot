@@ -83,3 +83,12 @@ export function attentionScore(c: ConversationSummary): number {
 		c.spokeAsHunter
 	);
 }
+
+export function formatTime(ts: string): string {
+	return new Date(ts).toLocaleString('en-US', {
+		month: 'short',
+		day: 'numeric',
+		hour: 'numeric',
+		minute: '2-digit'
+	});
+}
