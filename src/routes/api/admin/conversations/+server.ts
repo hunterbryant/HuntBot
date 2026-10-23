@@ -1,98 +1,113 @@
-import { env } from '$env/dynamic/private';
 import { authenticateUser } from '$lib/server/auth';
+import { num, runHogQL, str } from '$lib/server/posthog-query';
 import { UserRole } from '$lib/types';
 import { json, type RequestHandler } from '@sveltejs/kit';
+import type { ConversationSummary } from '../../../admin/conversations/types';
 
-interface PostHogEvent {
-	uuid: string;
-	timestamp: string;
-	distinct_id: string;
-	properties: Record<string, unknown>;
-}
+const DAYS = 90;
+const MAX_SESSIONS = 2000;
+const CACHE_MS = 60_000;
 
-interface ConversationEvent {
-	type: 'chat_message' | 'suggestion_clicked' | 'suggestions_shown';
-	timestamp: string;
-	userMessage: string | null;
-	botResponse: string | null;
-	functionCallName: string | null;
-	functionCallArgs: string | null;
-	currentPage: string | null;
-	suggestionText: string | null;
-	suggestionsShown: string[] | null;
-	suggestionType: string | null;
-	city: string | null;
-	region: string | null;
-	regionCode: string | null;
-	country: string | null;
-	countryCode: string | null;
-	timezone: string | null;
-	ip: string | null;
-	lat: number | null;
-	lon: number | null;
-	arrivedVia: string | null;
-	org: string | null;
-	orgClass: string | null;
-	gpc: boolean;
-}
+// One scan over the window: events are folded into one row per session, so only the columns the
+// list shows leave PostHog. Transcripts load per session from /[sessionId].
+// Client events use the browser session id as distinct_id and server events use the same id as
+// session_id, so the key is session_id with distinct_id as the fallback.
+const SUMMARY_SQL = `
+SELECT
+  coalesce(nullIf(toString(properties.session_id), ''), distinct_id) AS session_id,
+  min(timestamp) AS started_at,
+  max(timestamp) AS last_active_at,
+  countIf(event = 'chat_message') AS msg_count,
+  countIf(event = 'chat_message' AND nullIf(toString(properties.user_message), '') IS NOT NULL) AS user_msg_count,
+  countIf(event = 'suggestion_clicked') AS click_count,
+  countIf(event = 'contact_clicked') AS contact_clicks,
+  countIf(event = 'not_helpful') AS not_helpful,
+  countIf(event = 'chat_opened') > 0 AS opened,
+  argMinIf(toString(properties.user_message), timestamp, event = 'chat_message' AND nullIf(toString(properties.user_message), '') IS NOT NULL) AS first_question,
+  argMinIf(toString(properties.function_call_args), timestamp, event = 'chat_message' AND nullIf(toString(properties.function_call_name), '') IS NOT NULL) AS nav_args,
+  countIf(event = 'chat_message' AND nullIf(toString(properties.function_call_name), '') IS NOT NULL) > 0 AS has_navigation,
+  argMinIf(toString(properties.visitor_org), timestamp, event = 'chat_message' AND toString(properties.visitor_org_class) = 'org') AS org,
+  argMinIf(toString(properties.visitor_company_source), timestamp, event = 'chat_message' AND toString(properties.visitor_org_class) = 'org') AS org_source,
+  maxIf(toString(properties.is_admin) = 'true', event = 'chat_message') AS is_admin,
+  groupUniqArrayIf(toString(properties.current_page), event IN ('chat_message', 'suggestion_clicked', 'chat_opened') AND nullIf(toString(properties.current_page), '') IS NOT NULL) AS pages,
+  minIf(toFloat(properties.grounding_score), event = 'rag_grounding' AND toFloat(properties.makes_claims_probability) > 0.5) AS min_grounding,
+  countIf(event = 'rag_grounding' AND toFloat(properties.admits_miss_probability) > 0.5) AS misses,
+  countIf(event = 'rag_grounding' AND toFloat(properties.speaks_as_hunter_probability) > 0.5) AS spoke_as_hunter,
+  countIf(event = 'chat_message' AND (nullIf(toString(properties.model_failure), '') IS NOT NULL OR toString(properties.pipeline_error) = 'true')) AS failures,
+  argMinIf(toString(properties.$geoip_city_name), timestamp, event = 'chat_message' AND nullIf(toString(properties.$geoip_city_name), '') IS NOT NULL) AS city,
+  argMinIf(toString(properties.$geoip_subdivision_1_name), timestamp, event = 'chat_message' AND nullIf(toString(properties.$geoip_city_name), '') IS NOT NULL) AS region,
+  argMinIf(toString(properties.$geoip_country_name), timestamp, event = 'chat_message' AND nullIf(toString(properties.$geoip_city_name), '') IS NOT NULL) AS country,
+  argMinIf(toString(properties.$geoip_time_zone), timestamp, event = 'chat_message' AND nullIf(toString(properties.$geoip_time_zone), '') IS NOT NULL) AS timezone,
+  argMinIf(toString(properties.$ip), timestamp, event = 'chat_message' AND nullIf(toString(properties.$ip), '') IS NOT NULL) AS ip,
+  argMinIf(toFloat(properties.$geoip_latitude), timestamp, event = 'chat_message' AND toFloat(properties.$geoip_latitude) IS NOT NULL) AS lat,
+  argMinIf(toFloat(properties.$geoip_longitude), timestamp, event = 'chat_message' AND toFloat(properties.$geoip_longitude) IS NOT NULL) AS lon,
+  argMinIf(coalesce(nullIf(toString(properties.visitor_arrived_via), ''), nullIf(toString(properties.via), ''), nullIf(toString(properties.landing_referrer), '')), timestamp, event IN ('chat_message', 'chat_opened')) AS arrived_via,
+  maxIf(toString(properties.gpc) = 'true', event = 'chat_message') AS gpc
+FROM events
+WHERE timestamp >= now() - INTERVAL ${DAYS} DAY
+  AND event IN ('chat_message', 'suggestion_clicked', 'not_helpful', 'chat_opened', 'contact_clicked', 'rag_grounding')
+GROUP BY session_id
+ORDER BY last_active_at DESC
+LIMIT ${MAX_SESSIONS}
+`;
 
-interface UserMeta {
-	city: string | null;
-	region: string | null;
-	regionCode: string | null;
-	country: string | null;
-	countryCode: string | null;
-	timezone: string | null;
-	ip: string | null;
-	lat: number | null;
-	lon: number | null;
-	arrivedVia: string | null;
-	org: string | null;
-	orgClass: string | null;
-	gpc: boolean;
-}
+type Row = Record<string, unknown>;
 
-interface ConversationSummary {
-	sessionId: string;
-	startedAt: string;
-	lastActiveAt: string;
-	durationMs: number;
-	hasNavigation: boolean;
-	hasNotHelpful: boolean;
-	userMeta: UserMeta;
-	msgCount: number;
-	userMsgCount: number;
-	suggestionClickCount: number;
-	pages: string[];
-	pagesVisited: string;
-	navDest: string | null;
-}
-
-async function fetchPostHogEvents(event: string, since: string): Promise<PostHogEvent[]> {
-	const projectId = env.POSTHOG_PROJECT_ID;
-	const personalKey = env.POSTHOG_PERSONAL_API_KEY;
-	if (!projectId || !personalKey) return [];
-
-	const url = new URL(`https://us.posthog.com/api/projects/${projectId}/events/`);
-	url.searchParams.set('event', event);
-	url.searchParams.set('after', since);
-	url.searchParams.set('limit', '500');
-
+function navDest(args: unknown): string | null {
+	const raw = str(args);
+	if (!raw) return null;
 	try {
-		const res = await fetch(url.toString(), {
-			headers: { Authorization: `Bearer ${personalKey}` }
-		});
-		if (!res.ok) {
-			console.warn(`PostHog API error for event "${event}": ${res.status} ${await res.text()}`);
-			return [];
-		}
-		const data = await res.json();
-		return (data.results as PostHogEvent[]) ?? [];
-	} catch (err) {
-		console.warn(`PostHog fetch failed for event "${event}":`, err);
-		return [];
+		return (JSON.parse(raw) as { page?: string }).page ?? null;
+	} catch {
+		return null;
 	}
 }
+
+function toSummary(r: Row): ConversationSummary {
+	const sessionId = String(r.session_id);
+	const startedAt = str(r.started_at) ?? new Date(0).toISOString();
+	const lastActiveAt = str(r.last_active_at) ?? startedAt;
+	return {
+		sessionId,
+		startedAt,
+		lastActiveAt,
+		durationMs: new Date(lastActiveAt).getTime() - new Date(startedAt).getTime(),
+		msgCount: Number(r.msg_count) || 0,
+		userMsgCount: Number(r.user_msg_count) || 0,
+		suggestionClickCount: Number(r.click_count) || 0,
+		contactClicks: Number(r.contact_clicks) || 0,
+		notHelpfulCount: Number(r.not_helpful) || 0,
+		opened: Boolean(r.opened),
+		firstQuestion: str(r.first_question),
+		navDest: navDest(r.nav_args),
+		hasNavigation: Boolean(r.has_navigation),
+		org: str(r.org),
+		orgSource: str(r.org_source),
+		isAdmin: Boolean(r.is_admin),
+		isTest: /^(eval|verify)-/.test(sessionId),
+		pages: Array.isArray(r.pages) ? (r.pages as unknown[]).map(String).sort() : [],
+		minGrounding: num(r.min_grounding),
+		misses: Number(r.misses) || 0,
+		spokeAsHunter: Number(r.spoke_as_hunter) || 0,
+		failures: Number(r.failures) || 0,
+		meta: {
+			city: str(r.city),
+			region: str(r.region),
+			country: str(r.country),
+			timezone: str(r.timezone),
+			ip: str(r.ip),
+			lat: num(r.lat),
+			lon: num(r.lon),
+			arrivedVia: str(r.arrived_via),
+			gpc: Boolean(r.gpc)
+		}
+	};
+}
+
+let cache: {
+	at: number;
+	body: { conversations: ConversationSummary[]; truncated: boolean; fetchedAt: string };
+} | null = null;
 
 export const GET: RequestHandler = async ({ cookies, url }) => {
 	const user = authenticateUser(cookies);
@@ -100,209 +115,29 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 		return json({ error: 'Unauthorized' }, { status: 401 });
 	}
 
-	const days = Math.min(parseInt(url.searchParams.get('days') ?? '30'), 90);
-	const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+	const fresh = url.searchParams.has('fresh');
+	if (!fresh && cache && Date.now() - cache.at < CACHE_MS) {
+		return json(cache.body, { headers: { 'Cache-Control': 'private, max-age=60' } });
+	}
 
 	try {
-		const [chatEvents, clickEvents, shownEvents, notHelpfulEvents] = await Promise.all([
-			fetchPostHogEvents('chat_message', since),
-			fetchPostHogEvents('suggestion_clicked', since),
-			fetchPostHogEvents('suggestions_shown', since),
-			fetchPostHogEvents('not_helpful', since)
-		]);
-
-		// Merge, tag with type, sort chronologically
-		const all = [
-			...chatEvents.map((e) => ({ ...e, _type: 'chat_message' as const })),
-			...clickEvents.map((e) => ({ ...e, _type: 'suggestion_clicked' as const })),
-			...shownEvents.map((e) => ({ ...e, _type: 'suggestions_shown' as const }))
-		].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-
-		const str = (v: unknown) => (typeof v === 'string' ? v : null);
-		const getProps = (e: PostHogEvent): Record<string, unknown> => {
-			const p = e.properties;
-			if (typeof p === 'string') {
-				try {
-					return (JSON.parse(p) as Record<string, unknown>) ?? {};
-				} catch {
-					return {};
-				}
-			}
-			return (p as Record<string, unknown>) ?? {};
+		const rows = await runHogQL<Row>(SUMMARY_SQL);
+		if (rows === null) {
+			return json(
+				{ error: 'POSTHOG_PROJECT_ID or POSTHOG_PERSONAL_API_KEY is not set', conversations: [] },
+				{ status: 503 }
+			);
+		}
+		const body = {
+			conversations: rows.map(toSummary),
+			// Newest first, so a full page means the oldest sessions were left out
+			truncated: rows.length >= MAX_SESSIONS,
+			fetchedAt: new Date().toISOString()
 		};
-
-		// Build a reverse lookup: distinct_id → session key (for not_helpful correlation)
-		const distinctIdToSession = new Map<string, string>();
-		for (const e of all) {
-			const p = getProps(e);
-			const key = str(p.session_id) ?? e.distinct_id;
-			if (e.distinct_id) distinctIdToSession.set(e.distinct_id, key);
-		}
-
-		// Group by session_id
-		const sessionMap = new Map<string, ConversationEvent[]>();
-		for (const e of all) {
-			const p = getProps(e);
-			const num = (v: unknown) => (typeof v === 'number' ? v : null);
-			const arr2str = (v: unknown) => (Array.isArray(v) ? (v as unknown[]).map(String) : null);
-			const key = str(p.session_id) ?? e.distinct_id;
-			const arr = sessionMap.get(key) ?? [];
-			arr.push({
-				type: e._type,
-				timestamp: e.timestamp,
-				userMessage: str(p.user_message),
-				botResponse: str(p.bot_response),
-				functionCallName: str(p.function_call_name),
-				functionCallArgs: str(p.function_call_args),
-				currentPage: str(p.current_page),
-				suggestionText: str(p.suggestion_text),
-				suggestionsShown: arr2str(p.suggestions),
-				suggestionType: str(p.suggestion_type),
-				city: str(p.$geoip_city_name),
-				region: str(p.$geoip_subdivision_1_name),
-				regionCode: str(p.$geoip_subdivision_1_code),
-				country: str(p.$geoip_country_name),
-				countryCode: str(p.$geoip_country_code),
-				timezone: str(p.$geoip_time_zone),
-				ip: str(p.$ip),
-				lat: num(p.$geoip_latitude),
-				lon: num(p.$geoip_longitude),
-				arrivedVia: str(p.visitor_arrived_via) ?? str(p.via) ?? str(p.landing_referrer),
-				org: str(p.visitor_org),
-				orgClass: str(p.visitor_org_class),
-				gpc: p.gpc === true
-			});
-			sessionMap.set(key, arr);
-		}
-
-		const notHelpfulSessions = new Set<string>();
-		for (const e of notHelpfulEvents) {
-			const p = getProps(e);
-			const sid = str(p.session_id);
-			if (sid) {
-				notHelpfulSessions.add(sid);
-			} else {
-				// Resolve via distinct_id → session key mapping built from chat events
-				const resolved = distinctIdToSession.get(e.distinct_id);
-				if (resolved) notHelpfulSessions.add(resolved);
-				else if (e.distinct_id) notHelpfulSessions.add(e.distinct_id); // last-resort fallback
-			}
-		}
-
-		// Build eventsMap alongside summaries
-		const eventsMap: Record<string, ConversationEvent[]> = {};
-
-		const conversations: ConversationSummary[] = Array.from(sessionMap.entries())
-			.map(([sessionId, events]) => {
-				// Store events in the map for the response
-				eventsMap[sessionId] = events;
-
-				const firstWithMeta = events.find((e) => e.city || e.timezone);
-				const firstArrival = events.find((e) => e.arrivedVia)?.arrivedVia ?? null;
-				const firstOrg = events.find((e) => e.org);
-				const userMeta: UserMeta = {
-					city: firstWithMeta?.city ?? null,
-					region: firstWithMeta?.region ?? null,
-					regionCode: firstWithMeta?.regionCode ?? null,
-					country: firstWithMeta?.country ?? null,
-					countryCode: firstWithMeta?.countryCode ?? null,
-					timezone: firstWithMeta?.timezone ?? null,
-					ip: firstWithMeta?.ip ?? null,
-					lat: firstWithMeta?.lat ?? null,
-					lon: firstWithMeta?.lon ?? null,
-					arrivedVia: firstArrival,
-					org: firstOrg?.org ?? null,
-					orgClass: firstOrg?.orgClass ?? null,
-					gpc: events.some((e) => e.gpc)
-				};
-				const startedAt = events[0].timestamp;
-				const lastActiveAt = events[events.length - 1].timestamp;
-
-				// Pre-compute counts
-				const msgCount = events.filter((e) => e.type === 'chat_message').length;
-				const userMsgCount = events.filter(
-					(e) => e.type === 'chat_message' && e.userMessage
-				).length;
-				const suggestionClickCount = events.filter(
-					(e) => e.type === 'suggestion_clicked'
-				).length;
-
-				// Pre-compute pages visited
-				const pages = [...new Set(events.map((e) => e.currentPage).filter(Boolean))] as string[];
-				const pagesVisited = pages.join(' → ');
-
-				// Pre-compute nav destination
-				let navDest: string | null = null;
-				const navEventByField = events.find((e) => e.functionCallName !== null);
-				if (navEventByField?.functionCallArgs) {
-					try {
-						const parsed = JSON.parse(navEventByField.functionCallArgs);
-						navDest = parsed.page ?? null;
-					} catch {
-						/* ignore */
-					}
-				} else {
-					// Fallback: check botResponse JSON for function_call.arguments.page
-					for (const e of events) {
-						if (e.botResponse) {
-							try {
-								const parsed = JSON.parse(e.botResponse);
-								if (parsed.function_call?.arguments) {
-									const args =
-										typeof parsed.function_call.arguments === 'string'
-											? JSON.parse(parsed.function_call.arguments)
-											: parsed.function_call.arguments;
-									if (args?.page) {
-										navDest = args.page;
-										break;
-									}
-								}
-							} catch {
-								/* ignore */
-							}
-						}
-					}
-				}
-
-				return {
-					sessionId,
-					startedAt,
-					lastActiveAt,
-					durationMs: new Date(lastActiveAt).getTime() - new Date(startedAt).getTime(),
-					hasNavigation: events.some((e) => {
-						if (e.functionCallName !== null) return true;
-						if (e.botResponse) {
-							try {
-								return !!(JSON.parse(e.botResponse).function_call?.name);
-							} catch {
-								/* */
-							}
-						}
-						return false;
-					}),
-					hasNotHelpful: notHelpfulSessions.has(sessionId),
-					userMeta,
-					msgCount,
-					userMsgCount,
-					suggestionClickCount,
-					pages,
-					pagesVisited,
-					navDest
-				};
-			})
-			.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
-
-		const notHelpfulCount = notHelpfulSessions.size;
-
-		return json(
-			{ conversations, events: eventsMap, notHelpfulCount, fetchedAt: new Date().toISOString() },
-			{ headers: { 'Cache-Control': 'private, max-age=120, stale-while-revalidate=30' } }
-		);
+		cache = { at: Date.now(), body };
+		return json(body, { headers: { 'Cache-Control': 'private, max-age=60' } });
 	} catch (err) {
 		console.error('Conversations fetch failed:', err);
-		return json(
-			{ error: `Failed to fetch conversations: ${err}`, conversations: [] },
-			{ status: 502 }
-		);
+		return json({ error: String(err), conversations: [] }, { status: 502 });
 	}
 };

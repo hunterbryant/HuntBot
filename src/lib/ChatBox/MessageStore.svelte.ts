@@ -481,6 +481,19 @@ export function resetChat(trigger: 'command' | 'tool') {
 export const botEngaged = writable(false);
 export const minimized = writable(true);
 
+// `chat_opened` fires the first time the chat un-minimizes on a page load, however it was opened
+// (greeting, "Ask HuntBot", typing, a suggestion chip, a deep link), so the admin funnel is real.
+if (typeof window !== 'undefined') {
+	const stopWatching = minimized.subscribe((isMinimized) => {
+		if (isMinimized) return;
+		stopWatching?.();
+		captureEvent('chat_opened', SESSION_ID, {
+			session_id: SESSION_ID,
+			current_page: window.location.pathname
+		});
+	});
+}
+
 // Helper to extract text from a UIMessage's parts
 export function getMessageText(message: UIMessage): string {
 	return message.parts
