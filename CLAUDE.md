@@ -23,6 +23,7 @@ pnpm dev          # mprocs: vite dev + Slice Machine UI
 pnpm check        # svelte-kit sync + type check: run before every commit
 pnpm lint         # Prettier check + ESLint
 pnpm format       # Prettier write
+pnpm test         # Vitest unit tests (src/**/*.test.ts)
 pnpm build        # production build
 pnpm slicemachine # Slice Machine UI only
 ```

@@ -11,6 +11,8 @@ export interface ConversationSummary {
 	notHelpfulCount: number;
 	opened: boolean;
 	firstQuestion: string | null;
+	/** The most recent question, for a session resumed after its first one. */
+	lastQuestion: string | null;
 	navDest: string | null;
 	hasNavigation: boolean;
 	org: string | null;

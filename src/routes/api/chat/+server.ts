@@ -1662,12 +1662,13 @@ ${contextForModel}`;
 				}
 
 				const leaked = [...leakGuards.values()].filter((g) => g.tripped);
+				// Usually the contact card: make the call the model meant to, so the visitor still gets
+				// it. The client shows the streamed text, so `message` only matters without one. A leak
+				// with no text before it gets the card with the empty-reply fallback below instead.
+				const leadIntent = leaked.map((g) => g.leakedLeadIntent()).find(Boolean) ?? null;
 				if (leaked.length > 0) {
 					turn.toolCallLeak = true;
 					console.warn('[HuntBot] tool call leaked into reply text', { lane, runID });
-					// Usually the contact card: make the call the model meant to, so the visitor still
-					// gets it. The client shows the streamed text, so `message` only matters without one.
-					const leadIntent = leaked.map((g) => g.leakedLeadIntent()).find(Boolean);
 					if (leadIntent && !turn.clientTool && producedReply) {
 						const input = { ...leadIntent, message: turn.visibleText.trim() };
 						turn.clientTool = { name: 'capture_lead_intent', input };
@@ -1742,7 +1743,7 @@ ${contextForModel}`;
 					turn.emptyReplyFallback = true;
 					turn.visibleText = fallbackText;
 					writer.write({ type: 'start-step' });
-					writeFallbackParts(fallbackText, unavailable);
+					writeFallbackParts(fallbackText, unavailable || leadIntent !== null);
 					writer.write({ type: 'finish-step' });
 				}
 				writer.write({ type: 'finish' });

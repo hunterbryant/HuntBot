@@ -23,7 +23,8 @@
 	}
 
 	// The list filters and sorts by last activity, so that's the time shown. A session resumed on a
-	// later day (the session id lives in localStorage) also says when it started.
+	// later day (the session id lives in localStorage) also says when it started, and shows its
+	// latest question under the first.
 	$: resumed =
 		new Date(convo.startedAt).toLocaleDateString('en-CA') !==
 		new Date(convo.lastActiveAt).toLocaleDateString('en-CA');
@@ -49,6 +50,11 @@
 			<p class="truncate text-sm font-medium text-stone-800 dark:text-stone-200">
 				{convo.firstQuestion ?? 'No message sent'}
 			</p>
+			{#if resumed && convo.lastQuestion && convo.lastQuestion !== convo.firstQuestion}
+				<p class="truncate text-sm text-stone-500 dark:text-stone-400">
+					Latest: {convo.lastQuestion}
+				</p>
+			{/if}
 
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
 				<span class="text-xs text-stone-400 dark:text-stone-500"
