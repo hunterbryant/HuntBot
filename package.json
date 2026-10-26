@@ -13,6 +13,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"lint": "prettier --check . && eslint .",
 		"format": "prettier --write .",
+		"test": "vitest run",
 		"slicemachine": "start-slicemachine",
 		"eval": "node scripts/eval/run.mjs"
 	},
@@ -37,7 +38,7 @@
 		"prettier": "^3.2.5",
 		"prettier-plugin-organize-imports": "^3.2.4",
 		"prettier-plugin-svelte": "^3.2.2",
-		"prettier-plugin-tailwindcss": "^0.5.12",
+		"prettier-plugin-tailwindcss": "^0.8.1",
 		"slice-machine-ui": "^1.25.0",
 		"svelte": "^5.54.0",
 		"svelte-check": "^4.4.5",
@@ -45,7 +46,8 @@
 		"tailwindcss": "^3.4.1",
 		"tslib": "^2.6.2",
 		"typescript": "^5.4.2",
-		"vite": "^8.0.0"
+		"vite": "^8.0.0",
+		"vitest": "^5.0.5"
 	},
 	"type": "module",
 	"dependencies": {

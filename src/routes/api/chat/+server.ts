@@ -24,6 +24,7 @@ import { planSupplementalSearches } from '$lib/server/rag-router';
 import { explainHuntBot } from '$lib/server/self-docs';
 import { getAvailableRoutes, getSiteNavCatalog, pagesNamedIn } from '$lib/server/site-nav-routes';
 import { createStageTimer } from '$lib/server/timing';
+import { ToolCallLeakGuard } from '$lib/server/tool-call-leak';
 import { logToolCall, toolAnalyticsProps, type ToolCallLog } from '$lib/server/tool-log';
 import {
 	checkDateRange,
@@ -322,6 +323,8 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 				routerSearches: 0,
 				fallbackSearchRan: false,
 				emptyReplyFallback: false,
+				// The model wrote a tool call as text and the guard cut it from the reply
+				toolCallLeak: false,
 				modelError: null as string | null,
 				modelFailure: null as ModelFailure | null,
 				pipelineError: false,
@@ -400,6 +403,7 @@ export const POST: RequestHandler = async ({ request, locals, getClientAddress }
 					router_searches: turn.routerSearches,
 					fallback_search_ran: turn.fallbackSearchRan,
 					empty_reply_fallback: turn.emptyReplyFallback,
+					tool_call_leak: turn.toolCallLeak,
 					model_error: turn.modelError,
 					model_failure: turn.modelFailure,
 					pipeline_error: turn.pipelineError,
@@ -1609,12 +1613,28 @@ ${contextForModel}`;
 				const reader = toUIMessageStream({ stream: result.stream, sendFinish: false }).getReader();
 				let producedReply = false;
 				const serverToolNames = new Map<string, string>();
+				// One per text part: holds back the tail of each delta so a tool call the model wrote
+				// as text (see tool-call-leak.ts) is cut before the visitor sees it.
+				const leakGuards = new Map<string, ToolCallLeakGuard>();
 				for (;;) {
 					const { done, value } = await reader.read();
 					if (done) break;
 					if (value.type === 'text-delta') {
-						turn.visibleText += value.delta;
-						if (value.delta.trim()) producedReply = true;
+						let guard = leakGuards.get(value.id);
+						if (!guard) leakGuards.set(value.id, (guard = new ToolCallLeakGuard()));
+						const delta = guard.push(value.delta);
+						if (!delta) continue;
+						turn.visibleText += delta;
+						if (delta.trim()) producedReply = true;
+						writer.write({ ...value, delta });
+						continue;
+					} else if (value.type === 'text-end') {
+						const rest = leakGuards.get(value.id)?.flush();
+						if (rest) {
+							turn.visibleText += rest;
+							if (rest.trim()) producedReply = true;
+							writer.write({ type: 'text-delta', id: value.id, delta: rest });
+						}
 					} else if (value.type === 'tool-input-available') {
 						if (CLIENT_TOOL_NAMES.has(value.toolName)) {
 							producedReply = true;
@@ -1639,6 +1659,28 @@ ${contextForModel}`;
 						continue;
 					}
 					writer.write(value);
+				}
+
+				const leaked = [...leakGuards.values()].filter((g) => g.tripped);
+				// Usually the contact card: make the call the model meant to, so the visitor still gets
+				// it. The client shows the streamed text, so `message` only matters without one. A leak
+				// with no text before it gets the card with the empty-reply fallback below instead.
+				const leadIntent = leaked.map((g) => g.leakedLeadIntent()).find(Boolean) ?? null;
+				if (leaked.length > 0) {
+					turn.toolCallLeak = true;
+					console.warn('[HuntBot] tool call leaked into reply text', { lane, runID });
+					if (leadIntent && !turn.clientTool && producedReply) {
+						const input = { ...leadIntent, message: turn.visibleText.trim() };
+						turn.clientTool = { name: 'capture_lead_intent', input };
+						writer.write({ type: 'start-step' });
+						writer.write({
+							type: 'tool-input-available',
+							toolCallId: crypto.randomUUID(),
+							toolName: 'capture_lead_intent',
+							input
+						});
+						writer.write({ type: 'finish-step' });
+					}
 				}
 
 				// The prompt asks for a next step after "I don't have that", but bare misses kept
@@ -1701,7 +1743,7 @@ ${contextForModel}`;
 					turn.emptyReplyFallback = true;
 					turn.visibleText = fallbackText;
 					writer.write({ type: 'start-step' });
-					writeFallbackParts(fallbackText, unavailable);
+					writeFallbackParts(fallbackText, unavailable || leadIntent !== null);
 					writer.write({ type: 'finish-step' });
 				}
 				writer.write({ type: 'finish' });

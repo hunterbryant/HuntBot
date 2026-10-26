@@ -88,8 +88,9 @@
 	function buildBars(list: ConversationSummary[], days: number) {
 		if (days < 7) return [];
 		const counts = new Map<string, number>();
+		// By last activity, like the range filter, so the bars add up to the list
 		for (const c of list) {
-			const key = dayKey(new Date(c.startedAt).getTime());
+			const key = dayKey(new Date(c.lastActiveAt).getTime());
 			counts.set(key, (counts.get(key) ?? 0) + 1);
 		}
 		const out: { key: string; n: number }[] = [];

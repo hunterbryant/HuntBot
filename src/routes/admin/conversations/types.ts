@@ -11,6 +11,8 @@ export interface ConversationSummary {
 	notHelpfulCount: number;
 	opened: boolean;
 	firstQuestion: string | null;
+	/** The most recent question, for a session resumed after its first one. */
+	lastQuestion: string | null;
 	navDest: string | null;
 	hasNavigation: boolean;
 	org: string | null;
@@ -91,4 +93,8 @@ export function formatTime(ts: string): string {
 		hour: 'numeric',
 		minute: '2-digit'
 	});
+}
+
+export function formatDate(ts: string): string {
+	return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
