@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
-	import { formatTime, LOW_GROUNDING, type ConversationSummary } from './types';
+	import { formatDate, formatTime, LOW_GROUNDING, type ConversationSummary } from './types';
 
 	export let convo: ConversationSummary;
 	export let expanded = false;
@@ -21,6 +21,12 @@
 		if (source === 'stated' || source === 'simulated') return source;
 		return source ? 'guess' : '';
 	}
+
+	// The list filters and sorts by last activity, so that's the time shown. A session resumed on a
+	// later day (the session id lives in localStorage) also says when it started.
+	$: resumed =
+		new Date(convo.startedAt).toLocaleDateString('en-CA') !==
+		new Date(convo.lastActiveAt).toLocaleDateString('en-CA');
 
 	$: location = [convo.meta.city, convo.meta.region, convo.meta.country].filter(Boolean).join(', ');
 	$: suggestedPct =
@@ -45,7 +51,10 @@
 			</p>
 
 			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-				<span class="text-xs text-stone-400 dark:text-stone-500">{formatTime(convo.startedAt)}</span>
+				<span class="text-xs text-stone-400 dark:text-stone-500"
+					>{formatTime(convo.lastActiveAt)}{#if resumed}
+						· started {formatDate(convo.startedAt)}{/if}</span
+				>
 				<span class="{badge} bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400">
 					{convo.msgCount} msg{convo.msgCount !== 1 ? 's' : ''}
 				</span>

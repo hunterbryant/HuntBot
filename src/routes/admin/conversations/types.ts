@@ -92,3 +92,7 @@ export function formatTime(ts: string): string {
 		minute: '2-digit'
 	});
 }
+
+export function formatDate(ts: string): string {
+	return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
