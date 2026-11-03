@@ -8,7 +8,7 @@ Detail lives in `docs/`; read the one that matches your task (links under [Where
 
 | Layer         | Technology                                                                                                                                                     |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| App           | SvelteKit 2 + Svelte 5, TypeScript (strict), Tailwind CSS 3, pnpm, Node 22+ (Vercel runs 24; see `engines` in `package.json`)                                  |
+| App           | SvelteKit 2 + Svelte 5, TypeScript (strict), Tailwind CSS 3, pnpm, Node 22 or 24 (Vercel runs 24; see `engines` in `package.json`)                                |
 | CMS           | Prismic (Slice Machine)                                                                                                                                        |
 | LLM           | OpenAI `gpt-6.1-sol` (standard/deep lanes) and `gpt-6-luna` (quick lane + helper calls), via the Vercel AI SDK 7 (`ai`, `@ai-sdk/openai`) on the Responses API |
 | Retrieval     | Qdrant Cloud (free tier), `text-embedding-3-small` at 512 dims, LangChain for embedding jobs, Cohere Rerank (optional)                                         |
